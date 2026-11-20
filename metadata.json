@@ -1,0 +1,6 @@
+{
+  "name": "نظام إدارة الغيابات المدرسية الإلكتروني",
+  "description": "نظام إداري إلكتروني متكامل لإدارة بيانات الطلاب والصفوف والشعب وسجلات الغياب في المدارس العراقية.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
