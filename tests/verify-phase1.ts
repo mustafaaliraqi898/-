@@ -163,7 +163,7 @@ async function runTests() {
     // Simulate an existing absence record tied to first enrollment
     db.prepare(
       `INSERT INTO absences (student_id, enrollment_id, academic_year_id, grade_id, section_id, absence_date, status)
-       VALUES (?, ?, ?, ?, ?, '2026-11-10', 'absent')`
+       VALUES (?, ?, ?, ?, ?, '2026-11-10', 'full_day')`
     ).run(st1.id, st1.enrollment_id, st1.academic_year_id, st1.grade_id, st1.section_id);
 
     // Transfer student to section B

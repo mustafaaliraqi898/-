@@ -2,6 +2,13 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import { closeDb, createDatabaseConnection, setDbInstance, getDb } from '../server/db/connection';
+import {
+  createSingleAbsenceRecord,
+  deleteAbsenceRecord,
+  getSectionAttendanceSheet,
+  getStudentAbsenceDetails,
+  saveSectionAttendance,
+} from '../server/services/absenceService';
 import { getDashboardStats } from '../server/services/dashboardService';
 import {
   commitExcelStudents,
@@ -52,8 +59,12 @@ function registerIpcHandlers() {
   ipcMain.handle('settings:get', wrap(() => getSchoolSettings(getDb())));
   ipcMain.handle(
     'settings:update',
-    wrap((payload: { school_name: string; directorate_name: string }) =>
-      updateSchoolSettings(getDb(), payload)
+    wrap(
+      (payload: {
+        school_name: string;
+        directorate_name: string;
+        lessons_per_absence_day?: number;
+      }) => updateSchoolSettings(getDb(), payload)
     )
   );
   ipcMain.handle('academic-years:list', wrap(() => listAcademicYears(getDb())));
@@ -188,6 +199,38 @@ function registerIpcHandlers() {
     'excel:commit',
     wrap((payload: { rows: Parameters<typeof commitExcelStudents>[1]; academic_year_id?: number }) =>
       commitExcelStudents(getDb(), payload.rows, payload.academic_year_id)
+    )
+  );
+
+  ipcMain.handle(
+    'absences:sheet',
+    wrap((payload: Parameters<typeof getSectionAttendanceSheet>[1]) =>
+      getSectionAttendanceSheet(getDb(), payload)
+    )
+  );
+  ipcMain.handle(
+    'absences:save-sheet',
+    wrap((payload: Parameters<typeof saveSectionAttendance>[1]) =>
+      saveSectionAttendance(getDb(), payload)
+    )
+  );
+  ipcMain.handle(
+    'absences:create-record',
+    wrap((payload: Parameters<typeof createSingleAbsenceRecord>[1]) =>
+      createSingleAbsenceRecord(getDb(), payload)
+    )
+  );
+  ipcMain.handle(
+    'absences:delete-record',
+    wrap((payload: { id: number }) => {
+      deleteAbsenceRecord(getDb(), payload.id);
+      return { deleted: true };
+    })
+  );
+  ipcMain.handle(
+    'absences:student-details',
+    wrap((payload: { id: number; academic_year_id?: number }) =>
+      getStudentAbsenceDetails(getDb(), payload.id, payload.academic_year_id)
     )
   );
 }

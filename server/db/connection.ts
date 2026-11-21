@@ -11,11 +11,75 @@ function computeDefaultAcademicYearName(): string {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
-  // Iraqi academic year typically starts in September/October
   if (month >= 9) {
     return `${year}-${year + 1}`;
   }
   return `${year - 1}-${year}`;
+}
+
+function runSafeMigrations(db: SqliteDb): void {
+  // 1. Ensure school_settings has lessons_per_absence_day
+  const settingsCols = db.prepare('PRAGMA table_info(school_settings)').all() as Array<{
+    name: string;
+  }>;
+  if (!settingsCols.some((c) => c.name === 'lessons_per_absence_day')) {
+    db.exec(
+      'ALTER TABLE school_settings ADD COLUMN lessons_per_absence_day INTEGER NOT NULL DEFAULT 5'
+    );
+  }
+
+  // 2. Migrate legacy absences table if it still has old Phase 1 CHECK constraint
+  const absMeta = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'absences'")
+    .get() as { sql: string } | undefined;
+
+  if (absMeta && !absMeta.sql.includes('lesson_absence')) {
+    db.pragma('foreign_keys = OFF');
+    const migrateTx = db.transaction(() => {
+      db.exec(`
+        CREATE TABLE absences_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE RESTRICT,
+          enrollment_id INTEGER NOT NULL REFERENCES student_enrollments(id) ON DELETE RESTRICT,
+          academic_year_id INTEGER NOT NULL REFERENCES academic_years(id) ON DELETE RESTRICT,
+          grade_id INTEGER NOT NULL REFERENCES grades(id) ON DELETE RESTRICT,
+          section_id INTEGER NOT NULL REFERENCES sections(id) ON DELETE RESTRICT,
+          absence_date TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('present', 'full_day', 'lesson_absence')),
+          lessons_count INTEGER NOT NULL DEFAULT 0 CHECK (lessons_count >= 0),
+          threshold_snapshot INTEGER NOT NULL DEFAULT 5 CHECK (threshold_snapshot >= 1),
+          notes TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(student_id, absence_date)
+        );
+
+        INSERT INTO absences_new (
+          id, student_id, enrollment_id, academic_year_id, grade_id, section_id,
+          absence_date, status, lessons_count, threshold_snapshot, notes, created_at, updated_at
+        )
+        SELECT
+          id, student_id, enrollment_id, academic_year_id, grade_id, section_id,
+          absence_date,
+          CASE WHEN status = 'late' THEN 'lesson_absence' ELSE 'full_day' END,
+          CASE WHEN status = 'late' THEN 1 ELSE 0 END,
+          5,
+          notes,
+          created_at,
+          created_at
+        FROM absences;
+
+        DROP TABLE absences;
+        ALTER TABLE absences_new RENAME TO absences;
+
+        CREATE INDEX IF NOT EXISTS idx_absences_student_date ON absences(student_id, absence_date);
+        CREATE INDEX IF NOT EXISTS idx_absences_year_grade_section ON absences(academic_year_id, grade_id, section_id, absence_date);
+        CREATE INDEX IF NOT EXISTS idx_absences_student_year_status ON absences(student_id, academic_year_id, status);
+      `);
+    });
+    migrateTx();
+    db.pragma('foreign_keys = ON');
+  }
 }
 
 export function initializeDatabase(db: SqliteDb): void {
@@ -26,6 +90,7 @@ export function initializeDatabase(db: SqliteDb): void {
   }
 
   db.exec(SCHEMA_SQL);
+  runSafeMigrations(db);
 
   // Bootstrap default academic year and school settings ONLY (no fake students or classes)
   const bootstrapTx = db.transaction(() => {
@@ -64,8 +129,8 @@ export function initializeDatabase(db: SqliteDb): void {
 
     if (!existingSettings) {
       db.prepare(
-        `INSERT INTO school_settings (id, school_name, directorate_name, academic_year_id)
-         VALUES (1, ?, ?, ?)`
+        `INSERT INTO school_settings (id, school_name, directorate_name, academic_year_id, lessons_per_absence_day)
+         VALUES (1, ?, ?, ?, 5)`
       ).run('المدرسة النموذجية', 'المديرية العامة للتربية', activeYearId);
     } else if (!existingSettings.academic_year_id && activeYearId) {
       db.prepare('UPDATE school_settings SET academic_year_id = ? WHERE id = 1').run(activeYearId);

@@ -5,7 +5,8 @@ import { ServiceError, normalizeWhitespace } from '../utils/validation';
 export function getSchoolSettings(db: SqliteDb): SchoolSettings {
   const row = db
     .prepare(
-      `SELECT s.id, s.school_name, s.directorate_name, s.academic_year_id, s.updated_at,
+      `SELECT s.id, s.school_name, s.directorate_name, s.academic_year_id,
+              s.lessons_per_absence_day, s.updated_at,
               ay.name as academic_year_name
        FROM school_settings s
        LEFT JOIN academic_years ay ON ay.id = s.academic_year_id
@@ -21,7 +22,11 @@ export function getSchoolSettings(db: SqliteDb): SchoolSettings {
 
 export function updateSchoolSettings(
   db: SqliteDb,
-  input: { school_name: string; directorate_name: string }
+  input: {
+    school_name: string;
+    directorate_name: string;
+    lessons_per_absence_day?: number;
+  }
 ): SchoolSettings {
   const schoolName = normalizeWhitespace(input.school_name);
   const directorateName = normalizeWhitespace(input.directorate_name);
@@ -33,11 +38,26 @@ export function updateSchoolSettings(
     throw new ServiceError('اسم المديرية حقل إجباري.');
   }
 
+  const current = getSchoolSettings(db);
+  let lessonsPerDay = current.lessons_per_absence_day;
+
+  if (input.lessons_per_absence_day !== undefined) {
+    const parsed = Number(input.lessons_per_absence_day);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 20) {
+      throw new ServiceError(
+        'عدد الدروس المحتسبة كيوم غياب كامل يجب أن يكون رقماً صحيحاً بين 1 و 20.'
+      );
+    }
+    lessonsPerDay = parsed;
+  }
+
+  // Note: Changing lessons_per_absence_day applies to future absence calculations only
+  // and never retroactively recalculates historical conversions.
   db.prepare(
     `UPDATE school_settings
-     SET school_name = ?, directorate_name = ?, updated_at = datetime('now')
+     SET school_name = ?, directorate_name = ?, lessons_per_absence_day = ?, updated_at = datetime('now')
      WHERE id = 1`
-  ).run(schoolName, directorateName);
+  ).run(schoolName, directorateName, lessonsPerDay);
 
   return getSchoolSettings(db);
 }

@@ -205,22 +205,22 @@ export function ExcelImportModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/50 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-5xl rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden max-h-[92vh] flex flex-col">
+      <div className="w-full max-w-5xl rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden max-h-[92dvh] flex flex-col">
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="p-2 rounded-lg bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-400">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="p-2 rounded-lg bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-400 shrink-0">
               <FileSpreadsheet className="w-5 h-5" />
             </span>
-            <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 font-display truncate">
                 الاستيراد الجماعي للطلاب عبر قالب Excel الموحد
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
                 تنزيل القالب الموحد لجميع الصفوف والشعب · فحص الأخطاء وتصحيحها قبل الحفظ
               </p>
             </div>
@@ -229,18 +229,18 @@ export function ExcelImportModal({
             type="button"
             onClick={handleClose}
             aria-label="إغلاق"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-5 sm:space-y-6">
           {step === 'upload' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               {/* Step A: Download Unified Template */}
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col justify-between space-y-5">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 sm:p-6 flex flex-col justify-between space-y-5">
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
                     <span className="w-6 h-6 rounded-md bg-teal-700 text-white text-xs flex items-center justify-center tabular-nums">
@@ -271,7 +271,7 @@ export function ExcelImportModal({
               </div>
 
               {/* Step B: Upload Filled File */}
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col justify-between space-y-5">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 sm:p-6 flex flex-col justify-between space-y-5">
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
                     <span className="w-6 h-6 rounded-md bg-slate-800 dark:bg-slate-700 text-white text-xs flex items-center justify-center tabular-nums">
@@ -344,11 +344,11 @@ export function ExcelImportModal({
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setShowErrorsOnly((prev) => !prev)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap ${
                       showErrorsOnly
                         ? 'bg-red-50 dark:bg-red-950/50 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
                         : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
@@ -361,7 +361,7 @@ export function ExcelImportModal({
                     type="button"
                     onClick={handleRevalidate}
                     disabled={validating}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 dark:hover:bg-slate-600 text-white text-xs font-semibold transition-colors disabled:opacity-60"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 dark:hover:bg-slate-600 text-white text-xs font-semibold transition-colors whitespace-nowrap disabled:opacity-60"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${validating ? 'animate-spin' : ''}`} />
                     <span>إعادة الفحص</span>
@@ -556,25 +556,27 @@ export function ExcelImportModal({
                 </p>
               </div>
 
-              <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden text-right">
+              <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto text-right">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 dark:bg-slate-800/50 text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                     <tr>
-                      <th className="py-2.5 px-4 font-semibold">الصف</th>
-                      <th className="py-2.5 px-4 font-semibold">الشعبة</th>
-                      <th className="py-2.5 px-4 font-semibold text-left">عدد الطلاب المضافين</th>
+                      <th className="py-2.5 px-4 font-semibold whitespace-nowrap">الصف</th>
+                      <th className="py-2.5 px-4 font-semibold whitespace-nowrap">الشعبة</th>
+                      <th className="py-2.5 px-4 font-semibold text-left whitespace-nowrap">
+                        عدد الطلاب المضافين
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                     {commitResult.distribution.map((dist, idx) => (
                       <tr key={idx}>
-                        <td className="py-2.5 px-4 font-medium text-slate-900 dark:text-slate-100">
+                        <td className="py-2.5 px-4 font-medium text-slate-900 dark:text-slate-100 whitespace-nowrap">
                           {dist.grade_name}
                         </td>
-                        <td className="py-2.5 px-4 text-slate-700 dark:text-slate-300">
+                        <td className="py-2.5 px-4 text-slate-700 dark:text-slate-300 whitespace-nowrap">
                           شعبة {dist.section_name}
                         </td>
-                        <td className="py-2.5 px-4 text-left font-bold text-teal-700 dark:text-teal-400 tabular-nums">
+                        <td className="py-2.5 px-4 text-left font-bold text-teal-700 dark:text-teal-400 tabular-nums whitespace-nowrap">
                           {dist.count.toLocaleString('ar-IQ')}
                         </td>
                       </tr>
@@ -587,24 +589,24 @@ export function ExcelImportModal({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 shrink-0">
           {step === 'preview' ? (
             <>
               <button
                 type="button"
                 onClick={resetState}
                 disabled={validating || committing}
-                className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                className="px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors whitespace-nowrap"
               >
                 اختيار ملف آخر
               </button>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={handleClose}
                   disabled={validating || committing}
-                  className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  className="px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
                 >
                   إلغاء
                 </button>
@@ -617,7 +619,7 @@ export function ExcelImportModal({
                     nonSampleRows.length === 0 ||
                     (!dirtySinceValidate && errorCount > 0)
                   }
-                  className="px-5 py-2 text-sm font-semibold rounded-lg bg-teal-700 hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500 text-white transition-colors disabled:opacity-50"
+                  className="px-4 sm:px-5 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-teal-700 hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500 text-white transition-colors whitespace-nowrap disabled:opacity-50"
                 >
                   {committing
                     ? 'جاري الحفظ والتوزيع...'

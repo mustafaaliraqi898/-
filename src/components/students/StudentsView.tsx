@@ -146,24 +146,24 @@ export function StudentsView({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 sm:space-y-5">
       {/* Page Header & Actions */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 font-display">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 sm:gap-4">
+        <div className="min-w-0">
+          <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 font-display">
             سجل وإدارة الطلاب
           </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 tabular-nums">
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 tabular-nums">
             إجمالي النتائج المعروضة: {students.length.toLocaleString('ar-IQ')} طالب
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
           <button
             type="button"
             onClick={handleDownloadTemplateDirect}
             disabled={downloadingTemplate}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-2 px-3 sm:px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 flex-1 sm:flex-initial disabled:opacity-60"
           >
             <Download className="w-4 h-4 text-slate-500" />
             <span>{downloadingTemplate ? 'جاري التنزيل...' : 'تنزيل قالب Excel'}</span>
@@ -172,7 +172,7 @@ export function StudentsView({
           <button
             type="button"
             onClick={handleOpenExcelImport}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold transition-colors whitespace-nowrap shrink-0"
+            className="inline-flex items-center justify-center gap-2 px-3 sm:px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 flex-1 sm:flex-initial"
           >
             <FileSpreadsheet className="w-4 h-4 text-teal-700 dark:text-teal-400" />
             <span>استيراد جماعي من Excel</span>
@@ -181,7 +181,7 @@ export function StudentsView({
           <button
             type="button"
             onClick={handleOpenCreate}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-sm font-semibold transition-colors whitespace-nowrap shrink-0"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-sm font-semibold transition-colors whitespace-nowrap shrink-0 w-full sm:w-auto"
           >
             <UserPlus className="w-4 h-4" />
             <span>إضافة طالب جديد</span>
@@ -190,8 +190,8 @@ export function StudentsView({
       </div>
 
       {/* Filter & Search Toolbar */}
-      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 grid grid-cols-1 md:grid-cols-12 gap-3">
-        <div className="md:col-span-5 relative">
+      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 sm:p-4 grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-12 gap-3">
+        <div className="sm:col-span-3 lg:col-span-5 relative min-w-0">
           <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="search"
@@ -202,7 +202,7 @@ export function StudentsView({
           />
         </div>
 
-        <div className="md:col-span-3">
+        <div className="lg:col-span-3 min-w-0">
           <select
             value={filterGradeId ?? ''}
             onChange={(e) => {
@@ -221,7 +221,7 @@ export function StudentsView({
           </select>
         </div>
 
-        <div className="md:col-span-2">
+        <div className="lg:col-span-2 min-w-0">
           <select
             value={filterSectionId ?? ''}
             onChange={(e) => onFilterSectionChange(e.target.value ? Number(e.target.value) : null)}
@@ -237,7 +237,7 @@ export function StudentsView({
           </select>
         </div>
 
-        <div className="md:col-span-2">
+        <div className="lg:col-span-2 min-w-0">
           <select
             value={filterStatus}
             onChange={(e) => onFilterStatusChange(e.target.value as StudentStatus | 'all')}
@@ -255,30 +255,30 @@ export function StudentsView({
       {/* Students Table */}
       <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
         {loading && students.length === 0 ? (
-          <div className="p-8 space-y-3">
+          <div className="p-6 sm:p-8 space-y-3">
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="h-12 rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse" />
             ))}
           </div>
         ) : students.length === 0 ? (
-          <div className="p-12 text-center">
+          <div className="p-8 sm:p-12 text-center">
             <div className="w-14 h-14 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 mx-auto flex items-center justify-center mb-4">
               <Users className="w-7 h-7" />
             </div>
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
               {search || filterGradeId ? 'لا توجد نتائج مطابقة للبحث' : 'لا يوجد طلاب مسجلون بعد'}
             </h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5 max-w-md mx-auto">
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5 max-w-md mx-auto leading-relaxed">
               {search || filterGradeId
                 ? 'جرّب تغيير كلمات البحث أو إزالة فلاتر الصف والشعبة.'
                 : 'يمكنك إضافة الطلاب بشكل فردي أو استيراد قوائم كاملة دفعة واحدة عبر قالب Excel الموحد.'}
             </p>
             {!search && !filterGradeId && (
-              <div className="mt-5 flex items-center justify-center gap-3">
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
                 <button
                   type="button"
                   onClick={handleOpenCreate}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-sm font-semibold transition-colors"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-sm font-semibold transition-colors whitespace-nowrap"
                 >
                   <UserPlus className="w-4 h-4" />
                   <span>إضافة أول طالب</span>
@@ -286,7 +286,7 @@ export function StudentsView({
                 <button
                   type="button"
                   onClick={handleOpenExcelImport}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-medium transition-colors"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-medium transition-colors whitespace-nowrap"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-teal-700 dark:text-teal-400" />
                   <span>استيراد من Excel</span>
@@ -299,11 +299,11 @@ export function StudentsView({
             <table className="w-full text-sm text-right">
               <thead className="bg-slate-50 dark:bg-slate-800/50 text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                 <tr>
-                  <th className="py-3 px-4 font-semibold">
+                  <th className="py-3 px-4 font-semibold min-w-[200px]">
                     <button
                       type="button"
                       onClick={() => onSortChange('full_name')}
-                      className="inline-flex items-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-100"
+                      className="inline-flex items-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-100 whitespace-nowrap"
                     >
                       <span>اسم الطالب</span>
                       <ArrowDownUp
@@ -316,7 +316,7 @@ export function StudentsView({
                     <button
                       type="button"
                       onClick={() => onSortChange('registry_number')}
-                      className="inline-flex items-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-100"
+                      className="inline-flex items-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-100 whitespace-nowrap"
                     >
                       <span>رقم القيد</span>
                       <ArrowDownUp
@@ -324,11 +324,11 @@ export function StudentsView({
                       />
                     </button>
                   </th>
-                  <th className="py-3 px-4 font-semibold">
+                  <th className="py-3 px-4 font-semibold whitespace-nowrap">
                     <button
                       type="button"
                       onClick={() => onSortChange('grade_name')}
-                      className="inline-flex items-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-100"
+                      className="inline-flex items-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-100 whitespace-nowrap"
                     >
                       <span>الصف والشعبة</span>
                       <ArrowDownUp
@@ -340,7 +340,7 @@ export function StudentsView({
                     <button
                       type="button"
                       onClick={() => onSortChange('enrollment_date')}
-                      className="inline-flex items-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-100"
+                      className="inline-flex items-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-100 whitespace-nowrap"
                     >
                       <span>تاريخ التسجيل</span>
                       <ArrowDownUp
@@ -348,8 +348,8 @@ export function StudentsView({
                       />
                     </button>
                   </th>
-                  <th className="py-3 px-4 font-semibold">الهاتف</th>
-                  <th className="py-3 px-4 font-semibold text-left">الإجراءات</th>
+                  <th className="py-3 px-4 font-semibold whitespace-nowrap">الهاتف</th>
+                  <th className="py-3 px-4 font-semibold text-left whitespace-nowrap">الإجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">

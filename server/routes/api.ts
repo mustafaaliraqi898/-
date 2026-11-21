@@ -1,5 +1,12 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { getDb, type SqliteDb } from '../db/connection';
+import {
+  createSingleAbsenceRecord,
+  deleteAbsenceRecord,
+  getSectionAttendanceSheet,
+  getStudentAbsenceDetails,
+  saveSectionAttendance,
+} from '../services/absenceService';
 import { getDashboardStats } from '../services/dashboardService';
 import {
   commitExcelStudents,
@@ -67,6 +74,10 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
     const updated = updateSchoolSettings(db, {
       school_name: String(req.body?.school_name ?? ''),
       directorate_name: String(req.body?.directorate_name ?? ''),
+      lessons_per_absence_day:
+        req.body?.lessons_per_absence_day !== undefined
+          ? Number(req.body.lessons_per_absence_day)
+          : undefined,
     });
     res.json(updated);
   });
@@ -310,6 +321,69 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
     const id = parsePositiveInt(req.params.id, 'الطالب');
     deleteStudent(db, id);
     res.json({ deleted: true });
+  });
+
+  // Absences & Attendance Recording
+  router.get('/absences/sheet', (req, res) => {
+    const db = dbProvider();
+    const yearId = parseOptionalInt(req.query.academic_year_id);
+    const gradeId = parsePositiveInt(String(req.query.grade_id ?? ''), 'الصف');
+    const sectionId = parsePositiveInt(String(req.query.section_id ?? ''), 'الشعبة');
+    const attendanceDate = String(req.query.attendance_date ?? '');
+    res.json(
+      getSectionAttendanceSheet(db, {
+        academic_year_id: yearId,
+        grade_id: gradeId,
+        section_id: sectionId,
+        attendance_date: attendanceDate,
+      })
+    );
+  });
+
+  router.post('/absences/sheet', (req, res) => {
+    const db = dbProvider();
+    const yearId = parsePositiveInt(String(req.body?.academic_year_id ?? ''), 'السنة الدراسية');
+    const gradeId = parsePositiveInt(String(req.body?.grade_id ?? ''), 'الصف');
+    const sectionId = parsePositiveInt(String(req.body?.section_id ?? ''), 'الشعبة');
+    const attendanceDate = String(req.body?.attendance_date ?? '');
+    const entries = Array.isArray(req.body?.entries) ? req.body.entries : [];
+    const result = saveSectionAttendance(db, {
+      academic_year_id: yearId,
+      grade_id: gradeId,
+      section_id: sectionId,
+      attendance_date: attendanceDate,
+      entries,
+    });
+    res.json(result);
+  });
+
+  router.post('/absences/record', (req, res) => {
+    const db = dbProvider();
+    const studentId = parsePositiveInt(String(req.body?.student_id ?? ''), 'الطالب');
+    const created = createSingleAbsenceRecord(db, {
+      student_id: studentId,
+      academic_year_id: parseOptionalInt(req.body?.academic_year_id),
+      absence_date: String(req.body?.absence_date ?? ''),
+      status: req.body?.status,
+      lessons_count:
+        req.body?.lessons_count !== undefined ? Number(req.body.lessons_count) : undefined,
+      notes: req.body?.notes ?? null,
+    });
+    res.status(201).json(created);
+  });
+
+  router.delete('/absences/record/:id', (req, res) => {
+    const db = dbProvider();
+    const id = parsePositiveInt(req.params.id, 'سجل الغياب');
+    deleteAbsenceRecord(db, id);
+    res.json({ deleted: true });
+  });
+
+  router.get('/absences/student/:id', (req, res) => {
+    const db = dbProvider();
+    const id = parsePositiveInt(req.params.id, 'الطالب');
+    const yearId = parseOptionalInt(req.query.academic_year_id);
+    res.json(getStudentAbsenceDetails(db, id, yearId));
   });
 
   // Error handler

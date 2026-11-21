@@ -19,7 +19,7 @@ export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
   return (
     <div
       aria-live="polite"
-      className="fixed bottom-5 left-5 z-50 flex flex-col gap-2.5 max-w-md w-full pointer-events-none"
+      className="fixed bottom-4 left-4 right-4 sm:right-auto sm:left-5 z-50 flex flex-col gap-2.5 sm:max-w-md sm:w-full pointer-events-none"
     >
       {toasts.map((toast) => {
         const isError = toast.type === 'error';

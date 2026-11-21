@@ -4,6 +4,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { AbsencesView } from './components/absences/AbsencesView';
 import { ToastContainer, type ToastItem, type ToastType } from './components/common/Toast';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { GradesView } from './components/grades/GradesView';
@@ -27,6 +28,7 @@ const THEME_STORAGE_KEY = 'iraqi_school_absence_theme';
 
 export default function App() {
   const [activeSection, setActiveSection] = useState<NavSectionId>('dashboard');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [isDark, setIsDark] = useState<boolean>(() => {
     try {
@@ -173,11 +175,13 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <div className="min-h-dvh flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <Sidebar
         activeSection={activeSection}
         onSelectSection={setActiveSection}
         schoolName={settings?.school_name ?? 'المدرسة النموذجية'}
+        mobileOpen={mobileMenuOpen}
+        onCloseMobile={() => setMobileMenuOpen(false)}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -193,9 +197,11 @@ export default function App() {
           }}
           isDark={isDark}
           onToggleTheme={() => setIsDark((d) => !d)}
+          mobileMenuOpen={mobileMenuOpen}
+          onOpenMobileMenu={() => setMobileMenuOpen(true)}
         />
 
-        <main className="flex-1 p-6 max-w-[1440px] w-full mx-auto">
+        <main className="flex-1 min-w-0 p-3.5 sm:p-5 lg:p-6 max-w-[1440px] w-full mx-auto">
           {activeSection === 'dashboard' && (
             <DashboardView stats={dashboardStats} loading={loadingCore} />
           )}
@@ -232,9 +238,26 @@ export default function App() {
             />
           )}
 
-          {(activeSection === 'absences' ||
-            activeSection === 'monthly' ||
-            activeSection === 'reports') && (
+          {activeSection === 'absences' && (
+            <AbsencesView
+              grades={grades}
+              academicYears={academicYears}
+              selectedYearId={selectedYearId}
+              onSelectYear={(yearId) => {
+                setSelectedYearId(yearId);
+                setFilterGradeId(null);
+                setFilterSectionId(null);
+              }}
+              onRefreshGlobalStats={async () => {
+                if (selectedYearId) {
+                  await loadYearScopedData(selectedYearId);
+                }
+              }}
+              onNotify={notify}
+            />
+          )}
+
+          {(activeSection === 'monthly' || activeSection === 'reports') && (
             <UpcomingSectionView section={activeSection} onNavigate={setActiveSection} />
           )}
 

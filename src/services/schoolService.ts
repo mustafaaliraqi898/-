@@ -6,8 +6,12 @@ import type {
   ExcelImportRowInput,
   ExcelValidationResult,
   GradeWithSections,
+  SaveSectionAttendanceInput,
+  SaveSectionAttendanceResult,
   SchoolSettings,
+  SectionAttendanceSheet,
   SectionItem,
+  StudentAbsenceDetailResponse,
   StudentEnrollmentHistoryItem,
   StudentListQuery,
   StudentRecord,
@@ -95,6 +99,7 @@ export const schoolService = {
   async updateSettings(payload: {
     school_name: string;
     directorate_name: string;
+    lessons_per_absence_day?: number;
   }): Promise<SchoolSettings> {
     if (isElectronMode()) return ipcCall<SchoolSettings>('settings:update', payload);
     return httpJson<SchoolSettings>('/api/settings', {
@@ -341,5 +346,60 @@ export const schoolService = {
       method: 'POST',
       body: JSON.stringify({ rows, academic_year_id: academicYearId }),
     });
+  },
+
+  // Absences & Attendance Recording
+  async getSectionAttendanceSheet(params: {
+    academic_year_id?: number;
+    grade_id: number;
+    section_id: number;
+    attendance_date: string;
+  }): Promise<SectionAttendanceSheet> {
+    if (isElectronMode()) {
+      return ipcCall<SectionAttendanceSheet>('absences:sheet', params);
+    }
+    const qs = new URLSearchParams({
+      grade_id: String(params.grade_id),
+      section_id: String(params.section_id),
+      attendance_date: params.attendance_date,
+    });
+    if (params.academic_year_id) {
+      qs.set('academic_year_id', String(params.academic_year_id));
+    }
+    return httpJson<SectionAttendanceSheet>(`/api/absences/sheet?${qs.toString()}`);
+  },
+
+  async saveSectionAttendance(
+    input: SaveSectionAttendanceInput
+  ): Promise<SaveSectionAttendanceResult> {
+    if (isElectronMode()) {
+      return ipcCall<SaveSectionAttendanceResult>('absences:save-sheet', input);
+    }
+    return httpJson<SaveSectionAttendanceResult>('/api/absences/sheet', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  async deleteAbsenceRecord(recordId: number): Promise<void> {
+    if (isElectronMode()) {
+      await ipcCall('absences:delete-record', { id: recordId });
+      return;
+    }
+    await httpJson(`/api/absences/record/${recordId}`, { method: 'DELETE' });
+  },
+
+  async getStudentAbsenceDetails(
+    studentId: number,
+    academicYearId?: number
+  ): Promise<StudentAbsenceDetailResponse> {
+    if (isElectronMode()) {
+      return ipcCall<StudentAbsenceDetailResponse>('absences:student-details', {
+        id: studentId,
+        academic_year_id: academicYearId,
+      });
+    }
+    const qs = academicYearId ? `?academic_year_id=${academicYearId}` : '';
+    return httpJson<StudentAbsenceDetailResponse>(`/api/absences/student/${studentId}${qs}`);
   },
 };

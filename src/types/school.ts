@@ -9,6 +9,8 @@ export type NavSectionId =
 
 export type StudentStatus = 'active' | 'transferred_out' | 'graduated' | 'archived';
 
+export type AbsenceStatus = 'present' | 'full_day' | 'lesson_absence';
+
 export interface AcademicYear {
   id: number;
   name: string;
@@ -22,6 +24,7 @@ export interface SchoolSettings {
   directorate_name: string;
   academic_year_id: number | null;
   academic_year_name?: string | null;
+  lessons_per_absence_day: number;
   updated_at: string;
 }
 
@@ -202,4 +205,106 @@ export interface ExcelCommitResult {
     section_name: string;
     count: number;
   }[];
+}
+
+// Phase 2: Absence Recording & Accumulated Lesson Counter Types
+export interface StudentAbsenceSheetRow {
+  student_id: number;
+  enrollment_id: number;
+  student_uid: string;
+  registry_number: string | null;
+  full_name: string;
+  // Saved state for the selected date (null if no record exists yet for this date)
+  record_id: number | null;
+  status: AbsenceStatus;
+  lessons_count: number;
+  notes: string | null;
+  record_created_at: string | null;
+  record_updated_at: string | null;
+  has_saved_record: boolean;
+  // Cumulative year-to-date metrics from SQLite
+  direct_full_days: number;
+  converted_lesson_days: number;
+  total_full_days: number;
+  pending_lessons: number;
+  total_lessons_missed: number;
+}
+
+export interface AttendanceSessionInfo {
+  id: number;
+  academic_year_id: number;
+  grade_id: number;
+  section_id: number;
+  attendance_date: string;
+  recorded_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SectionAttendanceSheet {
+  academic_year: AcademicYear;
+  grade_id: number;
+  grade_name: string;
+  section_id: number;
+  section_name: string;
+  attendance_date: string;
+  lessons_per_absence_day: number;
+  session: AttendanceSessionInfo | null;
+  students: StudentAbsenceSheetRow[];
+}
+
+export interface AttendanceEntryInput {
+  student_id: number;
+  status: AbsenceStatus;
+  lessons_count?: number;
+  notes?: string | null;
+}
+
+export interface SaveSectionAttendanceInput {
+  academic_year_id: number;
+  grade_id: number;
+  section_id: number;
+  attendance_date: string;
+  entries: AttendanceEntryInput[];
+}
+
+export interface SaveSectionAttendanceResult {
+  saved_count: number;
+  present_count: number;
+  full_day_count: number;
+  lesson_absence_count: number;
+  newly_converted_days: number;
+  sheet: SectionAttendanceSheet;
+}
+
+export interface StudentAbsenceDetailResponse {
+  student_id: number;
+  full_name: string;
+  student_uid: string;
+  registry_number: string | null;
+  lessons_per_absence_day: number;
+  direct_full_days: number;
+  converted_lesson_days: number;
+  total_full_days: number;
+  pending_lessons: number;
+  total_lessons_missed: number;
+  records: Array<{
+    id: number;
+    absence_date: string;
+    status: AbsenceStatus;
+    lessons_count: number;
+    threshold_snapshot: number;
+    notes: string | null;
+    grade_name: string;
+    section_name: string;
+    created_at: string;
+    updated_at: string;
+  }>;
+  conversions: Array<{
+    id: number;
+    converted_date: string;
+    lessons_consumed: number;
+    threshold_used: number;
+    created_at: string;
+  }>;
 }

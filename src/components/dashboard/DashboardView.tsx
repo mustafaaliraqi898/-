@@ -110,30 +110,30 @@ export function DashboardView({ stats, loading }: DashboardViewProps) {
   const alerts = buildAdministrativeAlerts(stats);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Page Title */}
       <div>
-        <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 font-display">
+        <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 font-display">
           الصفحة الرئيسية
         </h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
           ملخص إحصائي عام للمدرسة وسجلات الطلاب والغيابات للسنة الدراسية{' '}
           {stats?.active_academic_year?.name ?? '—'}
         </p>
       </div>
 
       {/* 4 Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
-          <div className="flex items-center justify-between">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5 sm:gap-4">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
               إجمالي الطلاب المسجلين
             </span>
-            <span className="p-2 rounded-lg bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-400">
+            <span className="p-2 rounded-lg bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-400 shrink-0">
               <Users className="w-4 h-4" />
             </span>
           </div>
-          <p className="text-3xl font-bold text-slate-900 dark:text-slate-100 mt-3 tabular-nums font-display">
+          <p className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 mt-2.5 sm:mt-3 tabular-nums font-display">
             {totalStudents.toLocaleString('ar-IQ')}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
@@ -141,16 +141,16 @@ export function DashboardView({ stats, loading }: DashboardViewProps) {
           </p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
-          <div className="flex items-center justify-between">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
               عدد الصفوف الدراسية
             </span>
-            <span className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+            <span className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 shrink-0">
               <Layers className="w-4 h-4" />
             </span>
           </div>
-          <p className="text-3xl font-bold text-slate-900 dark:text-slate-100 mt-3 tabular-nums font-display">
+          <p className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 mt-2.5 sm:mt-3 tabular-nums font-display">
             {totalGrades.toLocaleString('ar-IQ')}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
@@ -158,16 +158,16 @@ export function DashboardView({ stats, loading }: DashboardViewProps) {
           </p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
-          <div className="flex items-center justify-between">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
               عدد الشعب الدراسية
             </span>
-            <span className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+            <span className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 shrink-0">
               <FolderKanban className="w-4 h-4" />
             </span>
           </div>
-          <p className="text-3xl font-bold text-slate-900 dark:text-slate-100 mt-3 tabular-nums font-display">
+          <p className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 mt-2.5 sm:mt-3 tabular-nums font-display">
             {totalSections.toLocaleString('ar-IQ')}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
@@ -175,16 +175,16 @@ export function DashboardView({ stats, loading }: DashboardViewProps) {
           </p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
-          <div className="flex items-center justify-between">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
               عدد أيام تسجيل الغياب
             </span>
-            <span className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+            <span className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 shrink-0">
               <CalendarDays className="w-4 h-4" />
             </span>
           </div>
-          <p className="text-3xl font-bold text-slate-900 dark:text-slate-100 mt-3 tabular-nums font-display">
+          <p className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 mt-2.5 sm:mt-3 tabular-nums font-display">
             {absenceDaysCount.toLocaleString('ar-IQ')}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
@@ -196,18 +196,18 @@ export function DashboardView({ stats, loading }: DashboardViewProps) {
       </div>
 
       {/* Summary & Administrative Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
         {/* General Info Summary */}
         <section className="lg:col-span-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5">
-            <Info className="w-4 h-4 text-teal-700 dark:text-teal-400" />
+          <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5">
+            <Info className="w-4 h-4 text-teal-700 dark:text-teal-400 shrink-0" />
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
               ملخص المعلومات
             </h3>
           </div>
 
           <dl className="divide-y divide-slate-200 dark:divide-slate-800 text-sm">
-            <div className="px-5 py-4 flex items-center justify-between gap-4">
+            <div className="px-4 sm:px-5 py-3.5 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-4">
               <dt className="text-slate-500 dark:text-slate-400 font-medium">
                 السنة الدراسية الحالية
               </dt>
@@ -216,7 +216,7 @@ export function DashboardView({ stats, loading }: DashboardViewProps) {
               </dd>
             </div>
 
-            <div className="px-5 py-4 flex items-center justify-between gap-4">
+            <div className="px-4 sm:px-5 py-3.5 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-4">
               <dt className="text-slate-500 dark:text-slate-400 font-medium">
                 آخر تاريخ تم فيه تسجيل الغياب
               </dt>
@@ -225,13 +225,13 @@ export function DashboardView({ stats, loading }: DashboardViewProps) {
               </dd>
             </div>
 
-            <div className="px-5 py-4 flex items-start justify-between gap-4">
+            <div className="px-4 sm:px-5 py-3.5 sm:py-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1.5 sm:gap-4">
               <dt className="text-slate-500 dark:text-slate-400 font-medium shrink-0">
                 حالة اكتمال تسجيل الغياب
               </dt>
-              <dd className="text-left">
+              <dd className="sm:text-left">
                 <p className="font-bold text-slate-900 dark:text-slate-100">{completion.label}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums leading-relaxed">
                   {completion.detail}
                 </p>
               </dd>
@@ -241,18 +241,18 @@ export function DashboardView({ stats, loading }: DashboardViewProps) {
 
         {/* Important Administrative Alerts */}
         <section className="lg:col-span-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5">
+          <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5">
             {alerts.length > 0 ? (
-              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
             ) : (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             )}
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
               تنبيهات إدارية مهمة
             </h3>
           </div>
 
-          <div className="p-5">
+          <div className="p-4 sm:p-5">
             {alerts.length === 0 ? (
               <div className="flex items-start gap-3 text-sm text-emerald-800 dark:text-emerald-300">
                 <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />

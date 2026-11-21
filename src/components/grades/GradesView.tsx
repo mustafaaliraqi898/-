@@ -167,14 +167,14 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 font-display">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 sm:gap-4">
+        <div className="min-w-0">
+          <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 font-display">
             إدارة الصفوف والشعب الدراسية
           </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
             تعريف الصفوف والشعب بشكل ديناميكي حسب هيكلية المدرسة مع حماية سلامة البيانات عند الحذف
           </p>
         </div>
@@ -182,7 +182,7 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
         <button
           type="button"
           onClick={() => setShowAddGrade(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-sm font-semibold transition-colors whitespace-nowrap shrink-0"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-sm font-semibold transition-colors whitespace-nowrap shrink-0 w-full sm:w-auto"
         >
           <Plus className="w-4 h-4" />
           <span>إضافة صف دراسي</span>
@@ -191,7 +191,7 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
 
       {/* Empty State */}
       {!loading && grades.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-12 text-center">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 sm:p-12 text-center">
           <div className="w-14 h-14 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-400 mx-auto flex items-center justify-center mb-4">
             <Layers className="w-7 h-7" />
           </div>
@@ -219,8 +219,8 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
               className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden"
             >
               {/* Grade Header */}
-              <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4 bg-slate-50/70 dark:bg-slate-800/30">
-                <div className="flex items-center gap-3">
+              <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 sm:gap-4 bg-slate-50/70 dark:bg-slate-800/30">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
                   <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
                     {grade.name}
                   </h3>
@@ -230,7 +230,7 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => {
@@ -277,7 +277,7 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
 
               {/* Sections Table */}
               {grade.sections.length === 0 ? (
-                <div className="px-5 py-6 text-sm text-slate-500 dark:text-slate-400 flex items-center justify-between gap-4">
+                <div className="px-4 sm:px-5 py-5 sm:py-6 text-sm text-slate-500 dark:text-slate-400 flex flex-wrap items-center justify-between gap-3">
                   <span>لا توجد شعب معرفة لهذا الصف حتى الآن.</span>
                   <button
                     type="button"
@@ -285,7 +285,7 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
                       setAddingSectionsGrade(grade);
                       setNewSectionsInput('');
                     }}
-                    className="text-xs font-semibold text-teal-700 dark:text-teal-400 hover:underline"
+                    className="text-xs font-semibold text-teal-700 dark:text-teal-400 hover:underline whitespace-nowrap"
                   >
                     + إضافة شعب لهذا الصف
                   </button>
@@ -295,10 +295,18 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
                   <table className="w-full text-sm text-right">
                     <thead className="text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900">
                       <tr>
-                        <th className="py-2.5 px-5 font-semibold">اسم الشعبة</th>
-                        <th className="py-2.5 px-4 font-semibold">عدد الطلاب الفعالين</th>
-                        <th className="py-2.5 px-4 font-semibold">السعة الاستيعابية</th>
-                        <th className="py-2.5 px-5 font-semibold text-left">الإجراءات</th>
+                        <th className="py-2.5 px-4 sm:px-5 font-semibold whitespace-nowrap min-w-[120px]">
+                          اسم الشعبة
+                        </th>
+                        <th className="py-2.5 px-4 font-semibold whitespace-nowrap">
+                          عدد الطلاب الفعالين
+                        </th>
+                        <th className="py-2.5 px-4 font-semibold whitespace-nowrap">
+                          السعة الاستيعابية
+                        </th>
+                        <th className="py-2.5 px-4 sm:px-5 font-semibold text-left whitespace-nowrap">
+                          الإجراءات
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -307,19 +315,19 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
                           key={sec.id}
                           className="hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors"
                         >
-                          <td className="py-3 px-5 font-semibold text-slate-900 dark:text-slate-100">
+                          <td className="py-3 px-4 sm:px-5 font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">
                             شعبة {sec.name}
                           </td>
-                          <td className="py-3 px-4 text-slate-700 dark:text-slate-300 tabular-nums">
+                          <td className="py-3 px-4 text-slate-700 dark:text-slate-300 tabular-nums whitespace-nowrap">
                             <span className="inline-flex items-center gap-1.5">
                               <Users className="w-3.5 h-3.5 text-slate-400" />
                               {sec.student_count.toLocaleString('ar-IQ')} طالب
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-slate-500 dark:text-slate-400 tabular-nums">
+                          <td className="py-3 px-4 text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
                             {sec.capacity ? `${sec.capacity.toLocaleString('ar-IQ')} طالب` : 'غير محددة'}
                           </td>
-                          <td className="py-3 px-5 text-left">
+                          <td className="py-3 px-4 sm:px-5 text-left whitespace-nowrap">
                             <div className="inline-flex items-center gap-2">
                               <button
                                 type="button"
@@ -362,17 +370,17 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
       {/* Modal: Add Grade */}
       {showAddGrade && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/50 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-md rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="w-full max-w-md max-h-[90dvh] rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col">
+            <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
                 إضافة صف دراسي جديد
               </h3>
             </div>
-            <form onSubmit={handleCreateGrade} className="p-5 space-y-4">
+            <form onSubmit={handleCreateGrade} className="p-4 sm:p-5 space-y-4 overflow-y-auto">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                   اسم الصف الدراسي <span className="text-red-500">*</span>
@@ -403,7 +411,7 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
                 </p>
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-2">
+              <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowAddGrade(false)}
@@ -427,17 +435,17 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
       {/* Modal: Edit Grade */}
       {editingGrade && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/50 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-md rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="w-full max-w-md max-h-[90dvh] rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col">
+            <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
                 تعديل اسم الصف الدراسي
               </h3>
             </div>
-            <form onSubmit={handleUpdateGrade} className="p-5 space-y-4">
+            <form onSubmit={handleUpdateGrade} className="p-4 sm:p-5 space-y-4 overflow-y-auto">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                   اسم الصف الدراسي <span className="text-red-500">*</span>
@@ -450,7 +458,7 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
                   className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
                 />
               </div>
-              <div className="flex items-center justify-end gap-2.5 pt-2">
+              <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={() => setEditingGrade(null)}
@@ -474,17 +482,17 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
       {/* Modal: Add Multiple Sections */}
       {addingSectionsGrade && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/50 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-md rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="w-full max-w-md max-h-[90dvh] rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col">
+            <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
                 إضافة شعب إلى {addingSectionsGrade.name}
               </h3>
             </div>
-            <form onSubmit={handleAddSections} className="p-5 space-y-4">
+            <form onSubmit={handleAddSections} className="p-4 sm:p-5 space-y-4 overflow-y-auto">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                   أسماء الشعب <span className="text-red-500">*</span>
@@ -515,7 +523,7 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
                   className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30 tabular-nums"
                 />
               </div>
-              <div className="flex items-center justify-end gap-2.5 pt-2">
+              <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={() => setAddingSectionsGrade(null)}
@@ -539,17 +547,17 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
       {/* Modal: Edit Section */}
       {editingSection && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/50 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-md rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="w-full max-w-md max-h-[90dvh] rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col">
+            <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
                 تعديل بيانات الشعبة
               </h3>
             </div>
-            <form onSubmit={handleUpdateSection} className="p-5 space-y-4">
+            <form onSubmit={handleUpdateSection} className="p-4 sm:p-5 space-y-4 overflow-y-auto">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                   اسم الشعبة <span className="text-red-500">*</span>
@@ -575,7 +583,7 @@ export function GradesView({ grades, loading, onRefresh, onNotify }: GradesViewP
                   className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30 tabular-nums"
                 />
               </div>
-              <div className="flex items-center justify-end gap-2.5 pt-2">
+              <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={() => setEditingSection(null)}

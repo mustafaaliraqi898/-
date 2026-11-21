@@ -152,18 +152,18 @@ export function StudentFormModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/50 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-xl rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden max-h-[90vh] flex flex-col">
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
+      <div className="w-full max-w-xl rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden max-h-[90dvh] flex flex-col">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0">
+          <div className="min-w-0">
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display truncate">
               {mode === 'create' ? 'إضافة طالب جديد' : 'تعديل بيانات الطالب'}
             </h3>
             {mode === 'edit' && student && (
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-mono-tabular">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-mono-tabular truncate">
                 المعرف الداخلي الدائم: {student.student_uid}
               </p>
             )}
@@ -172,15 +172,15 @@ export function StudentFormModal({
             type="button"
             onClick={onClose}
             aria-label="إغلاق"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto">
           {/* Student Photo Upload (Optional) */}
-          <div className="flex items-center gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="flex flex-wrap items-center gap-3.5 sm:gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
             <div className="w-16 h-16 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 overflow-hidden flex items-center justify-center shrink-0">
               {photoData ? (
                 <img
@@ -193,11 +193,11 @@ export function StudentFormModal({
                 <User className="w-7 h-7 text-slate-400" />
               )}
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 min-w-0 flex-1">
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 صورة الطالب (اختياري)
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -361,7 +361,7 @@ export function StudentFormModal({
             )}
           </div>
 
-          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
+          <div className="flex flex-wrap items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
             <button
               type="button"
               onClick={onClose}

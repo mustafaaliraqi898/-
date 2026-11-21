@@ -11,6 +11,11 @@
   html {
     font-family: var(--font-sans);
     direction: rtl;
+    overflow-x: clip;
+  }
+
+  body {
+    overflow-x: clip;
   }
 
   h1, h2, h3, h4, .font-display {

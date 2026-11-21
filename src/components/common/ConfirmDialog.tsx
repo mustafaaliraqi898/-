@@ -27,16 +27,16 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/50 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-dialog-title"
     >
-      <div className="w-full max-w-md rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
-          <div className="flex items-center gap-2.5">
+      <div className="w-full max-w-md max-h-[90dvh] rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
             <span
-              className={`p-2 rounded-lg ${
+              className={`p-2 rounded-lg shrink-0 ${
                 danger
                   ? 'bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-400'
                   : 'bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-400'
@@ -46,7 +46,7 @@ export function ConfirmDialog({
             </span>
             <h3
               id="confirm-dialog-title"
-              className="text-base font-bold text-slate-900 dark:text-slate-100"
+              className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 break-words min-w-0"
             >
               {title}
             </h3>
@@ -56,17 +56,17 @@ export function ConfirmDialog({
             onClick={onCancel}
             disabled={loading}
             aria-label="إغلاق"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="px-5 py-5">
+        <div className="px-4 sm:px-5 py-4 sm:py-5 overflow-y-auto">
           <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{message}</p>
         </div>
 
-        <div className="flex items-center justify-end gap-3 px-5 py-3.5 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-200 dark:border-slate-800">
+        <div className="flex flex-wrap items-center justify-end gap-2.5 sm:gap-3 px-4 sm:px-5 py-3.5 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-200 dark:border-slate-800 shrink-0">
           <button
             type="button"
             onClick={onCancel}
