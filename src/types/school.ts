@@ -9,7 +9,16 @@ export type NavSectionId =
 
 export type StudentStatus = 'active' | 'transferred_out' | 'graduated' | 'archived';
 
-export type AbsenceStatus = 'present' | 'full_day' | 'lesson_absence';
+export type AbsenceStatus =
+  | 'present'
+  | 'full_day'
+  | 'lesson_absence'
+  | 'full_day_leave'
+  | 'lesson_permission';
+
+export type LeaveType = 'sick_leave' | 'daily_permission';
+
+export type PermissionType = 'daily_permission' | 'lesson_permission';
 
 export interface AcademicYear {
   id: number;
@@ -25,6 +34,9 @@ export interface SchoolSettings {
   academic_year_id: number | null;
   academic_year_name?: string | null;
   lessons_per_absence_day: number;
+  daily_lessons_count: number;
+  daily_permission_counts_as_absence: number;
+  lesson_permission_counts_as_absence: number;
   updated_at: string;
 }
 
@@ -207,7 +219,7 @@ export interface ExcelCommitResult {
   }[];
 }
 
-// Phase 2: Absence Recording & Accumulated Lesson Counter Types
+// Phase 2 & Leaves/Permissions: Absence Recording & Accumulated Lesson Counter Types
 export interface StudentAbsenceSheetRow {
   student_id: number;
   enrollment_id: number;
@@ -218,12 +230,22 @@ export interface StudentAbsenceSheetRow {
   record_id: number | null;
   status: AbsenceStatus;
   lessons_count: number;
+  leave_type: LeaveType | null;
+  permission_type: PermissionType | null;
+  lesson_numbers: number[];
+  counted_as_absence: number;
+  permission_rule_snapshot: number | null;
+  applied_settings_at: string | null;
   notes: string | null;
   record_created_at: string | null;
   record_updated_at: string | null;
   has_saved_record: boolean;
   // Cumulative year-to-date metrics from SQLite
   direct_full_days: number;
+  counted_daily_permission_days: number;
+  sick_leave_days: number;
+  daily_permission_days: number;
+  lesson_permission_records: number;
   converted_lesson_days: number;
   total_full_days: number;
   pending_lessons: number;
@@ -249,6 +271,10 @@ export interface SectionAttendanceSheet {
   section_name: string;
   attendance_date: string;
   lessons_per_absence_day: number;
+  daily_lessons_count: number;
+  daily_permission_counts_as_absence: number;
+  lesson_permission_counts_as_absence: number;
+  holiday_info: HolidayCheckResult;
   session: AttendanceSessionInfo | null;
   students: StudentAbsenceSheetRow[];
 }
@@ -257,6 +283,8 @@ export interface AttendanceEntryInput {
   student_id: number;
   status: AbsenceStatus;
   lessons_count?: number;
+  leave_type?: LeaveType | null;
+  lesson_numbers?: number[];
   notes?: string | null;
 }
 
@@ -273,6 +301,8 @@ export interface SaveSectionAttendanceResult {
   present_count: number;
   full_day_count: number;
   lesson_absence_count: number;
+  full_day_leave_count: number;
+  lesson_permission_count: number;
   newly_converted_days: number;
   sheet: SectionAttendanceSheet;
 }
@@ -283,7 +313,12 @@ export interface StudentAbsenceDetailResponse {
   student_uid: string;
   registry_number: string | null;
   lessons_per_absence_day: number;
+  daily_lessons_count: number;
   direct_full_days: number;
+  counted_daily_permission_days: number;
+  sick_leave_days: number;
+  daily_permission_days: number;
+  lesson_permission_records: number;
   converted_lesson_days: number;
   total_full_days: number;
   pending_lessons: number;
@@ -293,6 +328,12 @@ export interface StudentAbsenceDetailResponse {
     absence_date: string;
     status: AbsenceStatus;
     lessons_count: number;
+    leave_type: LeaveType | null;
+    permission_type: PermissionType | null;
+    lesson_numbers: number[];
+    counted_as_absence: number;
+    permission_rule_snapshot: number | null;
+    applied_settings_at: string | null;
     threshold_snapshot: number;
     notes: string | null;
     grade_name: string;
@@ -308,3 +349,207 @@ export interface StudentAbsenceDetailResponse {
     created_at: string;
   }>;
 }
+
+// Weekly & Official/Exceptional Holidays Types
+export type HolidayType = 'official' | 'exceptional' | 'school_specific';
+
+export type HolidayCategory = 'workday' | 'weekly' | HolidayType;
+
+export interface WeeklyHolidayDay {
+  day_of_week: number; // 0 = Sunday .. 6 = Saturday
+  day_name: string;
+  is_holiday: number; // 0 or 1
+  updated_at: string;
+}
+
+export interface WeeklyHolidaySettings {
+  reason: string;
+  days: WeeklyHolidayDay[];
+}
+
+export interface ExistingRecordsWarning {
+  has_existing_records: boolean;
+  records_count: number;
+  dates_count: number;
+  dates: string[];
+  message: string;
+}
+
+export interface UpdateWeeklyHolidaysInput {
+  holiday_days: number[];
+  reason?: string;
+}
+
+export interface UpdateWeeklyHolidaysResult {
+  settings: WeeklyHolidaySettings;
+  existing_records_warning: ExistingRecordsWarning | null;
+}
+
+export interface HolidayRecord {
+  id: number;
+  academic_year_id: number | null;
+  academic_year_name?: string | null;
+  name: string;
+  start_date: string;
+  end_date: string;
+  days_count: number;
+  holiday_type: HolidayType;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateHolidayInput {
+  academic_year_id?: number | null;
+  name: string;
+  start_date: string;
+  end_date: string;
+  holiday_type: HolidayType;
+  notes?: string | null;
+}
+
+export interface SaveHolidayResult {
+  holiday: HolidayRecord;
+  existing_records_warning: ExistingRecordsWarning | null;
+}
+
+export interface HolidayCheckResult {
+  date: string;
+  day_of_week: number;
+  day_name: string;
+  is_holiday: boolean;
+  is_weekly_holiday: boolean;
+  is_official_or_special_holiday: boolean;
+  holiday_category: HolidayCategory;
+  primary_reason: string | null;
+  weekly_reason: string | null;
+  matching_holidays: HolidayRecord[];
+}
+
+export interface MonthCalendarDay {
+  date: string;
+  day_of_month: number;
+  day_of_week: number;
+  day_name: string;
+  is_holiday: boolean;
+  is_weekly_holiday: boolean;
+  is_official_or_special_holiday: boolean;
+  holiday_category: HolidayCategory;
+  reason: string | null;
+  weekly_reason: string | null;
+  holidays: HolidayRecord[];
+  counts_as_school_day: boolean;
+}
+
+// Monthly Absence Register Types
+export type MonthlyCellStatusKind =
+  | 'present'
+  | 'full_day'
+  | 'lesson_absence'
+  | 'lesson_converted'
+  | 'sick_leave'
+  | 'daily_permission'
+  | 'lesson_permission'
+  | 'holiday';
+
+export interface MonthlyDayCellData {
+  date: string;
+  day_of_month: number;
+  day_name: string;
+  symbol: string; // 'غ' | 'ج' | 'د١'.. | 'م' | 'ر' | 'ح١'.. | 'ع' | '—'
+  status_kind: MonthlyCellStatusKind;
+  has_record: boolean;
+  record_id: number | null;
+  raw_status: AbsenceStatus | null;
+  lessons_count: number;
+  lesson_numbers: number[];
+  leave_type: LeaveType | null;
+  counted_as_absence: boolean;
+  contributed_to_counter: boolean;
+  generated_converted_day: boolean;
+  converted_days_count: number;
+  threshold_used: number | null;
+  notes: string | null;
+  holiday_info: HolidayCheckResult | null;
+  outside_section_membership: boolean;
+}
+
+export interface MonthlyStudentRow {
+  student_id: number;
+  student_uid: string;
+  registry_number: string | null;
+  full_name: string;
+  original_order: number;
+  enrollment_start_date: string | null;
+  enrollment_end_date: string | null;
+  transfer_in_date: string | null;
+  transfer_out_date: string | null;
+  transfer_in_from: string | null;
+  transfer_out_to: string | null;
+  days: Record<number, MonthlyDayCellData>;
+  direct_full_days: number;
+  converted_lesson_days: number;
+  missed_lessons_count: number;
+  sick_leave_days: number;
+  daily_permission_days: number;
+  counted_daily_permission_days: number;
+  lesson_permission_records: number;
+  total_counted_absence_days: number;
+  year_pending_lessons: number;
+  auto_notes: string[];
+  manual_note: string | null;
+}
+
+export interface MonthlyRegisterStats {
+  total_students: number;
+  students_with_counted_absence: number;
+  total_counted_absence_days: number;
+  total_direct_full_days: number;
+  total_converted_lesson_days: number;
+  total_sick_leave_days: number;
+  total_daily_permission_days: number;
+  total_lesson_permission_records: number;
+}
+
+export interface MonthlyLegendItem {
+  symbol: string;
+  label: string;
+  description: string;
+}
+
+export interface MonthlyRegisterData {
+  academic_year: AcademicYear;
+  year: number;
+  month: number;
+  month_name: string;
+  days_in_month: number;
+  calendar_days: MonthCalendarDay[];
+  grade_id: number;
+  grade_name: string;
+  section_id: number;
+  section_name: string;
+  school_settings: SchoolSettings;
+  stats: MonthlyRegisterStats;
+  students: MonthlyStudentRow[];
+  legend: MonthlyLegendItem[];
+}
+
+export interface MonthlyRegisterQuery {
+  academic_year_id?: number;
+  year: number;
+  month: number;
+  grade_id: number;
+  section_id: number;
+  search?: string;
+  sort_mode?: 'original' | 'alphabetical';
+}
+
+export interface SaveMonthlyNoteInput {
+  academic_year_id: number;
+  student_id: number;
+  year: number;
+  month: number;
+  note_text: string;
+}
+
+

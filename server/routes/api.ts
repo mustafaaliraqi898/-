@@ -24,6 +24,22 @@ import {
   updateSection,
 } from '../services/gradeService';
 import {
+  createHoliday,
+  deleteHoliday,
+  getMonthHolidayCalendar,
+  getWeeklyHolidaySettings,
+  listHolidays,
+  resolveDateHolidayStatus,
+  updateHoliday,
+  updateWeeklyHolidays,
+} from '../services/holidayService';
+import {
+  deleteMonthlyStudentNote,
+  generateMonthlyRegisterExcel,
+  getMonthlyAbsenceRegister,
+  saveMonthlyStudentNote,
+} from '../services/monthlyRegisterService';
+import {
   createAcademicYear,
   getSchoolSettings,
   listAcademicYears,
@@ -77,6 +93,18 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
       lessons_per_absence_day:
         req.body?.lessons_per_absence_day !== undefined
           ? Number(req.body.lessons_per_absence_day)
+          : undefined,
+      daily_lessons_count:
+        req.body?.daily_lessons_count !== undefined
+          ? Number(req.body.daily_lessons_count)
+          : undefined,
+      daily_permission_counts_as_absence:
+        req.body?.daily_permission_counts_as_absence !== undefined
+          ? req.body.daily_permission_counts_as_absence
+          : undefined,
+      lesson_permission_counts_as_absence:
+        req.body?.lesson_permission_counts_as_absence !== undefined
+          ? req.body.lesson_permission_counts_as_absence
           : undefined,
     });
     res.json(updated);
@@ -367,6 +395,8 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
       status: req.body?.status,
       lessons_count:
         req.body?.lessons_count !== undefined ? Number(req.body.lessons_count) : undefined,
+      leave_type: req.body?.leave_type ?? null,
+      lesson_numbers: Array.isArray(req.body?.lesson_numbers) ? req.body.lesson_numbers : undefined,
       notes: req.body?.notes ?? null,
     });
     res.status(201).json(created);
@@ -384,6 +414,175 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
     const id = parsePositiveInt(req.params.id, 'الطالب');
     const yearId = parseOptionalInt(req.query.academic_year_id);
     res.json(getStudentAbsenceDetails(db, id, yearId));
+  });
+
+  // Holidays & Weekly Holidays
+  router.get('/holidays/weekly', (_req, res) => {
+    const db = dbProvider();
+    res.json(getWeeklyHolidaySettings(db));
+  });
+
+  router.put('/holidays/weekly', (req, res) => {
+    const db = dbProvider();
+    const holidayDays = Array.isArray(req.body?.holiday_days)
+      ? req.body.holiday_days.map(Number)
+      : [];
+    const result = updateWeeklyHolidays(db, {
+      holiday_days: holidayDays,
+      reason: req.body?.reason !== undefined ? String(req.body.reason) : undefined,
+    });
+    res.json(result);
+  });
+
+  router.get('/holidays/check', (req, res) => {
+    const db = dbProvider();
+    const dateStr = String(req.query.date ?? '');
+    res.json(resolveDateHolidayStatus(db, dateStr));
+  });
+
+  router.get('/holidays/month', (req, res) => {
+    const db = dbProvider();
+    const year = Number(req.query.year);
+    const month = Number(req.query.month);
+    res.json(getMonthHolidayCalendar(db, year, month));
+  });
+
+  router.get('/holidays', (req, res) => {
+    const db = dbProvider();
+    const yearId = parseOptionalInt(req.query.academic_year_id);
+    res.json(listHolidays(db, yearId));
+  });
+
+  router.post('/holidays', (req, res) => {
+    const db = dbProvider();
+    const result = createHoliday(db, {
+      academic_year_id: parseOptionalInt(req.body?.academic_year_id) ?? null,
+      name: String(req.body?.name ?? ''),
+      start_date: String(req.body?.start_date ?? ''),
+      end_date: String(req.body?.end_date ?? ''),
+      holiday_type: req.body?.holiday_type,
+      notes: req.body?.notes ?? null,
+    });
+    res.status(201).json(result);
+  });
+
+  router.put('/holidays/:id', (req, res) => {
+    const db = dbProvider();
+    const id = parsePositiveInt(req.params.id, 'العطلة');
+    const result = updateHoliday(db, id, {
+      academic_year_id: parseOptionalInt(req.body?.academic_year_id) ?? null,
+      name: String(req.body?.name ?? ''),
+      start_date: String(req.body?.start_date ?? ''),
+      end_date: String(req.body?.end_date ?? ''),
+      holiday_type: req.body?.holiday_type,
+      notes: req.body?.notes ?? null,
+    });
+    res.json(result);
+  });
+
+  router.delete('/holidays/:id', (req, res) => {
+    const db = dbProvider();
+    const id = parsePositiveInt(req.params.id, 'العطلة');
+    deleteHoliday(db, id);
+    res.json({ deleted: true });
+  });
+
+  // Monthly Absence Register
+  router.get('/monthly/register', (req, res) => {
+    const db = dbProvider();
+    const academicYearId = parseOptionalInt(req.query.academic_year_id);
+    const year = Number(req.query.year);
+    const month = Number(req.query.month);
+    const gradeId = parsePositiveInt(String(req.query.grade_id ?? ''), 'الصف');
+    const sectionId = parsePositiveInt(String(req.query.section_id ?? ''), 'الشعبة');
+    const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+    const sortMode = req.query.sort_mode === 'alphabetical' ? 'alphabetical' : 'original';
+
+    res.json(
+      getMonthlyAbsenceRegister(db, {
+        academic_year_id: academicYearId,
+        year,
+        month,
+        grade_id: gradeId,
+        section_id: sectionId,
+        search,
+        sort_mode: sortMode,
+      })
+    );
+  });
+
+  router.put('/monthly/note', (req, res) => {
+    const db = dbProvider();
+    const academicYearId = parsePositiveInt(
+      String(req.body?.academic_year_id ?? ''),
+      'السنة الدراسية'
+    );
+    const studentId = parsePositiveInt(String(req.body?.student_id ?? ''), 'الطالب');
+    const year = Number(req.body?.year);
+    const month = Number(req.body?.month);
+    const noteText = String(req.body?.note_text ?? '');
+
+    const saved = saveMonthlyStudentNote(db, {
+      academic_year_id: academicYearId,
+      student_id: studentId,
+      year,
+      month,
+      note_text: noteText,
+    });
+    res.json(saved);
+  });
+
+  router.delete('/monthly/note', (req, res) => {
+    const db = dbProvider();
+    const academicYearId = parsePositiveInt(
+      String(req.query.academic_year_id ?? req.body?.academic_year_id ?? ''),
+      'السنة الدراسية'
+    );
+    const studentId = parsePositiveInt(
+      String(req.query.student_id ?? req.body?.student_id ?? ''),
+      'الطالب'
+    );
+    const year = Number(req.query.year ?? req.body?.year);
+    const month = Number(req.query.month ?? req.body?.month);
+
+    deleteMonthlyStudentNote(db, {
+      academic_year_id: academicYearId,
+      student_id: studentId,
+      year,
+      month,
+    });
+    res.json({ deleted: true });
+  });
+
+  router.get('/monthly/export', async (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const academicYearId = parseOptionalInt(req.query.academic_year_id);
+      const year = Number(req.query.year);
+      const month = Number(req.query.month);
+      const gradeId = parsePositiveInt(String(req.query.grade_id ?? ''), 'الصف');
+      const sectionId = parsePositiveInt(String(req.query.section_id ?? ''), 'الشعبة');
+      const sortMode = req.query.sort_mode === 'alphabetical' ? 'alphabetical' : 'original';
+
+      const { buffer, filename } = await generateMonthlyRegisterExcel(db, {
+        academic_year_id: academicYearId,
+        year,
+        month,
+        grade_id: gradeId,
+        section_id: sectionId,
+        sort_mode: sortMode,
+      });
+
+      const encodedName = encodeURIComponent(filename);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
+      res.send(buffer);
+    } catch (err) {
+      next(err);
+    }
   });
 
   // Error handler

@@ -26,6 +26,22 @@ import {
   updateSection,
 } from '../server/services/gradeService';
 import {
+  createHoliday,
+  deleteHoliday,
+  getMonthHolidayCalendar,
+  getWeeklyHolidaySettings,
+  listHolidays,
+  resolveDateHolidayStatus,
+  updateHoliday,
+  updateWeeklyHolidays,
+} from '../server/services/holidayService';
+import {
+  deleteMonthlyStudentNote,
+  generateMonthlyRegisterExcel,
+  getMonthlyAbsenceRegister,
+  saveMonthlyStudentNote,
+} from '../server/services/monthlyRegisterService';
+import {
   createAcademicYear,
   getSchoolSettings,
   listAcademicYears,
@@ -64,6 +80,9 @@ function registerIpcHandlers() {
         school_name: string;
         directorate_name: string;
         lessons_per_absence_day?: number;
+        daily_lessons_count?: number;
+        daily_permission_counts_as_absence?: number | boolean;
+        lesson_permission_counts_as_absence?: number | boolean;
       }) => updateSchoolSettings(getDb(), payload)
     )
   );
@@ -232,6 +251,74 @@ function registerIpcHandlers() {
     wrap((payload: { id: number; academic_year_id?: number }) =>
       getStudentAbsenceDetails(getDb(), payload.id, payload.academic_year_id)
     )
+  );
+
+  ipcMain.handle('holidays:weekly-get', wrap(() => getWeeklyHolidaySettings(getDb())));
+  ipcMain.handle(
+    'holidays:weekly-update',
+    wrap((payload: Parameters<typeof updateWeeklyHolidays>[1]) =>
+      updateWeeklyHolidays(getDb(), payload)
+    )
+  );
+  ipcMain.handle(
+    'holidays:check-date',
+    wrap((payload: { date: string }) => resolveDateHolidayStatus(getDb(), payload.date))
+  );
+  ipcMain.handle(
+    'holidays:month-calendar',
+    wrap((payload: { year: number; month: number }) =>
+      getMonthHolidayCalendar(getDb(), payload.year, payload.month)
+    )
+  );
+  ipcMain.handle(
+    'holidays:list',
+    wrap((payload?: { academic_year_id?: number }) =>
+      listHolidays(getDb(), payload?.academic_year_id)
+    )
+  );
+  ipcMain.handle(
+    'holidays:create',
+    wrap((payload: Parameters<typeof createHoliday>[1]) => createHoliday(getDb(), payload))
+  );
+  ipcMain.handle(
+    'holidays:update',
+    wrap((payload: { id: number } & Parameters<typeof updateHoliday>[2]) =>
+      updateHoliday(getDb(), payload.id, payload)
+    )
+  );
+  ipcMain.handle(
+    'holidays:delete',
+    wrap((payload: { id: number }) => {
+      deleteHoliday(getDb(), payload.id);
+      return { deleted: true };
+    })
+  );
+
+  ipcMain.handle(
+    'monthly:register',
+    wrap((payload: Parameters<typeof getMonthlyAbsenceRegister>[1]) =>
+      getMonthlyAbsenceRegister(getDb(), payload)
+    )
+  );
+  ipcMain.handle(
+    'monthly:save-note',
+    wrap((payload: Parameters<typeof saveMonthlyStudentNote>[1]) =>
+      saveMonthlyStudentNote(getDb(), payload)
+    )
+  );
+  ipcMain.handle(
+    'monthly:delete-note',
+    wrap((payload: Parameters<typeof deleteMonthlyStudentNote>[1]) => {
+      deleteMonthlyStudentNote(getDb(), payload);
+      return { deleted: true };
+    })
+  );
+  ipcMain.handle(
+    'monthly:export-excel',
+    wrap(async (payload: Parameters<typeof generateMonthlyRegisterExcel>[1]) => {
+      const { buffer, filename } = await generateMonthlyRegisterExcel(getDb(), payload);
+      return { base64: buffer.toString('base64'), filename };
+    })
   );
 }
 

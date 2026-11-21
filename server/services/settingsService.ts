@@ -6,7 +6,9 @@ export function getSchoolSettings(db: SqliteDb): SchoolSettings {
   const row = db
     .prepare(
       `SELECT s.id, s.school_name, s.directorate_name, s.academic_year_id,
-              s.lessons_per_absence_day, s.updated_at,
+              s.lessons_per_absence_day, s.daily_lessons_count,
+              s.daily_permission_counts_as_absence, s.lesson_permission_counts_as_absence,
+              s.updated_at,
               ay.name as academic_year_name
        FROM school_settings s
        LEFT JOIN academic_years ay ON ay.id = s.academic_year_id
@@ -26,6 +28,9 @@ export function updateSchoolSettings(
     school_name: string;
     directorate_name: string;
     lessons_per_absence_day?: number;
+    daily_lessons_count?: number;
+    daily_permission_counts_as_absence?: number | boolean;
+    lesson_permission_counts_as_absence?: number | boolean;
   }
 ): SchoolSettings {
   const schoolName = normalizeWhitespace(input.school_name);
@@ -40,6 +45,9 @@ export function updateSchoolSettings(
 
   const current = getSchoolSettings(db);
   let lessonsPerDay = current.lessons_per_absence_day;
+  let dailyLessonsCount = current.daily_lessons_count;
+  let dailyPermCounts = current.daily_permission_counts_as_absence;
+  let lessonPermCounts = current.lesson_permission_counts_as_absence;
 
   if (input.lessons_per_absence_day !== undefined) {
     const parsed = Number(input.lessons_per_absence_day);
@@ -51,13 +59,50 @@ export function updateSchoolSettings(
     lessonsPerDay = parsed;
   }
 
-  // Note: Changing lessons_per_absence_day applies to future absence calculations only
-  // and never retroactively recalculates historical conversions.
+  if (input.daily_lessons_count !== undefined) {
+    const parsedDaily = Number(input.daily_lessons_count);
+    if (!Number.isInteger(parsedDaily) || parsedDaily < 1 || parsedDaily > 12) {
+      throw new ServiceError('عدد الدروس اليومية يجب أن يكون رقماً صحيحاً بين 1 و 12.');
+    }
+    dailyLessonsCount = parsedDaily;
+  }
+
+  if (input.daily_permission_counts_as_absence !== undefined) {
+    const raw = input.daily_permission_counts_as_absence;
+    if (raw !== 0 && raw !== 1 && raw !== true && raw !== false) {
+      throw new ServiceError('قيمة إعداد احتساب الرخصة اليومية غير صالحة.');
+    }
+    dailyPermCounts = raw === 1 || raw === true ? 1 : 0;
+  }
+
+  if (input.lesson_permission_counts_as_absence !== undefined) {
+    const raw = input.lesson_permission_counts_as_absence;
+    if (raw !== 0 && raw !== 1 && raw !== true && raw !== false) {
+      throw new ServiceError('قيمة إعداد احتساب رخصة الدرس غير صالحة.');
+    }
+    lessonPermCounts = raw === 1 || raw === true ? 1 : 0;
+  }
+
+  // Note: Changing lessons_per_absence_day or leave/permission rules applies to new/edited
+  // records only and never retroactively recalculates historical records.
   db.prepare(
     `UPDATE school_settings
-     SET school_name = ?, directorate_name = ?, lessons_per_absence_day = ?, updated_at = datetime('now')
+     SET school_name = ?,
+         directorate_name = ?,
+         lessons_per_absence_day = ?,
+         daily_lessons_count = ?,
+         daily_permission_counts_as_absence = ?,
+         lesson_permission_counts_as_absence = ?,
+         updated_at = datetime('now')
      WHERE id = 1`
-  ).run(schoolName, directorateName, lessonsPerDay);
+  ).run(
+    schoolName,
+    directorateName,
+    lessonsPerDay,
+    dailyLessonsCount,
+    dailyPermCounts,
+    lessonPermCounts
+  );
 
   return getSchoolSettings(db);
 }

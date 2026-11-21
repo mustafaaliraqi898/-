@@ -1,11 +1,19 @@
 import type {
   AcademicYear,
+  CreateHolidayInput,
   CreateStudentInput,
   DashboardStats,
   ExcelCommitResult,
   ExcelImportRowInput,
   ExcelValidationResult,
   GradeWithSections,
+  HolidayCheckResult,
+  HolidayRecord,
+  MonthCalendarDay,
+  MonthlyRegisterData,
+  MonthlyRegisterQuery,
+  SaveHolidayResult,
+  SaveMonthlyNoteInput,
   SaveSectionAttendanceInput,
   SaveSectionAttendanceResult,
   SchoolSettings,
@@ -17,6 +25,9 @@ import type {
   StudentRecord,
   TransferStudentInput,
   UpdateStudentInput,
+  UpdateWeeklyHolidaysInput,
+  UpdateWeeklyHolidaysResult,
+  WeeklyHolidaySettings,
 } from '../types/school';
 
 interface ElectronBridge {
@@ -100,6 +111,9 @@ export const schoolService = {
     school_name: string;
     directorate_name: string;
     lessons_per_absence_day?: number;
+    daily_lessons_count?: number;
+    daily_permission_counts_as_absence?: number;
+    lesson_permission_counts_as_absence?: number;
   }): Promise<SchoolSettings> {
     if (isElectronMode()) return ipcCall<SchoolSettings>('settings:update', payload);
     return httpJson<SchoolSettings>('/api/settings', {
@@ -401,5 +415,146 @@ export const schoolService = {
     }
     const qs = academicYearId ? `?academic_year_id=${academicYearId}` : '';
     return httpJson<StudentAbsenceDetailResponse>(`/api/absences/student/${studentId}${qs}`);
+  },
+
+  // Holidays & Weekly Holidays
+  async getWeeklyHolidays(): Promise<WeeklyHolidaySettings> {
+    if (isElectronMode()) return ipcCall<WeeklyHolidaySettings>('holidays:weekly-get');
+    return httpJson<WeeklyHolidaySettings>('/api/holidays/weekly');
+  },
+
+  async updateWeeklyHolidays(
+    payload: UpdateWeeklyHolidaysInput
+  ): Promise<UpdateWeeklyHolidaysResult> {
+    if (isElectronMode()) return ipcCall<UpdateWeeklyHolidaysResult>('holidays:weekly-update', payload);
+    return httpJson<UpdateWeeklyHolidaysResult>('/api/holidays/weekly', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async checkDateHoliday(date: string): Promise<HolidayCheckResult> {
+    if (isElectronMode()) return ipcCall<HolidayCheckResult>('holidays:check-date', { date });
+    return httpJson<HolidayCheckResult>(`/api/holidays/check?date=${encodeURIComponent(date)}`);
+  },
+
+  async getMonthHolidayCalendar(year: number, month: number): Promise<MonthCalendarDay[]> {
+    if (isElectronMode()) {
+      return ipcCall<MonthCalendarDay[]>('holidays:month-calendar', { year, month });
+    }
+    return httpJson<MonthCalendarDay[]>(`/api/holidays/month?year=${year}&month=${month}`);
+  },
+
+  async listHolidays(academicYearId?: number): Promise<HolidayRecord[]> {
+    if (isElectronMode()) {
+      return ipcCall<HolidayRecord[]>('holidays:list', { academic_year_id: academicYearId });
+    }
+    const qs = academicYearId ? `?academic_year_id=${academicYearId}` : '';
+    return httpJson<HolidayRecord[]>(`/api/holidays${qs}`);
+  },
+
+  async createHoliday(payload: CreateHolidayInput): Promise<SaveHolidayResult> {
+    if (isElectronMode()) return ipcCall<SaveHolidayResult>('holidays:create', payload);
+    return httpJson<SaveHolidayResult>('/api/holidays', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updateHoliday(id: number, payload: CreateHolidayInput): Promise<SaveHolidayResult> {
+    if (isElectronMode()) return ipcCall<SaveHolidayResult>('holidays:update', { id, ...payload });
+    return httpJson<SaveHolidayResult>(`/api/holidays/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteHoliday(id: number): Promise<void> {
+    if (isElectronMode()) {
+      await ipcCall('holidays:delete', { id });
+      return;
+    }
+    await httpJson(`/api/holidays/${id}`, { method: 'DELETE' });
+  },
+
+  // Monthly Absence Register
+  async getMonthlyRegister(query: MonthlyRegisterQuery): Promise<MonthlyRegisterData> {
+    if (isElectronMode()) {
+      return ipcCall<MonthlyRegisterData>('monthly:register', query);
+    }
+    const qs = new URLSearchParams({
+      year: String(query.year),
+      month: String(query.month),
+      grade_id: String(query.grade_id),
+      section_id: String(query.section_id),
+    });
+    if (query.academic_year_id) qs.set('academic_year_id', String(query.academic_year_id));
+    if (query.search) qs.set('search', query.search);
+    if (query.sort_mode) qs.set('sort_mode', query.sort_mode);
+    return httpJson<MonthlyRegisterData>(`/api/monthly/register?${qs.toString()}`);
+  },
+
+  async saveMonthlyNote(
+    input: SaveMonthlyNoteInput
+  ): Promise<{ student_id: number; year: number; month: number; manual_note: string | null }> {
+    if (isElectronMode()) {
+      return ipcCall('monthly:save-note', input);
+    }
+    return httpJson('/api/monthly/note', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    });
+  },
+
+  async deleteMonthlyNote(params: {
+    academic_year_id: number;
+    student_id: number;
+    year: number;
+    month: number;
+  }): Promise<void> {
+    if (isElectronMode()) {
+      await ipcCall('monthly:delete-note', params);
+      return;
+    }
+    const qs = new URLSearchParams({
+      academic_year_id: String(params.academic_year_id),
+      student_id: String(params.student_id),
+      year: String(params.year),
+      month: String(params.month),
+    });
+    await httpJson(`/api/monthly/note?${qs.toString()}`, { method: 'DELETE' });
+  },
+
+  async exportMonthlyExcel(query: MonthlyRegisterQuery): Promise<void> {
+    if (isElectronMode()) {
+      const result = await ipcCall<{ base64: string; filename: string }>(
+        'monthly:export-excel',
+        query
+      );
+      const bytes = Uint8Array.from(atob(result.base64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      triggerBlobDownload(blob, result.filename);
+      return;
+    }
+
+    const qs = new URLSearchParams({
+      year: String(query.year),
+      month: String(query.month),
+      grade_id: String(query.grade_id),
+      section_id: String(query.section_id),
+    });
+    if (query.academic_year_id) qs.set('academic_year_id', String(query.academic_year_id));
+    if (query.sort_mode) qs.set('sort_mode', query.sort_mode);
+
+    const res = await fetch(`/api/monthly/export?${qs.toString()}`);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'تعذر تصدير السجل الشهري إلى ملف Excel.');
+    }
+    const blob = await res.blob();
+    const fallbackName = `السجل_الشهري_${query.year}_${String(query.month).padStart(2, '0')}.xlsx`;
+    triggerBlobDownload(blob, fallbackName);
   },
 };

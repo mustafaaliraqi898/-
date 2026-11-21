@@ -179,12 +179,12 @@ async function runPhase2Tests() {
 
   await test('6. Direct Full Day absence stays completely independent of lesson counter', () => {
     // s3 has pending_lessons = 1, converted_lesson_days = 1, direct_full_days = 0
-    // Record full_day on 2026-11-06 -> direct_full_days becomes 1, total = 2, pending stays 1
+    // Record full_day on 2026-11-08 (Sunday) -> direct_full_days becomes 1, total = 2, pending stays 1
     const res = saveSectionAttendance(db, {
       academic_year_id: activeYear.id,
       grade_id: grade.id,
       section_id: secA.id,
-      attendance_date: '2026-11-06',
+      attendance_date: '2026-11-08',
       entries: [
         { student_id: s1.id, status: 'present' },
         { student_id: s2.id, status: 'present' },
@@ -269,7 +269,7 @@ async function runPhase2Tests() {
           academic_year_id: activeYear.id,
           grade_id: grade.id,
           section_id: secA.id,
-          attendance_date: '2026-11-07',
+          attendance_date: '2026-11-09',
           entries: [
             { student_id: s1.id, status: 'present' },
             { student_id: s1.id, status: 'full_day' },
@@ -290,7 +290,7 @@ async function runPhase2Tests() {
       academic_year_id: activeYear.id,
       grade_id: grade.id,
       section_id: secA.id,
-      attendance_date: '2026-11-06',
+      attendance_date: '2026-11-08',
     });
     assert.ok(sheet.session !== null);
     const s3SheetRow = sheet.students.find((r) => r.student_id === s3.id)!;
@@ -302,7 +302,7 @@ async function runPhase2Tests() {
 
     const dash = getDashboardStats(db, activeYear.id);
     assert.equal(dash.absence_days_count, 6);
-    assert.equal(dash.last_absence_date, '2026-11-06');
+    assert.equal(dash.last_absence_date, '2026-11-08');
 
     // Test delete single record recalculation & HTTP API roundtrip
     const app = express();

@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS school_settings (
   directorate_name TEXT NOT NULL DEFAULT 'المديرية العامة للتربية',
   academic_year_id INTEGER REFERENCES academic_years(id) ON DELETE SET NULL,
   lessons_per_absence_day INTEGER NOT NULL DEFAULT 5 CHECK (lessons_per_absence_day >= 1 AND lessons_per_absence_day <= 20),
+  daily_lessons_count INTEGER NOT NULL DEFAULT 7 CHECK (daily_lessons_count >= 1 AND daily_lessons_count <= 12),
+  daily_permission_counts_as_absence INTEGER NOT NULL DEFAULT 0 CHECK (daily_permission_counts_as_absence IN (0, 1)),
+  lesson_permission_counts_as_absence INTEGER NOT NULL DEFAULT 0 CHECK (lesson_permission_counts_as_absence IN (0, 1)),
+  weekly_holiday_reason TEXT NOT NULL DEFAULT 'عطلة أسبوعية رسمية',
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -79,13 +83,27 @@ CREATE TABLE IF NOT EXISTS absences (
   grade_id INTEGER NOT NULL REFERENCES grades(id) ON DELETE RESTRICT,
   section_id INTEGER NOT NULL REFERENCES sections(id) ON DELETE RESTRICT,
   absence_date TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('present', 'full_day', 'lesson_absence')),
+  status TEXT NOT NULL CHECK (status IN ('present', 'full_day', 'lesson_absence', 'full_day_leave', 'lesson_permission')),
   lessons_count INTEGER NOT NULL DEFAULT 0 CHECK (lessons_count >= 0),
+  leave_type TEXT CHECK (leave_type IN ('sick_leave', 'daily_permission')),
+  permission_type TEXT CHECK (permission_type IN ('daily_permission', 'lesson_permission')),
+  lesson_numbers_json TEXT,
+  counted_as_absence INTEGER NOT NULL DEFAULT 0 CHECK (counted_as_absence IN (0, 1)),
+  permission_rule_snapshot INTEGER CHECK (permission_rule_snapshot IN (0, 1)),
+  applied_settings_at TEXT,
   threshold_snapshot INTEGER NOT NULL DEFAULT 5 CHECK (threshold_snapshot >= 1),
   notes TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(student_id, absence_date)
+);
+
+CREATE TABLE IF NOT EXISTS absence_lesson_details (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  absence_id INTEGER NOT NULL REFERENCES absences(id) ON DELETE CASCADE,
+  lesson_number INTEGER NOT NULL CHECK (lesson_number >= 1 AND lesson_number <= 12),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(absence_id, lesson_number)
 );
 
 CREATE TABLE IF NOT EXISTS lesson_converted_days (
@@ -101,6 +119,38 @@ CREATE TABLE IF NOT EXISTS lesson_converted_days (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS weekly_holidays (
+  day_of_week INTEGER PRIMARY KEY CHECK (day_of_week >= 0 AND day_of_week <= 6),
+  day_name TEXT NOT NULL,
+  is_holiday INTEGER NOT NULL DEFAULT 0 CHECK (is_holiday IN (0, 1)),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS holidays (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  academic_year_id INTEGER REFERENCES academic_years(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  holiday_type TEXT NOT NULL CHECK (holiday_type IN ('official', 'exceptional', 'school_specific')),
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (end_date >= start_date)
+);
+
+CREATE TABLE IF NOT EXISTS monthly_student_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  academic_year_id INTEGER NOT NULL REFERENCES academic_years(id) ON DELETE RESTRICT,
+  student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  year INTEGER NOT NULL CHECK (year >= 2000 AND year <= 2100),
+  month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
+  note_text TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(academic_year_id, student_id, year, month)
+);
+
 CREATE INDEX IF NOT EXISTS idx_sections_grade_id ON sections(grade_id);
 CREATE INDEX IF NOT EXISTS idx_students_full_name ON students(full_name);
 CREATE INDEX IF NOT EXISTS idx_students_registry_number ON students(registry_number);
@@ -110,5 +160,9 @@ CREATE INDEX IF NOT EXISTS idx_sessions_year_section_date ON attendance_sessions
 CREATE INDEX IF NOT EXISTS idx_absences_student_date ON absences(student_id, absence_date);
 CREATE INDEX IF NOT EXISTS idx_absences_year_grade_section ON absences(academic_year_id, grade_id, section_id, absence_date);
 CREATE INDEX IF NOT EXISTS idx_absences_student_year_status ON absences(student_id, academic_year_id, status);
+CREATE INDEX IF NOT EXISTS idx_absence_lesson_details_absence_id ON absence_lesson_details(absence_id);
 CREATE INDEX IF NOT EXISTS idx_converted_days_student_year ON lesson_converted_days(student_id, academic_year_id);
+CREATE INDEX IF NOT EXISTS idx_holidays_date_range ON holidays(start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_holidays_year ON holidays(academic_year_id, start_date);
+CREATE INDEX IF NOT EXISTS idx_monthly_notes_lookup ON monthly_student_notes(academic_year_id, year, month, student_id);
 `;

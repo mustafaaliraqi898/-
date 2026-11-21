@@ -10,6 +10,7 @@ import { DashboardView } from './components/dashboard/DashboardView';
 import { GradesView } from './components/grades/GradesView';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
+import { MonthlyRegisterView } from './components/monthly/MonthlyRegisterView';
 import { UpcomingSectionView } from './components/placeholders/UpcomingSectionView';
 import { SettingsView } from './components/settings/SettingsView';
 import { StudentsView } from './components/students/StudentsView';
@@ -175,7 +176,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-dvh flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <div className="no-print min-h-dvh flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <Sidebar
         activeSection={activeSection}
         onSelectSection={setActiveSection}
@@ -257,8 +258,22 @@ export default function App() {
             />
           )}
 
-          {(activeSection === 'monthly' || activeSection === 'reports') && (
-            <UpcomingSectionView section={activeSection} onNavigate={setActiveSection} />
+          {activeSection === 'monthly' && (
+            <MonthlyRegisterView
+              grades={grades}
+              academicYears={academicYears}
+              selectedYearId={selectedYearId}
+              onSelectYear={(yearId) => {
+                setSelectedYearId(yearId);
+                setFilterGradeId(null);
+                setFilterSectionId(null);
+              }}
+              onNotify={notify}
+            />
+          )}
+
+          {activeSection === 'reports' && (
+            <UpcomingSectionView section="reports" onNavigate={setActiveSection} />
           )}
 
           {activeSection === 'settings' && (
