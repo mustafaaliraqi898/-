@@ -8,8 +8,7 @@ import {
   Clock,
   FileCheck2,
   History,
-  Minus,
-  Plus,
+  LogOut,
   RotateCcw,
   Save,
   Trash2,
@@ -23,6 +22,8 @@ import type {
   GradeWithSections,
   HolidayCategory,
   LeaveType,
+  LessonDetailItem,
+  LessonStatusType,
   SectionAttendanceSheet,
   StudentAbsenceDetailResponse,
 } from '../../types/school';
@@ -40,11 +41,58 @@ interface AbsencesViewProps {
 
 interface DraftEntry {
   status: AbsenceStatus;
-  lessons_count: number;
+  active_lesson_tab: LessonStatusType;
+  legacy_lessons_count: number;
   leave_type: LeaveType;
-  lesson_numbers: number[];
+  lesson_details: LessonDetailItem[];
   notes: string;
 }
+
+function isLessonStatus(status: AbsenceStatus): status is LessonStatusType {
+  return (
+    status === 'lesson_absence' || status === 'lesson_permission' || status === 'lesson_escape'
+  );
+}
+
+const LESSON_REASON_META: Record<
+  LessonStatusType,
+  {
+    shortLabel: string;
+    fullLabel: string;
+    activeClass: string;
+    tabActiveClass: string;
+    conflictBadgeClass: string;
+    rowTint: string;
+  }
+> = {
+  lesson_absence: {
+    shortLabel: 'غياب',
+    fullLabel: 'غائب عن درس',
+    activeClass: 'bg-amber-600 text-white border-amber-600 shadow-sm',
+    tabActiveClass: 'bg-amber-600 text-white border-amber-600',
+    conflictBadgeClass:
+      'bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700',
+    rowTint: 'bg-amber-50/40 dark:bg-amber-950/15',
+  },
+  lesson_permission: {
+    shortLabel: 'رخصة',
+    fullLabel: 'رخصة عن درس',
+    activeClass: 'bg-indigo-600 text-white border-indigo-600 shadow-sm',
+    tabActiveClass: 'bg-indigo-600 text-white border-indigo-600',
+    conflictBadgeClass:
+      'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-200 border-indigo-300 dark:border-indigo-700',
+    rowTint: 'bg-indigo-50/40 dark:bg-indigo-950/15',
+  },
+  lesson_escape: {
+    shortLabel: 'هروب',
+    fullLabel: 'هروب من درس',
+    activeClass: 'bg-orange-600 text-white border-orange-600 shadow-sm',
+    tabActiveClass: 'bg-orange-600 text-white border-orange-600',
+    conflictBadgeClass:
+      'bg-orange-50 dark:bg-orange-950/50 text-orange-800 dark:text-orange-200 border-orange-300 dark:border-orange-700',
+    rowTint: 'bg-orange-50/40 dark:bg-orange-950/15',
+  },
+};
 
 const LESSON_ORDINALS: string[] = [
   'الدرس الأول',
@@ -139,12 +187,21 @@ export function AbsencesView({
   const initializeDraftFromSheet = useCallback((loaded: SectionAttendanceSheet) => {
     const nextDraft: Record<number, DraftEntry> = {};
     for (const st of loaded.students) {
+      const details = Array.isArray(st.lesson_details)
+        ? [...st.lesson_details].sort((a, b) => a.lesson_number - b.lesson_number)
+        : [];
+      const activeTab: LessonStatusType = isLessonStatus(st.status)
+        ? st.status
+        : details[0]?.lesson_status ?? 'lesson_absence';
+      const legacyCount =
+        details.length === 0 && st.status === 'lesson_absence' ? Math.max(0, st.lessons_count) : 0;
+
       nextDraft[st.student_id] = {
         status: st.status,
-        lessons_count: st.status === 'lesson_absence' ? Math.max(1, st.lessons_count) : 0,
+        active_lesson_tab: activeTab,
+        legacy_lessons_count: legacyCount,
         leave_type: st.leave_type ?? 'sick_leave',
-        lesson_numbers:
-          st.status === 'lesson_permission' ? [...st.lesson_numbers].sort((a, b) => a - b) : [],
+        lesson_details: details,
         notes: st.notes ?? '',
       };
     }
@@ -191,48 +248,33 @@ export function AbsencesView({
     setDraft((prev) => {
       const current = prev[studentId] ?? {
         status: 'present',
-        lessons_count: 0,
+        active_lesson_tab: 'lesson_absence' as LessonStatusType,
+        legacy_lessons_count: 0,
         leave_type: 'sick_leave' as LeaveType,
-        lesson_numbers: [],
+        lesson_details: [],
         notes: '',
       };
+
+      if (isLessonStatus(status)) {
+        return {
+          ...prev,
+          [studentId]: {
+            ...current,
+            status,
+            active_lesson_tab: status,
+            leave_type: 'sick_leave',
+          },
+        };
+      }
+
       return {
         ...prev,
         [studentId]: {
           ...current,
           status,
-          lessons_count:
-            status === 'lesson_absence'
-              ? current.lessons_count >= 1
-                ? current.lessons_count
-                : 1
-              : 0,
+          legacy_lessons_count: 0,
           leave_type: status === 'full_day_leave' ? current.leave_type : 'sick_leave',
-          lesson_numbers: status === 'lesson_permission' ? current.lesson_numbers : [],
-        },
-      };
-    });
-  }
-
-  function updateStudentLessons(studentId: number, lessons: number) {
-    const maxLessons = Math.max(12, sheet?.daily_lessons_count ?? 7);
-    const clamped = Math.max(1, Math.min(maxLessons, Math.floor(lessons || 1)));
-    setIsDirty(true);
-    setDraft((prev) => {
-      const current = prev[studentId] ?? {
-        status: 'lesson_absence',
-        lessons_count: 1,
-        leave_type: 'sick_leave' as LeaveType,
-        lesson_numbers: [],
-        notes: '',
-      };
-      return {
-        ...prev,
-        [studentId]: {
-          ...current,
-          status: 'lesson_absence',
-          lessons_count: clamped,
-          lesson_numbers: [],
+          lesson_details: [],
         },
       };
     });
@@ -243,9 +285,10 @@ export function AbsencesView({
     setDraft((prev) => {
       const current = prev[studentId] ?? {
         status: 'full_day_leave',
-        lessons_count: 0,
+        active_lesson_tab: 'lesson_absence' as LessonStatusType,
+        legacy_lessons_count: 0,
         leave_type: leaveType,
-        lesson_numbers: [],
+        lesson_details: [],
         notes: '',
       };
       return {
@@ -254,35 +297,81 @@ export function AbsencesView({
           ...current,
           status: 'full_day_leave',
           leave_type: leaveType,
-          lessons_count: 0,
-          lesson_numbers: [],
+          legacy_lessons_count: 0,
+          lesson_details: [],
         },
       };
     });
   }
 
-  function toggleStudentLessonPermission(studentId: number, lessonNum: number) {
+  function switchActiveLessonTab(studentId: number, tab: LessonStatusType) {
     setIsDirty(true);
     setDraft((prev) => {
-      const current = prev[studentId] ?? {
-        status: 'lesson_permission',
-        lessons_count: 0,
-        leave_type: 'sick_leave' as LeaveType,
-        lesson_numbers: [],
-        notes: '',
-      };
-      const exists = current.lesson_numbers.includes(lessonNum);
-      const nextNumbers = exists
-        ? current.lesson_numbers.filter((n) => n !== lessonNum)
-        : [...current.lesson_numbers, lessonNum].sort((a, b) => a - b);
-
+      const current = prev[studentId];
+      if (!current) return prev;
       return {
         ...prev,
         [studentId]: {
           ...current,
-          status: 'lesson_permission',
-          lesson_numbers: nextNumbers,
-          lessons_count: 0,
+          status: tab,
+          active_lesson_tab: tab,
+        },
+      };
+    });
+  }
+
+  function toggleStudentLessonForTab(
+    studentId: number,
+    lessonNum: number,
+    studentName: string
+  ) {
+    const current = draft[studentId] ?? {
+      status: 'lesson_absence' as AbsenceStatus,
+      active_lesson_tab: 'lesson_absence' as LessonStatusType,
+      legacy_lessons_count: 0,
+      leave_type: 'sick_leave' as LeaveType,
+      lesson_details: [],
+      notes: '',
+    };
+
+    const activeTab = current.active_lesson_tab;
+    const existingItem = current.lesson_details.find((d) => d.lesson_number === lessonNum);
+
+    if (existingItem && existingItem.lesson_status !== activeTab) {
+      const conflictMeta = LESSON_REASON_META[existingItem.lesson_status];
+      onNotify(
+        'error',
+        `لا يجوز تسجيل أكثر من سبب لنفس الدرس: ${getLessonLabel(lessonNum)} للطالب "${studentName}" مسجل حالياً كـ «${conflictMeta.fullLabel}». ألغِ تحديده أولاً إذا أردت تغيير السبب.`
+      );
+      return;
+    }
+
+    const threshold = Math.max(1, sheet?.lessons_per_absence_day ?? 5);
+    const permCounts = sheet?.lesson_permission_counts_as_absence ? 1 : 0;
+
+    setIsDirty(true);
+    setDraft((prev) => {
+      const prevEntry = prev[studentId] ?? current;
+      const nextDetails = existingItem
+        ? prevEntry.lesson_details.filter((d) => d.lesson_number !== lessonNum)
+        : [
+            ...prevEntry.lesson_details,
+            {
+              lesson_number: lessonNum,
+              lesson_status: activeTab,
+              counted_as_absence: activeTab === 'lesson_permission' ? permCounts : 1,
+              permission_rule_snapshot: activeTab === 'lesson_permission' ? permCounts : null,
+              threshold_snapshot: threshold,
+            },
+          ].sort((a, b) => a.lesson_number - b.lesson_number);
+
+      return {
+        ...prev,
+        [studentId]: {
+          ...prevEntry,
+          status: activeTab,
+          legacy_lessons_count: 0,
+          lesson_details: nextDetails,
         },
       };
     });
@@ -296,9 +385,10 @@ export function AbsencesView({
     for (const st of sheet.students) {
       nextDraft[st.student_id] = {
         status: 'present',
-        lessons_count: 0,
+        active_lesson_tab: 'lesson_absence',
+        legacy_lessons_count: 0,
         leave_type: 'sick_leave',
-        lesson_numbers: [],
+        lesson_details: [],
         notes: draft[st.student_id]?.notes ?? '',
       };
     }
@@ -318,32 +408,43 @@ export function AbsencesView({
         present: 0,
         full_day: 0,
         lesson_absence: 0,
-        full_day_leave: 0,
         lesson_permission: 0,
+        lesson_escape: 0,
+        full_day_leave: 0,
         total: 0,
       };
     }
     let present = 0;
     let full_day = 0;
     let lesson_absence = 0;
-    let full_day_leave = 0;
     let lesson_permission = 0;
+    let lesson_escape = 0;
+    let full_day_leave = 0;
 
     for (const st of sheet.students) {
-      const status = draft[st.student_id]?.status ?? 'present';
+      const entry = draft[st.student_id];
+      const status = entry?.status ?? 'present';
       if (status === 'present') present += 1;
       else if (status === 'full_day') full_day += 1;
-      else if (status === 'lesson_absence') lesson_absence += 1;
       else if (status === 'full_day_leave') full_day_leave += 1;
-      else lesson_permission += 1;
+      else {
+        const details = entry?.lesson_details ?? [];
+        const hasAbs = details.some((d) => d.lesson_status === 'lesson_absence');
+        const hasPerm = details.some((d) => d.lesson_status === 'lesson_permission');
+        const hasEsc = details.some((d) => d.lesson_status === 'lesson_escape');
+        if (hasAbs || (details.length === 0 && status === 'lesson_absence')) lesson_absence += 1;
+        if (hasPerm || (details.length === 0 && status === 'lesson_permission')) lesson_permission += 1;
+        if (hasEsc || (details.length === 0 && status === 'lesson_escape')) lesson_escape += 1;
+      }
     }
 
     return {
       present,
       full_day,
       lesson_absence,
-      full_day_leave,
       lesson_permission,
+      lesson_escape,
+      full_day_leave,
       total: sheet.students.length,
     };
   }, [sheet, draft]);
@@ -360,10 +461,15 @@ export function AbsencesView({
     }
     for (const st of sheet.students) {
       const entry = draft[st.student_id];
-      if (entry?.status === 'lesson_permission' && entry.lesson_numbers.length === 0) {
+      if (!entry || !isLessonStatus(entry.status)) continue;
+
+      const hasLessons =
+        entry.lesson_details.length > 0 ||
+        (entry.status === 'lesson_absence' && entry.legacy_lessons_count > 0);
+      if (!hasLessons) {
         onNotify(
           'error',
-          `يرجى تحديد درس واحد على الأقل للطالب "${st.full_name}" لأن حالته «رخصة عن درس».`
+          `يرجى تحديد درس واحد على الأقل للطالب "${st.full_name}" لأن حالته «${LESSON_REASON_META[entry.status].fullLabel}».`
         );
         return;
       }
@@ -378,17 +484,42 @@ export function AbsencesView({
       const entries = sheet.students.map((st) => {
         const entry = draft[st.student_id] ?? {
           status: 'present' as AbsenceStatus,
-          lessons_count: 0,
+          active_lesson_tab: 'lesson_absence' as LessonStatusType,
+          legacy_lessons_count: 0,
           leave_type: 'sick_leave' as LeaveType,
-          lesson_numbers: [],
+          lesson_details: [],
           notes: '',
         };
+
+        if (isLessonStatus(entry.status)) {
+          if (entry.lesson_details.length > 0) {
+            return {
+              student_id: st.student_id,
+              status: entry.status,
+              lesson_details: entry.lesson_details.map((d) => ({
+                lesson_number: d.lesson_number,
+                lesson_status: d.lesson_status,
+              })),
+              leave_type: null,
+              notes: entry.notes || null,
+            };
+          }
+          return {
+            student_id: st.student_id,
+            status: entry.status,
+            lessons_count: entry.legacy_lessons_count,
+            leave_type: null,
+            lesson_numbers: [],
+            notes: entry.notes || null,
+          };
+        }
+
         return {
           student_id: st.student_id,
           status: entry.status,
-          lessons_count: entry.status === 'lesson_absence' ? entry.lessons_count : 0,
+          lessons_count: 0,
           leave_type: entry.status === 'full_day_leave' ? entry.leave_type : null,
-          lesson_numbers: entry.status === 'lesson_permission' ? entry.lesson_numbers : [],
+          lesson_numbers: [],
           notes: entry.notes || null,
         };
       });
@@ -721,6 +852,12 @@ export function AbsencesView({
             <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
               ·
             </span>
+            <span className="text-orange-700 dark:text-orange-400 font-semibold tabular-nums">
+              هروب: {draftSummary.lesson_escape.toLocaleString('ar-IQ')}
+            </span>
+            <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
+              ·
+            </span>
             <span className="text-sky-700 dark:text-sky-400 font-semibold tabular-nums">
               مجاز: {draftSummary.full_day_leave.toLocaleString('ar-IQ')}
             </span>
@@ -862,22 +999,27 @@ export function AbsencesView({
                 {sheet.students.map((st, idx) => {
                   const entry = draft[st.student_id] ?? {
                     status: st.status,
-                    lessons_count: st.lessons_count,
+                    active_lesson_tab: isLessonStatus(st.status) ? st.status : 'lesson_absence',
+                    legacy_lessons_count:
+                      st.lesson_details.length === 0 && st.status === 'lesson_absence'
+                        ? st.lessons_count
+                        : 0,
                     leave_type: st.leave_type ?? 'sick_leave',
-                    lesson_numbers: st.lesson_numbers ?? [],
+                    lesson_details: st.lesson_details ?? [],
                     notes: st.notes ?? '',
                   };
+
+                  const inLessonMode = isLessonStatus(entry.status);
+                  const activeTabMeta = LESSON_REASON_META[entry.active_lesson_tab];
 
                   const rowTint =
                     entry.status === 'full_day'
                       ? 'bg-red-50/40 dark:bg-red-950/15'
-                      : entry.status === 'lesson_absence'
-                        ? 'bg-amber-50/40 dark:bg-amber-950/15'
-                        : entry.status === 'full_day_leave'
-                          ? 'bg-sky-50/40 dark:bg-sky-950/15'
-                          : entry.status === 'lesson_permission'
-                            ? 'bg-indigo-50/40 dark:bg-indigo-950/15'
-                            : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/30';
+                      : entry.status === 'full_day_leave'
+                        ? 'bg-sky-50/40 dark:bg-sky-950/15'
+                        : isLessonStatus(entry.status)
+                          ? LESSON_REASON_META[entry.status].rowTint
+                          : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/30';
 
                   const isUnchangedSavedDailyPermission =
                     st.has_saved_record &&
@@ -890,15 +1032,37 @@ export function AbsencesView({
                     ? st.counted_as_absence === 1
                     : Boolean(sheet.daily_permission_counts_as_absence);
 
+                  const savedPermNums = (st.lesson_details ?? [])
+                    .filter((d) => d.lesson_status === 'lesson_permission')
+                    .map((d) => d.lesson_number);
+                  const draftPermNums = entry.lesson_details
+                    .filter((d) => d.lesson_status === 'lesson_permission')
+                    .map((d) => d.lesson_number);
                   const isUnchangedSavedLessonPermission =
                     st.has_saved_record &&
-                    st.status === 'lesson_permission' &&
-                    entry.status === 'lesson_permission' &&
-                    JSON.stringify(st.lesson_numbers) === JSON.stringify(entry.lesson_numbers);
+                    savedPermNums.length > 0 &&
+                    JSON.stringify(savedPermNums) === JSON.stringify(draftPermNums);
 
+                  const savedFirstPerm = (st.lesson_details ?? []).find(
+                    (d) => d.lesson_status === 'lesson_permission'
+                  );
                   const effectiveLessonPermCounted = isUnchangedSavedLessonPermission
-                    ? st.counted_as_absence === 1
+                    ? (savedFirstPerm ? savedFirstPerm.counted_as_absence === 1 : st.counted_as_absence === 1)
                     : Boolean(sheet.lesson_permission_counts_as_absence);
+
+                  const absLessonsCount = entry.lesson_details.filter(
+                    (d) => d.lesson_status === 'lesson_absence'
+                  ).length;
+                  const permLessonsCount = entry.lesson_details.filter(
+                    (d) => d.lesson_status === 'lesson_permission'
+                  ).length;
+                  const escLessonsCount = entry.lesson_details.filter(
+                    (d) => d.lesson_status === 'lesson_escape'
+                  ).length;
+                  const totalCountedLessonsInDraft =
+                    absLessonsCount +
+                    escLessonsCount +
+                    (effectiveLessonPermCounted ? permLessonsCount : 0);
 
                   return (
                     <tr key={st.student_id} className={`transition-colors align-top ${rowTint}`}>
@@ -918,7 +1082,7 @@ export function AbsencesView({
 
                       <td className="py-2.5 px-3">
                         <div
-                          className={`inline-flex flex-wrap items-center gap-1 p-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 max-w-[310px] ${
+                          className={`inline-flex flex-wrap items-center gap-1 p-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 max-w-[335px] ${
                             isHolidayBlocked ? 'opacity-70 pointer-events-none' : ''
                           }`}
                           role="group"
@@ -969,20 +1133,6 @@ export function AbsencesView({
                           <button
                             type="button"
                             disabled={isHolidayBlocked}
-                            onClick={() => updateStudentStatus(st.student_id, 'full_day_leave')}
-                            className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-                              entry.status === 'full_day_leave'
-                                ? 'bg-sky-600 text-white shadow-sm'
-                                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                            }`}
-                          >
-                            <FileCheck2 className="w-3.5 h-3.5" />
-                            <span>مجاز يوم كامل</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={isHolidayBlocked}
                             onClick={() => updateStudentStatus(st.student_id, 'lesson_permission')}
                             className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
                               entry.status === 'lesson_permission'
@@ -993,6 +1143,34 @@ export function AbsencesView({
                             <BookOpenCheck className="w-3.5 h-3.5" />
                             <span>رخصة عن درس</span>
                           </button>
+
+                          <button
+                            type="button"
+                            disabled={isHolidayBlocked}
+                            onClick={() => updateStudentStatus(st.student_id, 'lesson_escape')}
+                            className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
+                              entry.status === 'lesson_escape'
+                                ? 'bg-orange-600 text-white shadow-sm'
+                                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                            }`}
+                          >
+                            <LogOut className="w-3.5 h-3.5" />
+                            <span>هروب من درس</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isHolidayBlocked}
+                            onClick={() => updateStudentStatus(st.student_id, 'full_day_leave')}
+                            className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
+                              entry.status === 'full_day_leave'
+                                ? 'bg-sky-600 text-white shadow-sm'
+                                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                            }`}
+                          >
+                            <FileCheck2 className="w-3.5 h-3.5" />
+                            <span>مجاز يوم كامل</span>
+                          </button>
                         </div>
                       </td>
 
@@ -1000,50 +1178,6 @@ export function AbsencesView({
                       <td className="py-2.5 px-3">
                         {(entry.status === 'present' || entry.status === 'full_day') && (
                           <span className="text-slate-400 dark:text-slate-500 text-xs">—</span>
-                        )}
-
-                        {entry.status === 'lesson_absence' && (
-                          <div className="space-y-1">
-                            <div className="inline-flex items-center gap-1">
-                              <button
-                                type="button"
-                                disabled={isHolidayBlocked}
-                                onClick={() =>
-                                  updateStudentLessons(st.student_id, entry.lessons_count - 1)
-                                }
-                                aria-label="إنقاص درس"
-                                className="w-7 h-7 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center disabled:opacity-50"
-                              >
-                                <Minus className="w-3.5 h-3.5" />
-                              </button>
-                              <input
-                                type="number"
-                                min={1}
-                                max={Math.max(12, sheet.daily_lessons_count)}
-                                disabled={isHolidayBlocked}
-                                value={entry.lessons_count}
-                                onChange={(e) =>
-                                  updateStudentLessons(st.student_id, Number(e.target.value))
-                                }
-                                aria-label={`عدد دروس الغياب لـ ${st.full_name}`}
-                                className="w-11 py-1 text-center text-sm font-bold rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-60"
-                              />
-                              <button
-                                type="button"
-                                disabled={isHolidayBlocked}
-                                onClick={() =>
-                                  updateStudentLessons(st.student_id, entry.lessons_count + 1)
-                                }
-                                aria-label="زيادة درس"
-                                className="w-7 h-7 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center disabled:opacity-50"
-                              >
-                                <Plus className="w-3.5 h-3.5" />
-                              </button>
-                              <span className="text-xs text-slate-600 dark:text-slate-300 mr-1">
-                                دروس
-                              </span>
-                            </div>
-                          </div>
                         )}
 
                         {entry.status === 'full_day_leave' && (
@@ -1085,60 +1219,135 @@ export function AbsencesView({
                           </div>
                         )}
 
-                        {entry.status === 'lesson_permission' && (
-                          <div className="space-y-1.5 min-w-[215px] max-w-[270px]">
+                        {inLessonMode && (
+                          <div className="space-y-1.5 min-w-[245px] max-w-[310px]">
+                            {/* Mini reason switcher allowing distinct lessons to have distinct reasons */}
+                            <div className="flex flex-wrap items-center gap-1">
+                              {(
+                                [
+                                  ['lesson_absence', absLessonsCount],
+                                  ['lesson_permission', permLessonsCount],
+                                  ['lesson_escape', escLessonsCount],
+                                ] as Array<[LessonStatusType, number]>
+                              ).map(([tabKey, tabCount]) => {
+                                const meta = LESSON_REASON_META[tabKey];
+                                const isTabActive = entry.active_lesson_tab === tabKey;
+                                return (
+                                  <button
+                                    key={tabKey}
+                                    type="button"
+                                    disabled={isHolidayBlocked}
+                                    onClick={() => switchActiveLessonTab(st.student_id, tabKey)}
+                                    className={`px-2 py-0.5 rounded text-[10.5px] font-bold border transition-colors whitespace-nowrap ${
+                                      isTabActive
+                                        ? meta.tabActiveClass
+                                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-400'
+                                    }`}
+                                  >
+                                    {meta.shortLabel}
+                                    {tabCount > 0 ? ` (${tabCount.toLocaleString('ar-IQ')})` : ''}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Unified interactive daily lessons grid */}
                             <div
                               className={`flex flex-wrap gap-1 ${
                                 isHolidayBlocked ? 'opacity-70 pointer-events-none' : ''
                               }`}
                               role="group"
-                              aria-label={`دروس الرخصة لـ ${st.full_name}`}
+                              aria-label={`دروس ${activeTabMeta.fullLabel} لـ ${st.full_name}`}
                             >
                               {availableDailyLessons.map((lessonNum) => {
-                                const selected = entry.lesson_numbers.includes(lessonNum);
+                                const assigned = entry.lesson_details.find(
+                                  (d) => d.lesson_number === lessonNum
+                                );
+                                const assignedToActive =
+                                  assigned?.lesson_status === entry.active_lesson_tab;
+                                const assignedToOther =
+                                  assigned && assigned.lesson_status !== entry.active_lesson_tab;
+                                const otherMeta = assignedToOther
+                                  ? LESSON_REASON_META[assigned.lesson_status]
+                                  : null;
+
                                 return (
                                   <button
                                     key={lessonNum}
                                     type="button"
                                     disabled={isHolidayBlocked}
                                     onClick={() =>
-                                      toggleStudentLessonPermission(st.student_id, lessonNum)
+                                      toggleStudentLessonForTab(
+                                        st.student_id,
+                                        lessonNum,
+                                        st.full_name
+                                      )
                                     }
-                                    aria-pressed={selected}
+                                    aria-pressed={Boolean(assignedToActive)}
+                                    title={
+                                      assignedToOther && otherMeta
+                                        ? `مسجل مسبقاً كـ «${otherMeta.fullLabel}» — لا يمكن تكرار سببين لنفس الدرس`
+                                        : undefined
+                                    }
                                     className={`px-2 py-1 rounded text-[11px] font-semibold border transition-colors whitespace-nowrap ${
-                                      selected
-                                        ? 'bg-indigo-600 text-white border-indigo-600'
-                                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                                      assignedToActive
+                                        ? activeTabMeta.activeClass
+                                        : assignedToOther && otherMeta
+                                          ? otherMeta.conflictBadgeClass
+                                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-slate-400'
                                     }`}
                                   >
                                     {getLessonLabel(lessonNum)}
+                                    {assignedToOther && otherMeta
+                                      ? ` · ${otherMeta.shortLabel}`
+                                      : ''}
                                   </button>
                                 );
                               })}
                             </div>
 
-                            {entry.lesson_numbers.length === 0 ? (
-                              <p className="text-[11px] text-red-600 dark:text-red-400 font-medium">
-                                اختر درساً واحداً على الأقل
-                              </p>
+                            {entry.lesson_details.length === 0 ? (
+                              entry.status === 'lesson_absence' &&
+                              entry.legacy_lessons_count > 0 ? (
+                                <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+                                  سجل سابق بعدد{' '}
+                                  {entry.legacy_lessons_count.toLocaleString('ar-IQ')} دروس — اختر
+                                  أرقام الدروس لتحديده بدقة أو احفظ كما هو.
+                                </p>
+                              ) : (
+                                <p className="text-[11px] text-red-600 dark:text-red-400 font-medium">
+                                  اختر درساً واحداً على الأقل
+                                </p>
+                              )
                             ) : (
-                              <p
-                                className={`text-[11px] font-medium ${
-                                  effectiveLessonPermCounted
-                                    ? 'text-amber-700 dark:text-amber-400'
-                                    : 'text-indigo-700 dark:text-indigo-400'
-                                }`}
-                              >
-                                {entry.lesson_numbers.length.toLocaleString('ar-IQ')}{' '}
-                                {entry.lesson_numbers.length === 1 ? 'درس' : 'دروس'} ·{' '}
-                                {effectiveLessonPermCounted
-                                  ? isUnchangedSavedLessonPermission
-                                    ? 'محتسبة في العداد (وفق المسجل)'
-                                    : 'تُحتسب في العداد المتراكم'
-                                  : isUnchangedSavedLessonPermission
-                                    ? 'غير محتسبة غياباً (وفق المسجل)'
-                                    : 'لا تُحتسب غياباً'}
-                              </p>
+                              <div className="space-y-0.5 text-[11px]">
+                                <p className="font-semibold text-slate-700 dark:text-slate-200 tabular-nums">
+                                  المحدد: {entry.lesson_details.length.toLocaleString('ar-IQ')}{' '}
+                                  {entry.lesson_details.length === 1 ? 'درس' : 'دروس'} · المضاف
+                                  للعداد:{' '}
+                                  <span className="text-teal-700 dark:text-teal-400 font-bold">
+                                    {totalCountedLessonsInDraft.toLocaleString('ar-IQ')}
+                                  </span>
+                                </p>
+                                {permLessonsCount > 0 && (
+                                  <p
+                                    className={`font-medium ${
+                                      effectiveLessonPermCounted
+                                        ? 'text-amber-700 dark:text-amber-400'
+                                        : 'text-indigo-700 dark:text-indigo-400'
+                                    }`}
+                                  >
+                                    رخصة الدروس ({permLessonsCount.toLocaleString('ar-IQ')}):{' '}
+                                    {effectiveLessonPermCounted
+                                      ? isUnchangedSavedLessonPermission
+                                        ? 'محتسبة في العداد الموحد (وفق المسجل)'
+                                        : 'تُحتسب في العداد الموحد'
+                                      : isUnchangedSavedLessonPermission
+                                        ? 'غير محتسبة غياباً (وفق المسجل)'
+                                        : 'لا تُحتسب غياباً'}
+                                  </p>
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
@@ -1209,8 +1418,8 @@ export function AbsencesView({
         title={sheet?.session ? 'تأكيد تعديل سجل الغياب السابق' : 'تأكيد حفظ سجل الغياب'}
         message={
           sheet?.session
-            ? `توجد بيانات محفوظة مسبقاً لشعبة "${sheet.section_name}" بتاريخ ${sheet.attendance_date}. هل تريد حفظ التعديلات (حاضر: ${draftSummary.present}، غياب يوم: ${draftSummary.full_day}، غياب درس: ${draftSummary.lesson_absence}، مجاز: ${draftSummary.full_day_leave}، رخصة درس: ${draftSummary.lesson_permission}) وإعادة احتساب الأرصدة؟`
-            : `هل تريد تأكيد حفظ سجل الحضور والإجازات لشعبة "${sheet?.section_name ?? ''}" بتاريخ ${sheet?.attendance_date ?? ''}؟ (حاضر: ${draftSummary.present}، غياب يوم: ${draftSummary.full_day}، غياب درس: ${draftSummary.lesson_absence}، مجاز: ${draftSummary.full_day_leave}، رخصة درس: ${draftSummary.lesson_permission})`
+            ? `توجد بيانات محفوظة مسبقاً لشعبة "${sheet.section_name}" بتاريخ ${sheet.attendance_date}. هل تريد حفظ التعديلات (حاضر: ${draftSummary.present}، غياب يوم: ${draftSummary.full_day}، غياب درس: ${draftSummary.lesson_absence}، هروب: ${draftSummary.lesson_escape}، مجاز: ${draftSummary.full_day_leave}، رخصة درس: ${draftSummary.lesson_permission}) وإعادة احتساب الأرصدة؟`
+            : `هل تريد تأكيد حفظ سجل الحضور والإجازات لشعبة "${sheet?.section_name ?? ''}" بتاريخ ${sheet?.attendance_date ?? ''}؟ (حاضر: ${draftSummary.present}، غياب يوم: ${draftSummary.full_day}، غياب درس: ${draftSummary.lesson_absence}، هروب: ${draftSummary.lesson_escape}، مجاز: ${draftSummary.full_day_leave}، رخصة درس: ${draftSummary.lesson_permission})`
         }
         confirmLabel={sheet?.session ? 'نعم، حفظ التعديلات' : 'نعم، احفظ السجل'}
         danger={false}
@@ -1264,7 +1473,7 @@ export function AbsencesView({
 
             {detailStudent && (
               <div className="p-4 sm:p-6 overflow-y-auto space-y-5 sm:space-y-6">
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-center">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-center">
                   <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       إجمالي أيام الغياب
@@ -1291,14 +1500,22 @@ export function AbsencesView({
                   </div>
                   <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      العداد المتراكم الحالي
+                      العداد الموحد الحالي
                     </p>
                     <p className="text-xl font-bold text-teal-700 dark:text-teal-400 mt-1 tabular-nums">
                       {detailStudent.pending_lessons.toLocaleString('ar-IQ')} /{' '}
                       {detailStudent.lessons_per_absence_day.toLocaleString('ar-IQ')}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3 col-span-2 sm:col-span-1">
+                  <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      دروس الهروب المسجلة
+                    </p>
+                    <p className="text-xl font-bold text-orange-600 dark:text-orange-400 mt-1 tabular-nums">
+                      {detailStudent.lesson_escape_lessons.toLocaleString('ar-IQ')}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       الإجازات والرخص
                     </p>
@@ -1335,19 +1552,45 @@ export function AbsencesView({
                             <th className="py-2 px-3 font-semibold whitespace-nowrap">
                               الحد المطبق
                             </th>
+                            <th className="py-2 px-3 font-semibold whitespace-nowrap">
+                              تفاصيل الدروس المساهمة
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                           {detailStudent.conversions.map((c) => (
                             <tr key={c.id}>
-                              <td className="py-2 px-3 font-medium tabular-nums whitespace-nowrap">
+                              <td className="py-2 px-3 font-medium tabular-nums whitespace-nowrap align-top">
                                 {c.converted_date}
                               </td>
-                              <td className="py-2 px-3 tabular-nums whitespace-nowrap">
+                              <td className="py-2 px-3 tabular-nums whitespace-nowrap align-top">
                                 {c.lessons_consumed.toLocaleString('ar-IQ')} دروس
                               </td>
-                              <td className="py-2 px-3 tabular-nums text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                              <td className="py-2 px-3 tabular-nums text-slate-500 dark:text-slate-400 whitespace-nowrap align-top">
                                 {c.threshold_used.toLocaleString('ar-IQ')} دروس
+                              </td>
+                              <td className="py-2 px-3">
+                                {c.contributing_lessons && c.contributing_lessons.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {c.contributing_lessons.map((item, cIdx) => {
+                                      const meta = LESSON_REASON_META[item.lesson_status];
+                                      return (
+                                        <span
+                                          key={`${c.id}-${item.absence_id}-${item.lesson_number ?? cIdx}`}
+                                          className={`px-1.5 py-0.5 rounded border text-[10.5px] font-semibold tabular-nums ${meta.conflictBadgeClass}`}
+                                        >
+                                          {item.absence_date} ·{' '}
+                                          {item.lesson_number
+                                            ? getLessonLabel(item.lesson_number)
+                                            : 'درس'}{' '}
+                                          ({meta.shortLabel})
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
                               </td>
                             </tr>
                           ))}
@@ -1386,74 +1629,102 @@ export function AbsencesView({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                          {detailStudent.records.map((rec) => (
-                            <tr key={rec.id}>
-                              <td className="py-2 px-3 font-medium tabular-nums whitespace-nowrap">
-                                {rec.absence_date}
-                              </td>
-                              <td className="py-2 px-3 whitespace-nowrap">
-                                {rec.grade_name} · شعبة {rec.section_name}
-                              </td>
-                              <td className="py-2 px-3 font-semibold whitespace-nowrap">
-                                {rec.status === 'present' ? (
-                                  <span className="text-emerald-700 dark:text-emerald-400">
-                                    حاضر
-                                  </span>
-                                ) : rec.status === 'full_day' ? (
-                                  <span className="text-red-600 dark:text-red-400">
-                                    غياب يوم كامل
-                                  </span>
-                                ) : rec.status === 'lesson_absence' ? (
-                                  <span className="text-amber-700 dark:text-amber-400">
-                                    غائب عن درس
-                                  </span>
-                                ) : rec.status === 'full_day_leave' ? (
-                                  <span className="text-sky-700 dark:text-sky-400">
-                                    {rec.leave_type === 'sick_leave'
-                                      ? 'مجاز يوم كامل (مرضية)'
-                                      : 'مجاز يوم كامل (رخصة يومية)'}
-                                  </span>
-                                ) : (
-                                  <span className="text-indigo-700 dark:text-indigo-400">
-                                    رخصة عن درس
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-2 px-3 tabular-nums">
-                                {rec.status === 'lesson_absence' ? (
-                                  `${rec.lessons_count.toLocaleString('ar-IQ')} درس`
-                                ) : rec.status === 'lesson_permission' ? (
-                                  <span>{formatLessonList(rec.lesson_numbers)}</span>
-                                ) : rec.status === 'full_day_leave' ? (
-                                  rec.leave_type === 'sick_leave' ? (
-                                    'إجازة مرضية'
+                          {detailStudent.records.map((rec) => {
+                            const hasMixedReasons =
+                              rec.lesson_details &&
+                              new Set(rec.lesson_details.map((d) => d.lesson_status)).size > 1;
+                            return (
+                              <tr key={rec.id}>
+                                <td className="py-2 px-3 font-medium tabular-nums whitespace-nowrap">
+                                  {rec.absence_date}
+                                </td>
+                                <td className="py-2 px-3 whitespace-nowrap">
+                                  {rec.grade_name} · شعبة {rec.section_name}
+                                </td>
+                                <td className="py-2 px-3 font-semibold whitespace-nowrap">
+                                  {rec.status === 'present' ? (
+                                    <span className="text-emerald-700 dark:text-emerald-400">
+                                      حاضر
+                                    </span>
+                                  ) : rec.status === 'full_day' ? (
+                                    <span className="text-red-600 dark:text-red-400">
+                                      غياب يوم كامل
+                                    </span>
+                                  ) : rec.status === 'full_day_leave' ? (
+                                    <span className="text-sky-700 dark:text-sky-400">
+                                      {rec.leave_type === 'sick_leave'
+                                        ? 'مجاز يوم كامل (مرضية)'
+                                        : 'مجاز يوم كامل (رخصة يومية)'}
+                                    </span>
+                                  ) : hasMixedReasons ? (
+                                    <span className="text-rose-700 dark:text-rose-400">
+                                      دروس بحالات متعددة
+                                    </span>
+                                  ) : rec.status === 'lesson_escape' ? (
+                                    <span className="text-orange-700 dark:text-orange-400">
+                                      هروب من درس
+                                    </span>
+                                  ) : rec.status === 'lesson_absence' ? (
+                                    <span className="text-amber-700 dark:text-amber-400">
+                                      غائب عن درس
+                                    </span>
                                   ) : (
-                                    'رخصة يومية'
-                                  )
-                                ) : (
-                                  '—'
-                                )}
-                              </td>
-                              <td className="py-2 px-3 whitespace-nowrap">
-                                {rec.status === 'present' ? (
-                                  <span className="text-slate-400 dark:text-slate-500">—</span>
-                                ) : rec.counted_as_absence === 1 ? (
-                                  <span className="text-red-600 dark:text-red-400 font-semibold">
-                                    {rec.status === 'lesson_absence' || rec.status === 'lesson_permission'
-                                      ? 'يُحتسب في عداد الدروس'
-                                      : 'يُحتسب غياب يوم كامل'}
-                                  </span>
-                                ) : (
-                                  <span className="text-emerald-700 dark:text-emerald-400 font-medium">
-                                    لا يُحتسب غياباً
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-2 px-3 text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
-                                {rec.updated_at}
-                              </td>
-                            </tr>
-                          ))}
+                                    <span className="text-indigo-700 dark:text-indigo-400">
+                                      رخصة عن درس
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2 px-3 tabular-nums">
+                                  {rec.lesson_details && rec.lesson_details.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      {rec.lesson_details.map((d) => {
+                                        const meta = LESSON_REASON_META[d.lesson_status];
+                                        return (
+                                          <span
+                                            key={d.lesson_number}
+                                            className={`px-1.5 py-0.5 rounded border text-[10.5px] font-semibold ${meta.conflictBadgeClass}`}
+                                          >
+                                            {getLessonLabel(d.lesson_number)} ({meta.shortLabel})
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : rec.status === 'lesson_absence' ||
+                                    rec.status === 'lesson_escape' ? (
+                                    `${rec.lessons_count.toLocaleString('ar-IQ')} درس`
+                                  ) : rec.status === 'lesson_permission' ? (
+                                    <span>{formatLessonList(rec.lesson_numbers)}</span>
+                                  ) : rec.status === 'full_day_leave' ? (
+                                    rec.leave_type === 'sick_leave' ? (
+                                      'إجازة مرضية'
+                                    ) : (
+                                      'رخصة يومية'
+                                    )
+                                  ) : (
+                                    '—'
+                                  )}
+                                </td>
+                                <td className="py-2 px-3 whitespace-nowrap">
+                                  {rec.status === 'present' ? (
+                                    <span className="text-slate-400 dark:text-slate-500">—</span>
+                                  ) : rec.counted_as_absence === 1 ? (
+                                    <span className="text-red-600 dark:text-red-400 font-semibold">
+                                      {isLessonStatus(rec.status)
+                                        ? 'يُحتسب في العداد الموحد'
+                                        : 'يُحتسب غياب يوم كامل'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+                                      لا يُحتسب غياباً
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2 px-3 text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
+                                  {rec.updated_at}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>

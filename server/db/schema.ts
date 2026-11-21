@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS absences (
   grade_id INTEGER NOT NULL REFERENCES grades(id) ON DELETE RESTRICT,
   section_id INTEGER NOT NULL REFERENCES sections(id) ON DELETE RESTRICT,
   absence_date TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('present', 'full_day', 'lesson_absence', 'full_day_leave', 'lesson_permission')),
+  status TEXT NOT NULL CHECK (status IN ('present', 'full_day', 'lesson_absence', 'full_day_leave', 'lesson_permission', 'lesson_escape')),
   lessons_count INTEGER NOT NULL DEFAULT 0 CHECK (lessons_count >= 0),
   leave_type TEXT CHECK (leave_type IN ('sick_leave', 'daily_permission')),
   permission_type TEXT CHECK (permission_type IN ('daily_permission', 'lesson_permission')),
@@ -101,9 +101,16 @@ CREATE TABLE IF NOT EXISTS absences (
 CREATE TABLE IF NOT EXISTS absence_lesson_details (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   absence_id INTEGER NOT NULL REFERENCES absences(id) ON DELETE CASCADE,
+  student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  absence_date TEXT NOT NULL,
   lesson_number INTEGER NOT NULL CHECK (lesson_number >= 1 AND lesson_number <= 12),
+  lesson_status TEXT NOT NULL DEFAULT 'lesson_absence' CHECK (lesson_status IN ('lesson_absence', 'lesson_permission', 'lesson_escape')),
+  counted_as_absence INTEGER NOT NULL DEFAULT 1 CHECK (counted_as_absence IN (0, 1)),
+  permission_rule_snapshot INTEGER CHECK (permission_rule_snapshot IN (0, 1)),
+  threshold_snapshot INTEGER NOT NULL DEFAULT 5 CHECK (threshold_snapshot >= 1),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE(absence_id, lesson_number)
+  UNIQUE(absence_id, lesson_number),
+  UNIQUE(student_id, absence_date, lesson_number)
 );
 
 CREATE TABLE IF NOT EXISTS lesson_converted_days (
@@ -116,6 +123,7 @@ CREATE TABLE IF NOT EXISTS lesson_converted_days (
   converted_date TEXT NOT NULL,
   lessons_consumed INTEGER NOT NULL CHECK (lessons_consumed >= 1),
   threshold_used INTEGER NOT NULL CHECK (threshold_used >= 1),
+  contributing_lessons_json TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

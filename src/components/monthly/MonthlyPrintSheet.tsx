@@ -130,6 +130,10 @@ function getPrintCellClasses(kind: MonthlyCellStatusKind): string {
       return 'bg-purple-100 text-purple-900 font-extrabold';
     case 'lesson_absence':
       return 'bg-amber-100 text-amber-900 font-bold';
+    case 'lesson_escape':
+      return 'bg-orange-100 text-orange-900 font-bold';
+    case 'lesson_mixed':
+      return 'bg-rose-100 text-rose-900 font-bold';
     case 'sick_leave':
       return 'bg-teal-100 text-teal-900 font-bold';
     case 'daily_permission':
@@ -155,6 +159,10 @@ function getStandaloneCellCssClass(kind: MonthlyCellStatusKind): string {
       return 'cell-lesson-converted';
     case 'lesson_absence':
       return 'cell-lesson-absence';
+    case 'lesson_escape':
+      return 'cell-lesson-escape';
+    case 'lesson_mixed':
+      return 'cell-lesson-mixed';
     case 'sick_leave':
       return 'cell-sick-leave';
     case 'daily_permission':
@@ -211,13 +219,12 @@ export function buildStandalonePrintableHtml(
         ? `<th class="notes-th">الملاحظات</th>`
         : '';
 
+      const studentsWithManualNotes = chunk.includeNotes
+        ? data.students.filter((st) => Boolean(st.manual_note && st.manual_note.trim()))
+        : [];
+
       const rowsHtml = data.students
         .map((st, idx) => {
-          const notesList = [
-            ...st.auto_notes,
-            ...(st.manual_note ? [`ملاحظة الإدارة: ${st.manual_note}`] : []),
-          ];
-
           const dayCellsHtml = chunk.days
             .map((d) => {
               const c = st.days[d.day_of_month];
@@ -237,12 +244,19 @@ export function buildStandalonePrintableHtml(
               <td class="num-cell tot-counted-cell">${escapeHtml(st.total_counted_absence_days)}</td>`
             : '';
 
+          let notesInnerHtml = '';
+          if (st.compact_notes_summary) {
+            notesInnerHtml += `<div class="notes-numeric">${escapeHtml(st.compact_notes_summary)}</div>`;
+          }
+          if (st.manual_note) {
+            notesInnerHtml += `<div class="notes-manual"><strong>ملاحظة يدوية:</strong> ${escapeHtml(st.manual_note)}</div>`;
+          }
+          if (!notesInnerHtml) {
+            notesInnerHtml = '<span class="muted-note">لا توجد ملاحظات</span>';
+          }
+
           const notesCellHtml = chunk.includeNotes
-            ? `<td class="notes-cell">${
-                notesList.length > 0
-                  ? escapeHtml(notesList.join(' | '))
-                  : '<span class="muted-note">لا توجد ملاحظات</span>'
-              }</td>`
+            ? `<td class="notes-cell">${notesInnerHtml}</td>`
             : '';
 
           return `
@@ -255,6 +269,24 @@ export function buildStandalonePrintableHtml(
             </tr>`;
         })
         .join('');
+
+      const manualSummarySectionHtml =
+        chunk.includeNotes && studentsWithManualNotes.length > 0
+          ? `
+          <div class="manual-notes-summary-box">
+            <div class="manual-notes-summary-title">
+              ملخص الملاحظات الإدارية اليدوية (${escapeHtml(studentsWithManualNotes.length)}) — منفصلة عن أعداد الغياب والرخص والهروب
+            </div>
+            <div class="manual-notes-summary-list">
+              ${studentsWithManualNotes
+                .map(
+                  (st) =>
+                    `<div class="manual-notes-summary-item"><strong>${escapeHtml(st.original_order)}. ${escapeHtml(st.full_name)}:</strong> ${escapeHtml(st.manual_note)}</div>`
+                )
+                .join('')}
+            </div>
+          </div>`
+          : '';
 
       const subtitleSuffix =
         chunk.totalChunks > 1 ? ` (جزء ${chunk.chunkIndex} من ${chunk.totalChunks})` : '';
@@ -282,7 +314,8 @@ export function buildStandalonePrintableHtml(
             <span><strong class="legend-present">✓</strong> = حاضر</span>
             <span><strong>غ</strong> = غياب يوم كامل</span>
             <span><strong>ج</strong> = يوم من تراكم الدروس (${escapeHtml(data.school_settings.lessons_per_absence_day)} دروس)</span>
-            <span><strong>د١..</strong> = عدد الدروس الغائبة</span>
+            <span><strong>د١..</strong> = غياب دروس</span>
+            <span><strong>هـ١..</strong> = هروب من دروس</span>
             <span><strong>م</strong> = إجازة مرضية (لا تُحسب)</span>
             <span><strong>ر</strong> = رخصة يومية</span>
             <span><strong>ح١..</strong> = رخصة عن درس</span>
@@ -303,6 +336,8 @@ export function buildStandalonePrintableHtml(
               ${rowsHtml}
             </tbody>
           </table>
+
+          ${manualSummarySectionHtml}
 
           <footer class="signature-footer">
             <div>مسؤول الغيابات: .................................</div>
@@ -564,6 +599,15 @@ export function buildStandalonePrintableHtml(
         background: #fef3c7 !important;
         color: #78350f !important;
       }
+      .cell-lesson-escape {
+        background: #ffedd5 !important;
+        color: #9a3412 !important;
+      }
+      .cell-lesson-mixed {
+        background: #ffe4e6 !important;
+        color: #9f1239 !important;
+        font-size: 9px !important;
+      }
       .cell-sick-leave {
         background: #ccfbf1 !important;
         color: #134e4a !important;
@@ -589,6 +633,39 @@ export function buildStandalonePrintableHtml(
         padding: 4px 8px !important;
         font-size: 10px;
         line-height: 1.35;
+      }
+      .notes-numeric {
+        font-weight: 700;
+        color: #0f172a;
+      }
+      .notes-manual {
+        margin-top: 2px;
+        padding-top: 2px;
+        border-top: 1px dashed #99f6e4;
+        color: #115e59;
+        font-size: 9.5px;
+      }
+      .manual-notes-summary-box {
+        margin-top: 10px;
+        padding: 7px 10px;
+        border: 1px solid #99f6e4;
+        background: #f0fdfa;
+        border-radius: 4px;
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      .manual-notes-summary-title {
+        font-size: 10.5px;
+        font-weight: 800;
+        color: #115e59;
+        margin-bottom: 4px;
+      }
+      .manual-notes-summary-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 14px;
+        font-size: 10px;
+        color: #134e4a;
       }
       .muted-note {
         color: #94a3b8;
@@ -746,7 +823,10 @@ export function MonthlyPrintSheet({
               <strong>ج</strong> = يوم من تراكم الدروس ({data.school_settings.lessons_per_absence_day} دروس)
             </span>
             <span>
-              <strong>د١..</strong> = عدد الدروس الغائبة
+              <strong>د١..</strong> = غياب دروس
+            </span>
+            <span>
+              <strong>هـ١..</strong> = هروب من دروس
             </span>
             <span>
               <strong>م</strong> = إجازة مرضية (لا تُحسب)
@@ -818,74 +898,101 @@ export function MonthlyPrintSheet({
               </tr>
             </thead>
             <tbody>
-              {data.students.map((st, idx) => {
-                const notesList = [
-                  ...st.auto_notes,
-                  ...(st.manual_note ? [`ملاحظة الإدارة: ${st.manual_note}`] : []),
-                ];
-                return (
-                  <tr key={st.student_id} className={idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'}>
-                    <td className="border border-slate-300 px-1 py-1 text-center font-medium">
-                      {st.original_order}
-                    </td>
-                    <td className="border border-slate-300 px-2 py-1 text-right font-bold text-slate-900 whitespace-nowrap">
-                      {st.full_name}
-                    </td>
+              {data.students.map((st, idx) => (
+                <tr key={st.student_id} className={idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'}>
+                  <td className="border border-slate-300 px-1 py-1 text-center font-medium">
+                    {st.original_order}
+                  </td>
+                  <td className="border border-slate-300 px-2 py-1 text-right font-bold text-slate-900 whitespace-nowrap">
+                    {st.full_name}
+                  </td>
 
-                    {chunk.days.map((d) => {
-                      const c = st.days[d.day_of_month];
-                      return (
-                        <td
-                          key={d.day_of_month}
-                          className={`border border-slate-300 px-0.5 py-1 text-center ${getPrintCellClasses(
-                            c.status_kind
-                          )}`}
-                        >
-                          {c.symbol}
-                        </td>
-                      );
-                    })}
-
-                    {chunk.includeTotals && (
-                      <>
-                        <td className="border border-slate-300 px-1 py-1 text-center font-semibold">
-                          {st.direct_full_days}
-                        </td>
-                        <td className="border border-slate-300 px-1 py-1 text-center font-semibold">
-                          {st.converted_lesson_days}
-                        </td>
-                        <td className="border border-slate-300 px-1 py-1 text-center">
-                          {st.missed_lessons_count}
-                        </td>
-                        <td className="border border-slate-300 px-1 py-1 text-center">
-                          {st.sick_leave_days}
-                        </td>
-                        <td className="border border-slate-300 px-1 py-1 text-center">
-                          {st.daily_permission_days}
-                        </td>
-                        <td className="border border-slate-300 px-1 py-1 text-center">
-                          {st.lesson_permission_records}
-                        </td>
-                        <td className="border border-slate-300 px-1 py-1 text-center font-extrabold text-red-900 bg-red-50">
-                          {st.total_counted_absence_days}
-                        </td>
-                      </>
-                    )}
-
-                    {chunk.includeNotes && (
-                      <td className="border border-slate-300 px-2 py-1 text-right text-[10px] leading-snug">
-                        {notesList.length > 0 ? (
-                          notesList.join(' | ')
-                        ) : (
-                          <span className="text-slate-400">لا توجد ملاحظات</span>
-                        )}
+                  {chunk.days.map((d) => {
+                    const c = st.days[d.day_of_month];
+                    return (
+                      <td
+                        key={d.day_of_month}
+                        className={`border border-slate-300 px-0.5 py-1 text-center ${getPrintCellClasses(
+                          c.status_kind
+                        )}`}
+                      >
+                        {c.symbol}
                       </td>
-                    )}
-                  </tr>
-                );
-              })}
+                    );
+                  })}
+
+                  {chunk.includeTotals && (
+                    <>
+                      <td className="border border-slate-300 px-1 py-1 text-center font-semibold">
+                        {st.direct_full_days}
+                      </td>
+                      <td className="border border-slate-300 px-1 py-1 text-center font-semibold">
+                        {st.converted_lesson_days}
+                      </td>
+                      <td className="border border-slate-300 px-1 py-1 text-center">
+                        {st.missed_lessons_count}
+                      </td>
+                      <td className="border border-slate-300 px-1 py-1 text-center">
+                        {st.sick_leave_days}
+                      </td>
+                      <td className="border border-slate-300 px-1 py-1 text-center">
+                        {st.daily_permission_days}
+                      </td>
+                      <td className="border border-slate-300 px-1 py-1 text-center">
+                        {st.lesson_permission_records}
+                      </td>
+                      <td className="border border-slate-300 px-1 py-1 text-center font-extrabold text-red-900 bg-red-50">
+                        {st.total_counted_absence_days}
+                      </td>
+                    </>
+                  )}
+
+                  {chunk.includeNotes && (
+                    <td className="border border-slate-300 px-2 py-1 text-right text-[10px] leading-snug">
+                      {st.compact_notes_summary || st.manual_note ? (
+                        <div className="space-y-0.5">
+                          {st.compact_notes_summary && (
+                            <p className="font-bold text-slate-900">{st.compact_notes_summary}</p>
+                          )}
+                          {st.manual_note && (
+                            <p className="text-[9.5px] text-teal-800 border-t border-dashed border-teal-200 pt-0.5">
+                              <strong>ملاحظة يدوية:</strong> {st.manual_note}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">لا توجد ملاحظات</span>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ))}
             </tbody>
           </table>
+
+          {/* Separate Manual Notes Summary when present (excluded from absence/permission/escape counts) */}
+          {chunk.includeNotes &&
+            data.students.some((st) => Boolean(st.manual_note && st.manual_note.trim())) && (
+              <div className="mt-2.5 px-2.5 py-2 rounded border border-teal-200 bg-teal-50/70 text-[10px] text-teal-950">
+                <p className="font-extrabold text-teal-900 mb-1">
+                  ملخص الملاحظات الإدارية اليدوية (
+                  {data.students.filter((st) => Boolean(st.manual_note && st.manual_note.trim())).length}
+                  ) — منفصلة عن أعداد الغياب والرخص والهروب
+                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {data.students
+                    .filter((st) => Boolean(st.manual_note && st.manual_note.trim()))
+                    .map((st) => (
+                      <div key={st.student_id}>
+                        <strong>
+                          {st.original_order}. {st.full_name}:
+                        </strong>{' '}
+                        {st.manual_note}
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
 
           {/* Signature Footer */}
           <footer className="mt-4 pt-2 border-t border-slate-300 flex items-center justify-between text-[11px] font-bold text-slate-800">

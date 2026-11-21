@@ -9,16 +9,39 @@ export type NavSectionId =
 
 export type StudentStatus = 'active' | 'transferred_out' | 'graduated' | 'archived';
 
+export type LessonStatusType = 'lesson_absence' | 'lesson_permission' | 'lesson_escape';
+
 export type AbsenceStatus =
   | 'present'
   | 'full_day'
   | 'lesson_absence'
   | 'full_day_leave'
-  | 'lesson_permission';
+  | 'lesson_permission'
+  | 'lesson_escape';
 
 export type LeaveType = 'sick_leave' | 'daily_permission';
 
 export type PermissionType = 'daily_permission' | 'lesson_permission';
+
+export interface LessonDetailInput {
+  lesson_number: number;
+  lesson_status: LessonStatusType;
+}
+
+export interface LessonDetailItem {
+  lesson_number: number;
+  lesson_status: LessonStatusType;
+  counted_as_absence: number;
+  permission_rule_snapshot: number | null;
+  threshold_snapshot: number;
+}
+
+export interface ConversionContributingLesson {
+  absence_id: number;
+  absence_date: string;
+  lesson_number: number | null;
+  lesson_status: LessonStatusType;
+}
 
 export interface AcademicYear {
   id: number;
@@ -233,6 +256,7 @@ export interface StudentAbsenceSheetRow {
   leave_type: LeaveType | null;
   permission_type: PermissionType | null;
   lesson_numbers: number[];
+  lesson_details: LessonDetailItem[];
   counted_as_absence: number;
   permission_rule_snapshot: number | null;
   applied_settings_at: string | null;
@@ -246,6 +270,9 @@ export interface StudentAbsenceSheetRow {
   sick_leave_days: number;
   daily_permission_days: number;
   lesson_permission_records: number;
+  lesson_absence_lessons: number;
+  lesson_escape_lessons: number;
+  counted_lesson_permission_lessons: number;
   converted_lesson_days: number;
   total_full_days: number;
   pending_lessons: number;
@@ -285,6 +312,7 @@ export interface AttendanceEntryInput {
   lessons_count?: number;
   leave_type?: LeaveType | null;
   lesson_numbers?: number[];
+  lesson_details?: LessonDetailInput[];
   notes?: string | null;
 }
 
@@ -303,6 +331,7 @@ export interface SaveSectionAttendanceResult {
   lesson_absence_count: number;
   full_day_leave_count: number;
   lesson_permission_count: number;
+  lesson_escape_count: number;
   newly_converted_days: number;
   sheet: SectionAttendanceSheet;
 }
@@ -319,6 +348,9 @@ export interface StudentAbsenceDetailResponse {
   sick_leave_days: number;
   daily_permission_days: number;
   lesson_permission_records: number;
+  lesson_absence_lessons: number;
+  lesson_escape_lessons: number;
+  counted_lesson_permission_lessons: number;
   converted_lesson_days: number;
   total_full_days: number;
   pending_lessons: number;
@@ -331,6 +363,7 @@ export interface StudentAbsenceDetailResponse {
     leave_type: LeaveType | null;
     permission_type: PermissionType | null;
     lesson_numbers: number[];
+    lesson_details: LessonDetailItem[];
     counted_as_absence: number;
     permission_rule_snapshot: number | null;
     applied_settings_at: string | null;
@@ -346,6 +379,7 @@ export interface StudentAbsenceDetailResponse {
     converted_date: string;
     lessons_consumed: number;
     threshold_used: number;
+    contributing_lessons: ConversionContributingLesson[];
     created_at: string;
   }>;
 }
@@ -447,7 +481,9 @@ export type MonthlyCellStatusKind =
   | 'unrecorded'
   | 'full_day'
   | 'lesson_absence'
+  | 'lesson_escape'
   | 'lesson_converted'
+  | 'lesson_mixed'
   | 'sick_leave'
   | 'daily_permission'
   | 'lesson_permission'
@@ -457,22 +493,43 @@ export interface MonthlyDayCellData {
   date: string;
   day_of_month: number;
   day_name: string;
-  symbol: string; // '✓' | 'غ' | 'ج' | 'د١'.. | 'م' | 'ر' | 'ح١'.. | 'ع' | ''
+  symbol: string; // '✓' | 'غ' | 'ج' | 'د١'.. | 'هـ١'.. | 'م' | 'ر' | 'ح١'.. | 'ع' | ''
   status_kind: MonthlyCellStatusKind;
   has_record: boolean;
   record_id: number | null;
   raw_status: AbsenceStatus | null;
   lessons_count: number;
   lesson_numbers: number[];
+  lesson_details: LessonDetailItem[];
   leave_type: LeaveType | null;
   counted_as_absence: boolean;
   contributed_to_counter: boolean;
+  counted_lessons_today: number;
   generated_converted_day: boolean;
   converted_days_count: number;
   threshold_used: number | null;
+  contributing_lessons: ConversionContributingLesson[];
   notes: string | null;
   holiday_info: HolidayCheckResult | null;
   outside_section_membership: boolean;
+}
+
+export type MonthlyNoteCategory =
+  | 'transfer'
+  | 'full_day'
+  | 'sick_leave'
+  | 'daily_permission'
+  | 'lesson_absence'
+  | 'lesson_escape'
+  | 'lesson_permission'
+  | 'lesson_converted';
+
+export interface MonthlyNoteDetailItem {
+  date: string;
+  category: MonthlyNoteCategory;
+  text: string;
+  counted_as_absence?: boolean;
+  count?: number;
 }
 
 export interface MonthlyStudentRow {
@@ -491,6 +548,10 @@ export interface MonthlyStudentRow {
   direct_full_days: number;
   converted_lesson_days: number;
   missed_lessons_count: number;
+  lesson_absence_lessons: number;
+  lesson_escape_lessons: number;
+  counted_lesson_permission_lessons: number;
+  uncounted_lesson_permission_lessons: number;
   sick_leave_days: number;
   daily_permission_days: number;
   counted_daily_permission_days: number;
@@ -498,6 +559,8 @@ export interface MonthlyStudentRow {
   total_counted_absence_days: number;
   year_pending_lessons: number;
   auto_notes: string[];
+  auto_note_items: MonthlyNoteDetailItem[];
+  compact_notes_summary: string;
   manual_note: string | null;
 }
 
@@ -510,6 +573,7 @@ export interface MonthlyRegisterStats {
   total_sick_leave_days: number;
   total_daily_permission_days: number;
   total_lesson_permission_records: number;
+  total_lesson_escape_lessons: number;
 }
 
 export interface MonthlyLegendItem {

@@ -22,6 +22,11 @@ function runSafeMigrations(db: SqliteDb): void {
   const settingsCols = db.prepare('PRAGMA table_info(school_settings)').all() as Array<{
     name: string;
   }>;
+  if (!settingsCols.some((c) => c.name === 'academic_year_id')) {
+    db.exec(
+      'ALTER TABLE school_settings ADD COLUMN academic_year_id INTEGER REFERENCES academic_years(id) ON DELETE SET NULL'
+    );
+  }
   if (!settingsCols.some((c) => c.name === 'lessons_per_absence_day')) {
     db.exec(
       'ALTER TABLE school_settings ADD COLUMN lessons_per_absence_day INTEGER NOT NULL DEFAULT 5'
@@ -48,14 +53,20 @@ function runSafeMigrations(db: SqliteDb): void {
     );
   }
 
-  // 2. Migrate absences table if it lacks Phase 2 statuses OR leaves/permissions columns
+  // 2. Migrate absences table if it lacks Phase 2 statuses, leaves/permissions columns, or lesson_escape
   const absMeta = db
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'absences'")
     .get() as { sql: string } | undefined;
 
-  if (absMeta && (!absMeta.sql.includes('lesson_absence') || !absMeta.sql.includes('full_day_leave'))) {
+  if (
+    absMeta &&
+    (!absMeta.sql.includes('lesson_absence') ||
+      !absMeta.sql.includes('full_day_leave') ||
+      !absMeta.sql.includes('lesson_escape'))
+  ) {
     const absCols = db.prepare('PRAGMA table_info(absences)').all() as Array<{ name: string }>;
     const hasPhase2Cols = absCols.some((c) => c.name === 'lessons_count');
+    const hasLeaveCols = absCols.some((c) => c.name === 'leave_type');
 
     db.pragma('foreign_keys = OFF');
     const migrateTx = db.transaction(() => {
@@ -68,7 +79,7 @@ function runSafeMigrations(db: SqliteDb): void {
           grade_id INTEGER NOT NULL REFERENCES grades(id) ON DELETE RESTRICT,
           section_id INTEGER NOT NULL REFERENCES sections(id) ON DELETE RESTRICT,
           absence_date TEXT NOT NULL,
-          status TEXT NOT NULL CHECK (status IN ('present', 'full_day', 'lesson_absence', 'full_day_leave', 'lesson_permission')),
+          status TEXT NOT NULL CHECK (status IN ('present', 'full_day', 'lesson_absence', 'full_day_leave', 'lesson_permission', 'lesson_escape')),
           lessons_count INTEGER NOT NULL DEFAULT 0 CHECK (lessons_count >= 0),
           leave_type TEXT CHECK (leave_type IN ('sick_leave', 'daily_permission')),
           permission_type TEXT CHECK (permission_type IN ('daily_permission', 'lesson_permission')),
@@ -84,7 +95,22 @@ function runSafeMigrations(db: SqliteDb): void {
         );
       `);
 
-      if (hasPhase2Cols) {
+      if (hasLeaveCols) {
+        db.exec(`
+          INSERT INTO absences_new (
+            id, student_id, enrollment_id, academic_year_id, grade_id, section_id,
+            absence_date, status, lessons_count, leave_type, permission_type, lesson_numbers_json,
+            counted_as_absence, permission_rule_snapshot, applied_settings_at,
+            threshold_snapshot, notes, created_at, updated_at
+          )
+          SELECT
+            id, student_id, enrollment_id, academic_year_id, grade_id, section_id,
+            absence_date, status, lessons_count, leave_type, permission_type, lesson_numbers_json,
+            counted_as_absence, permission_rule_snapshot, applied_settings_at,
+            threshold_snapshot, notes, created_at, updated_at
+          FROM absences;
+        `);
+      } else if (hasPhase2Cols) {
         db.exec(`
           INSERT INTO absences_new (
             id, student_id, enrollment_id, academic_year_id, grade_id, section_id,
@@ -143,8 +169,87 @@ function runSafeMigrations(db: SqliteDb): void {
     db.pragma('foreign_keys = ON');
   }
 
+  // 3. Migrate absence_lesson_details to store per-lesson status, snapshots, and enforce UNIQUE(student_id, absence_date, lesson_number)
+  const detailMeta = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'absence_lesson_details'")
+    .get() as { sql: string } | undefined;
+
+  if (
+    detailMeta &&
+    (!detailMeta.sql.includes('lesson_status') ||
+      !detailMeta.sql.includes('lesson_escape') ||
+      !detailMeta.sql.includes('student_id, absence_date, lesson_number'))
+  ) {
+    db.pragma('foreign_keys = OFF');
+    const migrateDetailsTx = db.transaction(() => {
+      db.exec(`
+        CREATE TABLE absence_lesson_details_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          absence_id INTEGER NOT NULL REFERENCES absences(id) ON DELETE CASCADE,
+          student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+          absence_date TEXT NOT NULL,
+          lesson_number INTEGER NOT NULL CHECK (lesson_number >= 1 AND lesson_number <= 12),
+          lesson_status TEXT NOT NULL DEFAULT 'lesson_absence' CHECK (lesson_status IN ('lesson_absence', 'lesson_permission', 'lesson_escape')),
+          counted_as_absence INTEGER NOT NULL DEFAULT 1 CHECK (counted_as_absence IN (0, 1)),
+          permission_rule_snapshot INTEGER CHECK (permission_rule_snapshot IN (0, 1)),
+          threshold_snapshot INTEGER NOT NULL DEFAULT 5 CHECK (threshold_snapshot >= 1),
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(absence_id, lesson_number),
+          UNIQUE(student_id, absence_date, lesson_number)
+        );
+
+        INSERT OR IGNORE INTO absence_lesson_details_new (
+          id, absence_id, student_id, absence_date, lesson_number,
+          lesson_status, counted_as_absence, permission_rule_snapshot, threshold_snapshot, created_at
+        )
+        SELECT
+          d.id,
+          d.absence_id,
+          a.student_id,
+          a.absence_date,
+          d.lesson_number,
+          CASE
+            WHEN a.status = 'lesson_permission' THEN 'lesson_permission'
+            WHEN a.status = 'lesson_escape' THEN 'lesson_escape'
+            ELSE 'lesson_absence'
+          END,
+          CASE
+            WHEN a.status = 'lesson_permission' THEN a.counted_as_absence
+            ELSE 1
+          END,
+          CASE
+            WHEN a.status = 'lesson_permission' THEN a.permission_rule_snapshot
+            ELSE NULL
+          END,
+          a.threshold_snapshot,
+          d.created_at
+        FROM absence_lesson_details d
+        JOIN absences a ON a.id = d.absence_id;
+
+        DROP TABLE absence_lesson_details;
+        ALTER TABLE absence_lesson_details_new RENAME TO absence_lesson_details;
+
+        CREATE INDEX IF NOT EXISTS idx_absence_lesson_details_absence_id ON absence_lesson_details(absence_id);
+        CREATE INDEX IF NOT EXISTS idx_absence_lesson_details_student_date ON absence_lesson_details(student_id, absence_date);
+      `);
+    });
+    migrateDetailsTx();
+    db.pragma('foreign_keys = ON');
+  }
+
+  // 4. Ensure lesson_converted_days has contributing_lessons_json
+  const convCols = db.prepare('PRAGMA table_info(lesson_converted_days)').all() as Array<{
+    name: string;
+  }>;
+  if (!convCols.some((c) => c.name === 'contributing_lessons_json')) {
+    db.exec('ALTER TABLE lesson_converted_days ADD COLUMN contributing_lessons_json TEXT');
+  }
+
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_absences_year_status_counted ON absences(academic_year_id, status, counted_as_absence);'
+  );
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_absence_lesson_details_student_date ON absence_lesson_details(student_id, absence_date);'
   );
 }
 

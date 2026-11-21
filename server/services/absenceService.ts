@@ -3,7 +3,11 @@ import type {
   AcademicYear,
   AttendanceEntryInput,
   AttendanceSessionInfo,
+  ConversionContributingLesson,
   LeaveType,
+  LessonDetailInput,
+  LessonDetailItem,
+  LessonStatusType,
   PermissionType,
   SaveSectionAttendanceInput,
   SaveSectionAttendanceResult,
@@ -23,6 +27,13 @@ const VALID_STATUSES: ReadonlySet<string> = new Set([
   'lesson_absence',
   'full_day_leave',
   'lesson_permission',
+  'lesson_escape',
+]);
+
+const VALID_LESSON_STATUSES: ReadonlySet<string> = new Set([
+  'lesson_absence',
+  'lesson_permission',
+  'lesson_escape',
 ]);
 
 function validateDateIso(rawDate: string | undefined): string {
@@ -85,9 +96,34 @@ interface NormalizedAbsenceEntry {
   permission_type: PermissionType | null;
   lesson_numbers: number[];
   lesson_numbers_json: string | null;
+  lesson_details: LessonDetailItem[];
   counted_as_absence: number;
   permission_rule_snapshot: number | null;
   notes: string | null;
+}
+
+function isLessonStatus(status: string): status is LessonStatusType {
+  return VALID_LESSON_STATUSES.has(status);
+}
+
+function resolvePrimaryLessonStatus(
+  requestedStatus: AbsenceStatus,
+  details: LessonDetailItem[]
+): LessonStatusType {
+  if (details.length === 0) {
+    return isLessonStatus(requestedStatus) ? requestedStatus : 'lesson_absence';
+  }
+  const hasEscape = details.some((d) => d.lesson_status === 'lesson_escape');
+  const hasAbsence = details.some((d) => d.lesson_status === 'lesson_absence');
+  const hasPermission = details.some((d) => d.lesson_status === 'lesson_permission');
+
+  if (isLessonStatus(requestedStatus) && details.some((d) => d.lesson_status === requestedStatus)) {
+    return requestedStatus;
+  }
+  if (hasEscape) return 'lesson_escape';
+  if (hasAbsence) return 'lesson_absence';
+  if (hasPermission) return 'lesson_permission';
+  return 'lesson_absence';
 }
 
 function normalizeAbsenceEntry(
@@ -106,11 +142,14 @@ function normalizeAbsenceEntry(
 
   const rawLeaveType = entry.leave_type ?? null;
   const rawLessonNumbers = Array.isArray(entry.lesson_numbers) ? entry.lesson_numbers : [];
+  const rawLessonDetails = Array.isArray(entry.lesson_details) ? entry.lesson_details : [];
   const maxDailyLessons = Math.max(1, Math.min(12, settings.daily_lessons_count || 7));
   const maxLessonAbsence = Math.max(12, maxDailyLessons);
+  const currentThreshold = Math.max(1, settings.lessons_per_absence_day || 5);
+  const lessonRuleSnapshot = settings.lesson_permission_counts_as_absence ? 1 : 0;
 
   if (status === 'present' || status === 'full_day') {
-    if (rawLeaveType !== null || rawLessonNumbers.length > 0) {
+    if (rawLeaveType !== null || rawLessonNumbers.length > 0 || rawLessonDetails.length > 0) {
       throw new ServiceError('بيانات الإجازة أو الدروس تتعارض مع الحالة المختارة.', 400);
     }
     return {
@@ -121,39 +160,15 @@ function normalizeAbsenceEntry(
       permission_type: null,
       lesson_numbers: [],
       lesson_numbers_json: null,
+      lesson_details: [],
       counted_as_absence: status === 'full_day' ? 1 : 0,
       permission_rule_snapshot: null,
       notes: normalizeNullableString(entry.notes),
     };
   }
 
-  if (status === 'lesson_absence') {
-    if (rawLeaveType !== null || rawLessonNumbers.length > 0) {
-      throw new ServiceError('بيانات الإجازة أو أرقام الدروس غير مطلوبة مع حالة غياب الدروس.', 400);
-    }
-    const parsedLessons = Number(entry.lessons_count);
-    if (!Number.isInteger(parsedLessons) || parsedLessons < 1 || parsedLessons > maxLessonAbsence) {
-      throw new ServiceError(
-        `عند اختيار "غائب عن درس" يجب تحديد عدد الدروس كرقم صحيح بين 1 و ${maxLessonAbsence}.`,
-        400
-      );
-    }
-    return {
-      student_id: studentId,
-      status,
-      lessons_count: parsedLessons,
-      leave_type: null,
-      permission_type: null,
-      lesson_numbers: [],
-      lesson_numbers_json: null,
-      counted_as_absence: 1,
-      permission_rule_snapshot: null,
-      notes: normalizeNullableString(entry.notes),
-    };
-  }
-
   if (status === 'full_day_leave') {
-    if (rawLessonNumbers.length > 0) {
+    if (rawLessonNumbers.length > 0 || rawLessonDetails.length > 0) {
       throw new ServiceError('لا يمكن تحديد أرقام دروس مع حالة "مجاز يوم كامل".', 400);
     }
     if (rawLeaveType !== 'sick_leave' && rawLeaveType !== 'daily_permission') {
@@ -172,6 +187,7 @@ function normalizeAbsenceEntry(
         permission_type: null,
         lesson_numbers: [],
         lesson_numbers_json: null,
+        lesson_details: [],
         counted_as_absence: 0,
         permission_rule_snapshot: null,
         notes: normalizeNullableString(entry.notes),
@@ -187,51 +203,157 @@ function normalizeAbsenceEntry(
       permission_type: 'daily_permission',
       lesson_numbers: [],
       lesson_numbers_json: null,
+      lesson_details: [],
       counted_as_absence: dailyRuleSnapshot,
       permission_rule_snapshot: dailyRuleSnapshot,
       notes: normalizeNullableString(entry.notes),
     };
   }
 
-  // status === 'lesson_permission'
+  // Lesson-level statuses: lesson_absence | lesson_permission | lesson_escape
   if (rawLeaveType !== null) {
-    throw new ServiceError('لا يمكن تحديد نوع إجازة يومية مع حالة "رخصة عن درس".', 400);
+    throw new ServiceError('لا يمكن تحديد نوع إجازة يومية مع حالات الدروس.', 400);
   }
 
-  if (rawLessonNumbers.length === 0) {
-    throw new ServiceError(
-      'عند اختيار "رخصة عن درس" يجب تحديد درس واحد على الأقل من قائمة الدروس.',
-      400
+  // Preferred path 1: Explicit per-lesson details (supports single or mixed reasons on different lessons)
+  if (rawLessonDetails.length > 0) {
+    const seenLessonNums = new Set<number>();
+    const normalizedDetails: LessonDetailItem[] = [];
+
+    for (const rawDetail of rawLessonDetails) {
+      const lessonNum = Number(rawDetail?.lesson_number);
+      const lessonStatus = rawDetail?.lesson_status;
+      if (!Number.isInteger(lessonNum) || lessonNum < 1 || lessonNum > maxDailyLessons) {
+        throw new ServiceError(
+          `رقم الدرس (${rawDetail?.lesson_number}) غير صالح. الدروس المتاحة حسب الإعدادات من 1 إلى ${maxDailyLessons}.`,
+          400
+        );
+      }
+      if (!lessonStatus || !isLessonStatus(lessonStatus)) {
+        throw new ServiceError('نوع حالة الدرس المحددة غير صالح.', 400);
+      }
+      if (seenLessonNums.has(lessonNum)) {
+        throw new ServiceError(
+          `لا يجوز تسجيل أكثر من سبب لعدم حضور الطالب في الدرس رقم ${lessonNum} بالتاريخ نفسه.`,
+          409,
+          'DUPLICATE_LESSON_ENTRY'
+        );
+      }
+      seenLessonNums.add(lessonNum);
+
+      const isPerm = lessonStatus === 'lesson_permission';
+      normalizedDetails.push({
+        lesson_number: lessonNum,
+        lesson_status: lessonStatus,
+        counted_as_absence: isPerm ? lessonRuleSnapshot : 1,
+        permission_rule_snapshot: isPerm ? lessonRuleSnapshot : null,
+        threshold_snapshot: currentThreshold,
+      });
+    }
+
+    normalizedDetails.sort((a, b) => a.lesson_number - b.lesson_number);
+    const lessonNumbers = normalizedDetails.map((d) => d.lesson_number);
+    const primaryStatus = resolvePrimaryLessonStatus(status, normalizedDetails);
+    const hasPermissionDetail = normalizedDetails.some(
+      (d) => d.lesson_status === 'lesson_permission'
     );
+    const anyCounted = normalizedDetails.some((d) => d.counted_as_absence === 1);
+
+    return {
+      student_id: studentId,
+      status: primaryStatus,
+      lessons_count: normalizedDetails.length,
+      leave_type: null,
+      permission_type: hasPermissionDetail ? 'lesson_permission' : null,
+      lesson_numbers: lessonNumbers,
+      lesson_numbers_json: JSON.stringify(lessonNumbers),
+      lesson_details: normalizedDetails,
+      counted_as_absence: anyCounted ? 1 : 0,
+      permission_rule_snapshot: hasPermissionDetail ? lessonRuleSnapshot : null,
+      notes: normalizeNullableString(entry.notes),
+    };
   }
 
-  const uniqueSet = new Set<number>();
-  for (const rawNum of rawLessonNumbers) {
-    const num = Number(rawNum);
-    if (!Number.isInteger(num) || num < 1 || num > maxDailyLessons) {
+  // Preferred path 2: Unified lesson_numbers array for the selected lesson status
+  if (rawLessonNumbers.length > 0) {
+    const seenLessonNums = new Set<number>();
+    for (const rawNum of rawLessonNumbers) {
+      const num = Number(rawNum);
+      if (!Number.isInteger(num) || num < 1 || num > maxDailyLessons) {
+        throw new ServiceError(
+          `رقم الدرس (${rawNum}) غير صالح. الدروس المتاحة حسب الإعدادات من 1 إلى ${maxDailyLessons}.`,
+          400
+        );
+      }
+      if (seenLessonNums.has(num)) {
+        throw new ServiceError(
+          `لا يجوز تكرار رقم الدرس (${num}) أكثر من مرة في التاريخ نفسه.`,
+          409,
+          'DUPLICATE_LESSON_ENTRY'
+        );
+      }
+      seenLessonNums.add(num);
+    }
+
+    const sortedLessons = Array.from(seenLessonNums).sort((a, b) => a - b);
+    const isPerm = status === 'lesson_permission';
+    const details: LessonDetailItem[] = sortedLessons.map((num) => ({
+      lesson_number: num,
+      lesson_status: status as LessonStatusType,
+      counted_as_absence: isPerm ? lessonRuleSnapshot : 1,
+      permission_rule_snapshot: isPerm ? lessonRuleSnapshot : null,
+      threshold_snapshot: currentThreshold,
+    }));
+
+    return {
+      student_id: studentId,
+      status,
+      lessons_count: sortedLessons.length,
+      leave_type: null,
+      permission_type: isPerm ? 'lesson_permission' : null,
+      lesson_numbers: sortedLessons,
+      lesson_numbers_json: JSON.stringify(sortedLessons),
+      lesson_details: details,
+      counted_as_absence: isPerm ? lessonRuleSnapshot : 1,
+      permission_rule_snapshot: isPerm ? lessonRuleSnapshot : null,
+      notes: normalizeNullableString(entry.notes),
+    };
+  }
+
+  // Backward-compatible legacy fallback ONLY for historical lesson_absence callers passing lessons_count without lesson_numbers
+  if (status === 'lesson_absence' && entry.lessons_count !== undefined && entry.lessons_count !== null) {
+    const parsedLessons = Number(entry.lessons_count);
+    if (!Number.isInteger(parsedLessons) || parsedLessons < 1 || parsedLessons > maxLessonAbsence) {
       throw new ServiceError(
-        `رقم الدرس (${rawNum}) غير صالح. الدروس المتاحة حسب الإعدادات من 1 إلى ${maxDailyLessons}.`,
+        `عند اختيار "غائب عن درس" يجب تحديد الدروس أو عدد صحيح بين 1 و ${maxLessonAbsence}.`,
         400
       );
     }
-    uniqueSet.add(num);
+    return {
+      student_id: studentId,
+      status: 'lesson_absence',
+      lessons_count: parsedLessons,
+      leave_type: null,
+      permission_type: null,
+      lesson_numbers: [],
+      lesson_numbers_json: null,
+      lesson_details: [],
+      counted_as_absence: 1,
+      permission_rule_snapshot: null,
+      notes: normalizeNullableString(entry.notes),
+    };
   }
 
-  const sortedLessons = Array.from(uniqueSet).sort((a, b) => a - b);
-  const lessonRuleSnapshot = settings.lesson_permission_counts_as_absence ? 1 : 0;
-
-  return {
-    student_id: studentId,
-    status: 'lesson_permission',
-    lessons_count: sortedLessons.length,
-    leave_type: null,
-    permission_type: 'lesson_permission',
-    lesson_numbers: sortedLessons,
-    lesson_numbers_json: JSON.stringify(sortedLessons),
-    counted_as_absence: lessonRuleSnapshot,
-    permission_rule_snapshot: lessonRuleSnapshot,
-    notes: normalizeNullableString(entry.notes),
-  };
+  const label =
+    status === 'lesson_permission'
+      ? 'رخصة عن درس'
+      : status === 'lesson_escape'
+        ? 'هروب من درس'
+        : 'غائب عن درس';
+  throw new ServiceError(
+    `عند اختيار "${label}" يجب تحديد درس واحد على الأقل من قائمة الدروس.`,
+    400
+  );
 }
 
 function parseLessonNumbersFallback(jsonStr: string | null): number[] {
@@ -250,54 +372,124 @@ function parseLessonNumbersFallback(jsonStr: string | null): number[] {
   return [];
 }
 
-function loadLessonNumbersMap(db: SqliteDb, absenceIds: number[]): Map<number, number[]> {
-  const map = new Map<number, number[]>();
+function loadLessonDetailsMap(db: SqliteDb, absenceIds: number[]): Map<number, LessonDetailItem[]> {
+  const map = new Map<number, LessonDetailItem[]>();
   if (absenceIds.length === 0) return map;
 
   const placeholders = absenceIds.map(() => '?').join(',');
   const rows = db
     .prepare(
-      `SELECT absence_id, lesson_number
+      `SELECT absence_id, lesson_number, lesson_status, counted_as_absence,
+              permission_rule_snapshot, threshold_snapshot
        FROM absence_lesson_details
        WHERE absence_id IN (${placeholders})
        ORDER BY lesson_number ASC`
     )
-    .all(...absenceIds) as Array<{ absence_id: number; lesson_number: number }>;
+    .all(...absenceIds) as Array<{
+    absence_id: number;
+    lesson_number: number;
+    lesson_status: LessonStatusType;
+    counted_as_absence: number;
+    permission_rule_snapshot: number | null;
+    threshold_snapshot: number;
+  }>;
 
   for (const r of rows) {
+    const item: LessonDetailItem = {
+      lesson_number: r.lesson_number,
+      lesson_status: r.lesson_status,
+      counted_as_absence: r.counted_as_absence,
+      permission_rule_snapshot: r.permission_rule_snapshot,
+      threshold_snapshot: r.threshold_snapshot,
+    };
     const list = map.get(r.absence_id);
-    if (list) list.push(r.lesson_number);
-    else map.set(r.absence_id, [r.lesson_number]);
+    if (list) list.push(item);
+    else map.set(r.absence_id, [item]);
   }
   return map;
+}
+
+function parseContributingLessonsJson(jsonStr: string | null): ConversionContributingLesson[] {
+  if (!jsonStr) return [];
+  try {
+    const arr = JSON.parse(jsonStr);
+    if (Array.isArray(arr)) {
+      return arr.filter(
+        (item) =>
+          item &&
+          typeof item === 'object' &&
+          typeof item.absence_date === 'string' &&
+          typeof item.lesson_status === 'string'
+      ) as ConversionContributingLesson[];
+    }
+  } catch {
+    // ignore malformed json
+  }
+  return [];
 }
 
 function syncAbsenceLessonDetails(
   db: SqliteDb,
   absenceId: number,
-  lessonNumbers: number[]
+  studentId: number,
+  absenceDate: string,
+  lessonDetails: LessonDetailItem[]
 ): void {
   db.prepare('DELETE FROM absence_lesson_details WHERE absence_id = ?').run(absenceId);
-  if (lessonNumbers.length === 0) return;
+  if (lessonDetails.length === 0) return;
+
+  const checkConflict = db.prepare(
+    `SELECT lesson_number, lesson_status
+     FROM absence_lesson_details
+     WHERE student_id = ? AND absence_date = ? AND lesson_number = ? AND absence_id != ?`
+  );
 
   const insertDetail = db.prepare(
-    'INSERT INTO absence_lesson_details (absence_id, lesson_number) VALUES (?, ?)'
+    `INSERT INTO absence_lesson_details
+       (absence_id, student_id, absence_date, lesson_number, lesson_status,
+        counted_as_absence, permission_rule_snapshot, threshold_snapshot)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
-  for (const lessonNum of lessonNumbers) {
-    insertDetail.run(absenceId, lessonNum);
+
+  for (const detail of lessonDetails) {
+    const conflict = checkConflict.get(studentId, absenceDate, detail.lesson_number, absenceId) as
+      | { lesson_number: number; lesson_status: LessonStatusType }
+      | undefined;
+    if (conflict) {
+      throw new ServiceError(
+        `لا يجوز تسجيل أكثر من سبب لعدم حضور الطالب في الدرس رقم ${detail.lesson_number} بتاريخ ${absenceDate}.`,
+        409,
+        'DUPLICATE_LESSON_ENTRY'
+      );
+    }
+    insertDetail.run(
+      absenceId,
+      studentId,
+      absenceDate,
+      detail.lesson_number,
+      detail.lesson_status,
+      detail.counted_as_absence,
+      detail.permission_rule_snapshot,
+      Math.max(1, detail.threshold_snapshot || 5)
+    );
   }
 }
 
 function isLessonCounterStatus(status: AbsenceStatus): boolean {
-  return status === 'lesson_absence' || status === 'lesson_permission';
+  return (
+    status === 'lesson_absence' ||
+    status === 'lesson_permission' ||
+    status === 'lesson_escape'
+  );
 }
 
 /**
  * Deterministically reconciles converted absence days from preserved daily lesson records
- * (both direct lesson_absence and counted lesson_permission) for a student in an academic year.
- * - Uses each row's stored threshold_snapshot so changes to Settings affect new/edited records only.
- * - Never deletes or modifies original daily absence, leave, or permission records.
- * - Completely independent of direct full_day and daily_permission absences.
+ * (lesson_absence, lesson_escape, and counted lesson_permission) for a student in an academic year.
+ * - Counts year-wide chronologically without resetting at month boundaries.
+ * - Uses each detail/row's stored threshold_snapshot & counted_as_absence snapshot.
+ * - Never modifies or deletes historical records.
+ * - Preserves exact contributing lesson breakdown per converted day.
  */
 function reconcileStudentLessonCounter(
   db: SqliteDb,
@@ -316,14 +508,11 @@ function reconcileStudentLessonCounter(
 
   const lessonRows = db
     .prepare(
-      `SELECT id, grade_id, section_id, absence_date, lessons_count, threshold_snapshot
+      `SELECT id, grade_id, section_id, absence_date, status, lessons_count,
+              counted_as_absence, threshold_snapshot
        FROM absences
        WHERE student_id = ? AND academic_year_id = ?
-         AND lessons_count > 0
-         AND (
-           status = 'lesson_absence'
-           OR (status = 'lesson_permission' AND counted_as_absence = 1)
-         )
+         AND status IN ('lesson_absence', 'lesson_permission', 'lesson_escape')
        ORDER BY absence_date ASC, id ASC`
     )
     .all(studentId, academicYearId) as Array<{
@@ -331,40 +520,148 @@ function reconcileStudentLessonCounter(
     grade_id: number;
     section_id: number;
     absence_date: string;
+    status: LessonStatusType;
     lessons_count: number;
+    counted_as_absence: number;
     threshold_snapshot: number;
   }>;
 
-  const insertConversion = db.prepare(
-    `INSERT INTO lesson_converted_days
-       (student_id, academic_year_id, grade_id, section_id, source_absence_id, converted_date, lessons_consumed, threshold_used)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  const detailsMap = loadLessonDetailsMap(
+    db,
+    lessonRows.map((r) => r.id)
   );
 
-  let pending = 0;
-  let newTotalConverted = 0;
+  interface CounterUnit {
+    absence_id: number;
+    absence_date: string;
+    grade_id: number;
+    section_id: number;
+    lesson_number: number | null;
+    lesson_status: LessonStatusType;
+    threshold: number;
+  }
+
+  const countedUnits: CounterUnit[] = [];
 
   for (const row of lessonRows) {
-    pending += row.lessons_count;
-    const threshold = Math.max(1, row.threshold_snapshot);
+    const details = detailsMap.get(row.id) ?? [];
+    if (details.length > 0) {
+      for (const d of details) {
+        const isCounted =
+          d.lesson_status === 'lesson_absence' ||
+          d.lesson_status === 'lesson_escape' ||
+          (d.lesson_status === 'lesson_permission' && d.counted_as_absence === 1);
+        if (isCounted) {
+          countedUnits.push({
+            absence_id: row.id,
+            absence_date: row.absence_date,
+            grade_id: row.grade_id,
+            section_id: row.section_id,
+            lesson_number: d.lesson_number,
+            lesson_status: d.lesson_status,
+            threshold: Math.max(1, d.threshold_snapshot || row.threshold_snapshot),
+          });
+        }
+      }
+    } else {
+      // Legacy lesson_absence (or count-only row without detail rows)
+      const isCounted =
+        row.status === 'lesson_absence' ||
+        row.status === 'lesson_escape' ||
+        (row.status === 'lesson_permission' && row.counted_as_absence === 1);
+      if (isCounted && row.lessons_count > 0) {
+        const threshold = Math.max(1, row.threshold_snapshot);
+        for (let i = 0; i < row.lessons_count; i += 1) {
+          countedUnits.push({
+            absence_id: row.id,
+            absence_date: row.absence_date,
+            grade_id: row.grade_id,
+            section_id: row.section_id,
+            lesson_number: null,
+            lesson_status: row.status,
+            threshold,
+          });
+        }
+      }
+    }
+  }
 
-    while (pending >= threshold) {
+  const insertConversion = db.prepare(
+    `INSERT INTO lesson_converted_days
+       (student_id, academic_year_id, grade_id, section_id, source_absence_id,
+        converted_date, lessons_consumed, threshold_used, contributing_lessons_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+
+  const pendingQueue: CounterUnit[] = [];
+  let newTotalConverted = 0;
+
+  for (const unit of countedUnits) {
+    pendingQueue.push(unit);
+    const threshold = unit.threshold;
+
+    while (pendingQueue.length >= threshold) {
+      const consumed = pendingQueue.splice(0, threshold);
+      const contributingPayload: ConversionContributingLesson[] = consumed.map((c) => ({
+        absence_id: c.absence_id,
+        absence_date: c.absence_date,
+        lesson_number: c.lesson_number,
+        lesson_status: c.lesson_status,
+      }));
       insertConversion.run(
         studentId,
         academicYearId,
-        row.grade_id,
-        row.section_id,
-        row.id,
-        row.absence_date,
+        unit.grade_id,
+        unit.section_id,
+        unit.absence_id,
+        unit.absence_date,
         threshold,
-        threshold
+        threshold,
+        JSON.stringify(contributingPayload)
       );
-      pending -= threshold;
       newTotalConverted += 1;
     }
   }
 
   return newTotalConverted - beforeRow.count;
+}
+
+function buildEffectiveLessonDetails(
+  rowStatus: AbsenceStatus,
+  lessonsCount: number,
+  lessonNumbersJson: string | null,
+  countedAsAbsence: number,
+  permissionRuleSnapshot: number | null,
+  thresholdSnapshot: number,
+  storedDetails: LessonDetailItem[] | undefined
+): { lesson_numbers: number[]; lesson_details: LessonDetailItem[] } {
+  if (storedDetails && storedDetails.length > 0) {
+    return {
+      lesson_numbers: storedDetails.map((d) => d.lesson_number),
+      lesson_details: storedDetails,
+    };
+  }
+  if (!isLessonStatus(rowStatus)) {
+    return { lesson_numbers: [], lesson_details: [] };
+  }
+  const fallbackNums = parseLessonNumbersFallback(lessonNumbersJson);
+  if (fallbackNums.length > 0) {
+    const isPerm = rowStatus === 'lesson_permission';
+    return {
+      lesson_numbers: fallbackNums,
+      lesson_details: fallbackNums.map((num) => ({
+        lesson_number: num,
+        lesson_status: rowStatus,
+        counted_as_absence: isPerm ? countedAsAbsence : 1,
+        permission_rule_snapshot: isPerm ? permissionRuleSnapshot : null,
+        threshold_snapshot: thresholdSnapshot,
+      })),
+    };
+  }
+  return {
+    lesson_numbers: [],
+    lesson_details: [],
+  };
 }
 
 export function getSectionAttendanceSheet(
@@ -397,8 +694,6 @@ export function getSectionAttendanceSheet(
       )
       .get(year.id, section_id, attendanceDate) as AttendanceSessionInfo | undefined) ?? null;
 
-  // Include active students currently enrolled in this section, PLUS any student who already has
-  // a saved absence record in this section on this date (preserving historical editability after transfers).
   const roster = db
     .prepare(
       `SELECT DISTINCT st.id as student_id,
@@ -413,6 +708,7 @@ export function getSectionAttendanceSheet(
               day_abs.counted_as_absence as saved_counted_as_absence,
               day_abs.permission_rule_snapshot as saved_permission_rule_snapshot,
               day_abs.applied_settings_at as saved_applied_settings_at,
+              day_abs.threshold_snapshot as saved_threshold_snapshot,
               day_abs.notes as saved_notes,
               day_abs.created_at as record_created_at,
               day_abs.updated_at as record_updated_at
@@ -454,6 +750,7 @@ export function getSectionAttendanceSheet(
     saved_counted_as_absence: number | null;
     saved_permission_rule_snapshot: number | null;
     saved_applied_settings_at: string | null;
+    saved_threshold_snapshot: number | null;
     saved_notes: string | null;
     record_created_at: string | null;
     record_updated_at: string | null;
@@ -462,22 +759,44 @@ export function getSectionAttendanceSheet(
   const recordIds = roster
     .map((r) => r.record_id)
     .filter((id): id is number => id !== null);
-  const lessonNumbersMap = loadLessonNumbersMap(db, recordIds);
+  const lessonDetailsMap = loadLessonDetailsMap(db, recordIds);
 
-  // Cumulative counts per student for this academic year
+  // Cumulative counts per student for this academic year (consistent across detailed & legacy rows)
   const summaryRows = db
     .prepare(
       `SELECT
-         student_id,
-         SUM(CASE WHEN status = 'full_day' THEN 1 ELSE 0 END) as direct_full_days,
-         SUM(CASE WHEN status = 'full_day_leave' AND leave_type = 'daily_permission' AND counted_as_absence = 1 THEN 1 ELSE 0 END) as counted_daily_permission_days,
-         SUM(CASE WHEN status = 'full_day_leave' AND leave_type = 'sick_leave' THEN 1 ELSE 0 END) as sick_leave_days,
-         SUM(CASE WHEN status = 'full_day_leave' AND leave_type = 'daily_permission' THEN 1 ELSE 0 END) as daily_permission_days,
-         SUM(CASE WHEN status = 'lesson_permission' THEN 1 ELSE 0 END) as lesson_permission_records,
-         COALESCE(SUM(CASE WHEN status = 'lesson_absence' OR (status = 'lesson_permission' AND counted_as_absence = 1) THEN lessons_count ELSE 0 END), 0) as total_lessons_missed
-       FROM absences
-       WHERE academic_year_id = ?
-       GROUP BY student_id`
+         a.student_id,
+         SUM(CASE WHEN a.status = 'full_day' THEN 1 ELSE 0 END) as direct_full_days,
+         SUM(CASE WHEN a.status = 'full_day_leave' AND a.leave_type = 'daily_permission' AND a.counted_as_absence = 1 THEN 1 ELSE 0 END) as counted_daily_permission_days,
+         SUM(CASE WHEN a.status = 'full_day_leave' AND a.leave_type = 'sick_leave' THEN 1 ELSE 0 END) as sick_leave_days,
+         SUM(CASE WHEN a.status = 'full_day_leave' AND a.leave_type = 'daily_permission' THEN 1 ELSE 0 END) as daily_permission_days,
+         SUM(CASE
+           WHEN a.status = 'lesson_permission'
+             OR EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_permission')
+           THEN 1 ELSE 0 END) as lesson_permission_records,
+         COALESCE(SUM(CASE
+           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
+             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_absence')
+           WHEN a.status = 'lesson_absence' THEN a.lessons_count
+           ELSE 0 END), 0) as lesson_absence_lessons,
+         COALESCE(SUM(CASE
+           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
+             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_escape')
+           WHEN a.status = 'lesson_escape' THEN a.lessons_count
+           ELSE 0 END), 0) as lesson_escape_lessons,
+         COALESCE(SUM(CASE
+           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
+             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_permission' AND d.counted_as_absence = 1)
+           WHEN a.status = 'lesson_permission' AND a.counted_as_absence = 1 THEN a.lessons_count
+           ELSE 0 END), 0) as counted_lesson_permission_lessons,
+         COALESCE(SUM(CASE
+           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
+             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND (d.lesson_status IN ('lesson_absence', 'lesson_escape') OR (d.lesson_status = 'lesson_permission' AND d.counted_as_absence = 1)))
+           WHEN a.status IN ('lesson_absence', 'lesson_escape') OR (a.status = 'lesson_permission' AND a.counted_as_absence = 1) THEN a.lessons_count
+           ELSE 0 END), 0) as total_lessons_missed
+       FROM absences a
+       WHERE a.academic_year_id = ?
+       GROUP BY a.student_id`
     )
     .all(year.id) as Array<{
     student_id: number;
@@ -486,20 +805,13 @@ export function getSectionAttendanceSheet(
     sick_leave_days: number;
     daily_permission_days: number;
     lesson_permission_records: number;
+    lesson_absence_lessons: number;
+    lesson_escape_lessons: number;
+    counted_lesson_permission_lessons: number;
     total_lessons_missed: number;
   }>;
 
-  const summaryMap = new Map<
-    number,
-    {
-      direct_full_days: number;
-      counted_daily_permission_days: number;
-      sick_leave_days: number;
-      daily_permission_days: number;
-      lesson_permission_records: number;
-      total_lessons_missed: number;
-    }
-  >();
+  const summaryMap = new Map<number, (typeof summaryRows)[number]>();
   for (const row of summaryRows) {
     summaryMap.set(row.student_id, row);
   }
@@ -527,29 +839,37 @@ export function getSectionAttendanceSheet(
 
   const students: StudentAbsenceSheetRow[] = roster.map((r) => {
     const sum = summaryMap.get(r.student_id) ?? {
+      student_id: r.student_id,
       direct_full_days: 0,
       counted_daily_permission_days: 0,
       sick_leave_days: 0,
       daily_permission_days: 0,
       lesson_permission_records: 0,
+      lesson_absence_lessons: 0,
+      lesson_escape_lessons: 0,
+      counted_lesson_permission_lessons: 0,
       total_lessons_missed: 0,
     };
     const conv = convertedMap.get(r.student_id) ?? { converted_days: 0, consumed_lessons: 0 };
     const pendingLessons = Math.max(0, sum.total_lessons_missed - conv.consumed_lessons);
 
     const savedStatus = r.saved_status ?? 'present';
-    const lessonNumbers =
-      r.record_id && savedStatus === 'lesson_permission'
-        ? (lessonNumbersMap.get(r.record_id) ??
-          parseLessonNumbersFallback(r.saved_lesson_numbers_json))
-        : [];
+    const storedDetails = r.record_id ? lessonDetailsMap.get(r.record_id) : undefined;
+    const resolved = buildEffectiveLessonDetails(
+      savedStatus,
+      r.saved_lessons_count ?? 0,
+      r.saved_lesson_numbers_json,
+      r.saved_counted_as_absence ?? 0,
+      r.saved_permission_rule_snapshot ?? null,
+      r.saved_threshold_snapshot ?? settings.lessons_per_absence_day,
+      storedDetails
+    );
 
-    const lessonsCount =
-      savedStatus === 'lesson_absence'
-        ? (r.saved_lessons_count ?? 1)
-        : savedStatus === 'lesson_permission'
-          ? (r.saved_lessons_count ?? lessonNumbers.length)
-          : 0;
+    const lessonsCount = isLessonStatus(savedStatus)
+      ? resolved.lesson_details.length > 0
+        ? resolved.lesson_details.length
+        : (r.saved_lessons_count ?? 0)
+      : 0;
 
     return {
       student_id: r.student_id,
@@ -562,7 +882,8 @@ export function getSectionAttendanceSheet(
       lessons_count: lessonsCount,
       leave_type: r.saved_leave_type ?? null,
       permission_type: r.saved_permission_type ?? null,
-      lesson_numbers: lessonNumbers,
+      lesson_numbers: resolved.lesson_numbers,
+      lesson_details: resolved.lesson_details,
       counted_as_absence: r.saved_counted_as_absence ?? 0,
       permission_rule_snapshot: r.saved_permission_rule_snapshot ?? null,
       applied_settings_at: r.saved_applied_settings_at ?? null,
@@ -575,6 +896,9 @@ export function getSectionAttendanceSheet(
       sick_leave_days: sum.sick_leave_days,
       daily_permission_days: sum.daily_permission_days,
       lesson_permission_records: sum.lesson_permission_records,
+      lesson_absence_lessons: sum.lesson_absence_lessons,
+      lesson_escape_lessons: sum.lesson_escape_lessons,
+      counted_lesson_permission_lessons: sum.counted_lesson_permission_lessons,
       converted_lesson_days: conv.converted_days,
       total_full_days: sum.direct_full_days + sum.counted_daily_permission_days + conv.converted_days,
       pending_lessons: pendingLessons,
@@ -648,6 +972,7 @@ export function saveSectionAttendance(
   let lessonAbsenceCount = 0;
   let fullDayLeaveCount = 0;
   let lessonPermissionCount = 0;
+  let lessonEscapeCount = 0;
   let totalNewlyConvertedDays = 0;
 
   db.transaction(() => {
@@ -703,7 +1028,8 @@ export function saveSectionAttendance(
       else if (item.status === 'full_day') fullDayCount += 1;
       else if (item.status === 'lesson_absence') lessonAbsenceCount += 1;
       else if (item.status === 'full_day_leave') fullDayLeaveCount += 1;
-      else lessonPermissionCount += 1;
+      else if (item.status === 'lesson_permission') lessonPermissionCount += 1;
+      else if (item.status === 'lesson_escape') lessonEscapeCount += 1;
 
       const existing = findExistingDayRecord.get(item.student_id, attendanceDate) as
         | {
@@ -726,7 +1052,6 @@ export function saveSectionAttendance(
         | undefined;
 
       if (existing) {
-        // Prevent duplicate / cross-section collision on the exact same date
         if (existing.section_id !== section_id || existing.academic_year_id !== year.id) {
           throw new ServiceError(
             `الطالب رقم ${item.student_id} مسجل له سجل حضور/غياب مسبق بتاريخ ${attendanceDate} في شعبة أو سنة أخرى.`,
@@ -735,19 +1060,35 @@ export function saveSectionAttendance(
           );
         }
 
-        const existingLessonsArr =
-          existing.status === 'lesson_permission'
-            ? (loadLessonNumbersMap(db, [existing.id]).get(existing.id) ??
-              parseLessonNumbersFallback(existing.lesson_numbers_json))
-            : [];
-        const existingLessonsNormalizedJson =
-          existingLessonsArr.length > 0 ? JSON.stringify(existingLessonsArr) : null;
+        const existingDetails = loadLessonDetailsMap(db, [existing.id]).get(existing.id) ?? [];
+        const existingDetailsSignature = JSON.stringify(
+          existingDetails.map((d) => ({
+            lesson_number: d.lesson_number,
+            lesson_status: d.lesson_status,
+          }))
+        );
+        const newDetailsSignature = JSON.stringify(
+          item.lesson_details.map((d) => ({
+            lesson_number: d.lesson_number,
+            lesson_status: d.lesson_status,
+          }))
+        );
+
+        const sameLegacyFallback =
+          existingDetails.length === 0 &&
+          item.lesson_details.length === 0 &&
+          (existing.lesson_numbers_json ?? null) === item.lesson_numbers_json;
+
+        const sameDetails =
+          existingDetails.length > 0 || item.lesson_details.length > 0
+            ? existingDetailsSignature === newDetailsSignature
+            : sameLegacyFallback;
 
         const sameCoreState =
           existing.status === item.status &&
           (existing.leave_type ?? null) === item.leave_type &&
           existing.lessons_count === item.lessons_count &&
-          existingLessonsNormalizedJson === item.lesson_numbers_json;
+          sameDetails;
 
         if (sameCoreState) {
           // Preserve historical rule snapshots untouched when student's attendance state didn't change
@@ -757,13 +1098,53 @@ export function saveSectionAttendance(
           continue;
         }
 
-        // State/type/lessons changed: apply current rules & snapshot settings time,
-        // keeping historical threshold_snapshot if staying within a counted lesson status?
-        // When explicitly edited, apply current threshold_snapshot if transitioning into lesson counting,
-        // or preserve if editing lesson count on an already-lesson row.
         const thresholdSnapshotToSave = isLessonCounterStatus(existing.status)
           ? existing.threshold_snapshot
           : currentThreshold;
+
+        // If student had existing lesson_permission details whose exact lesson_numbers were NOT changed
+        // (e.g. user only added an unrelated lesson_escape on another lesson of the same day),
+        // preserve the historical permission rule snapshot for those untouched permission lessons.
+        const existingPermLessons = existingDetails
+          .filter((d) => d.lesson_status === 'lesson_permission')
+          .map((d) => d.lesson_number);
+        const newPermLessons = item.lesson_details
+          .filter((d) => d.lesson_status === 'lesson_permission')
+          .map((d) => d.lesson_number);
+        const unchangedPermissionSubset =
+          existingPermLessons.length > 0 &&
+          JSON.stringify(existingPermLessons) === JSON.stringify(newPermLessons);
+
+        const detailsToSave: LessonDetailItem[] = item.lesson_details.map((d) => {
+          if (d.lesson_status === 'lesson_permission' && unchangedPermissionSubset) {
+            const prevDetail = existingDetails.find(
+              (ed) => ed.lesson_number === d.lesson_number && ed.lesson_status === 'lesson_permission'
+            );
+            if (prevDetail) {
+              return {
+                ...d,
+                counted_as_absence: prevDetail.counted_as_absence,
+                permission_rule_snapshot: prevDetail.permission_rule_snapshot,
+                threshold_snapshot: prevDetail.threshold_snapshot,
+              };
+            }
+          }
+          return {
+            ...d,
+            threshold_snapshot: thresholdSnapshotToSave,
+          };
+        });
+
+        const effectiveCountedAsAbsence =
+          detailsToSave.length > 0
+            ? detailsToSave.some((d) => d.counted_as_absence === 1)
+              ? 1
+              : 0
+            : item.counted_as_absence;
+
+        const effectivePermRuleSnapshot = unchangedPermissionSubset
+          ? existing.permission_rule_snapshot
+          : item.permission_rule_snapshot;
 
         const nowTs = (getDbNow.get() as { now_ts: string }).now_ts;
 
@@ -773,15 +1154,15 @@ export function saveSectionAttendance(
           item.leave_type,
           item.permission_type,
           item.lesson_numbers_json,
-          item.counted_as_absence,
-          item.permission_rule_snapshot,
+          effectiveCountedAsAbsence,
+          effectivePermRuleSnapshot,
           nowTs,
           thresholdSnapshotToSave,
           item.notes,
           existing.id
         );
 
-        syncAbsenceLessonDetails(db, existing.id, item.lesson_numbers);
+        syncAbsenceLessonDetails(db, existing.id, item.student_id, attendanceDate, detailsToSave);
 
         if (isLessonCounterStatus(existing.status) || isLessonCounterStatus(item.status)) {
           const deltaConverted = reconcileStudentLessonCounter(db, item.student_id, year.id);
@@ -822,16 +1203,15 @@ export function saveSectionAttendance(
         );
 
         const newAbsenceId = Number(info.lastInsertRowid);
-        syncAbsenceLessonDetails(db, newAbsenceId, item.lesson_numbers);
+        syncAbsenceLessonDetails(db, newAbsenceId, item.student_id, attendanceDate, item.lesson_details);
 
-        if (item.status === 'lesson_absence' || (item.status === 'lesson_permission' && item.counted_as_absence === 1)) {
+        if (isLessonCounterStatus(item.status) && item.counted_as_absence === 1) {
           const deltaConverted = reconcileStudentLessonCounter(db, item.student_id, year.id);
           totalNewlyConvertedDays += deltaConverted;
         }
       }
     }
 
-    // Upsert attendance_sessions
     db.prepare(
       `INSERT INTO attendance_sessions
          (academic_year_id, grade_id, section_id, attendance_date, recorded_count, created_at, updated_at)
@@ -857,6 +1237,7 @@ export function saveSectionAttendance(
     lesson_absence_count: lessonAbsenceCount,
     full_day_leave_count: fullDayLeaveCount,
     lesson_permission_count: lessonPermissionCount,
+    lesson_escape_count: lessonEscapeCount,
     newly_converted_days: totalNewlyConvertedDays,
     sheet: updatedSheet,
   };
@@ -876,6 +1257,7 @@ export function createSingleAbsenceRecord(
     lessons_count?: number;
     leave_type?: LeaveType | null;
     lesson_numbers?: number[];
+    lesson_details?: LessonDetailInput[];
     notes?: string | null;
   }
 ) {
@@ -934,6 +1316,7 @@ export function createSingleAbsenceRecord(
       lessons_count: input.lessons_count,
       leave_type: input.leave_type,
       lesson_numbers: input.lesson_numbers,
+      lesson_details: input.lesson_details,
       notes: input.notes,
     },
     currentSettings
@@ -968,12 +1351,15 @@ export function createSingleAbsenceRecord(
       );
 
     const createdId = Number(info.lastInsertRowid);
-    syncAbsenceLessonDetails(db, createdId, normalized.lesson_numbers);
+    syncAbsenceLessonDetails(
+      db,
+      createdId,
+      normalized.student_id,
+      absenceDate,
+      normalized.lesson_details
+    );
 
-    if (
-      normalized.status === 'lesson_absence' ||
-      (normalized.status === 'lesson_permission' && normalized.counted_as_absence === 1)
-    ) {
+    if (isLessonCounterStatus(normalized.status) && normalized.counted_as_absence === 1) {
       reconcileStudentLessonCounter(db, normalized.student_id, year.id);
     }
     return createdId;
@@ -986,6 +1372,176 @@ export function createSingleAbsenceRecord(
   return {
     ...created,
     lesson_numbers: normalized.lesson_numbers,
+    lesson_details: normalized.lesson_details,
+  };
+}
+
+/**
+ * Appends non-overlapping lesson-level records (lesson_absence / lesson_permission / lesson_escape)
+ * for a student on a specific date, rejecting any duplicate or conflicting lesson number
+ * regardless of status type.
+ */
+export function addStudentLessonRecords(
+  db: SqliteDb,
+  input: {
+    student_id: number;
+    academic_year_id?: number;
+    absence_date: string;
+    lesson_details: LessonDetailInput[];
+    notes?: string | null;
+  }
+) {
+  const absenceDate = validateDateIso(input.absence_date);
+  const year = input.academic_year_id
+    ? (db
+        .prepare('SELECT id, name, is_active, created_at FROM academic_years WHERE id = ?')
+        .get(input.academic_year_id) as AcademicYear | undefined)
+    : getActiveAcademicYear(db);
+
+  if (!year) {
+    throw new ServiceError('السنة الدراسية غير موجودة.', 404);
+  }
+
+  const holidayInfo = resolveDateHolidayStatus(db, absenceDate);
+  if (holidayInfo.is_holiday) {
+    throw new ServiceError(
+      `لا يمكن تسجيل الحضور أو الغياب بتاريخ ${absenceDate} (${holidayInfo.day_name}) لأنه يوم عطلة: ${holidayInfo.primary_reason ?? 'عطلة رسمية'}.`,
+      409,
+      'DATE_IS_HOLIDAY'
+    );
+  }
+
+  if (!Array.isArray(input.lesson_details) || input.lesson_details.length === 0) {
+    throw new ServiceError('يجب تحديد درس واحد على الأقل.', 400);
+  }
+
+  const currentSettings = getSchoolSettings(db);
+  const normalizedIncoming = normalizeAbsenceEntry(
+    {
+      student_id: input.student_id,
+      status: input.lesson_details[0].lesson_status,
+      lesson_details: input.lesson_details,
+      notes: input.notes,
+    },
+    currentSettings
+  );
+
+  const existing = db
+    .prepare(
+      `SELECT id, academic_year_id, status, lessons_count, lesson_numbers_json,
+              counted_as_absence, permission_rule_snapshot, threshold_snapshot, notes
+       FROM absences
+       WHERE student_id = ? AND absence_date = ?`
+    )
+    .get(input.student_id, absenceDate) as
+    | {
+        id: number;
+        academic_year_id: number;
+        status: AbsenceStatus;
+        lessons_count: number;
+        lesson_numbers_json: string | null;
+        counted_as_absence: number;
+        permission_rule_snapshot: number | null;
+        threshold_snapshot: number;
+        notes: string | null;
+      }
+    | undefined;
+
+  if (!existing) {
+    return createSingleAbsenceRecord(db, {
+      student_id: input.student_id,
+      academic_year_id: year.id,
+      absence_date: absenceDate,
+      status: normalizedIncoming.status,
+      lesson_details: input.lesson_details,
+      notes: input.notes,
+    });
+  }
+
+  if (existing.academic_year_id !== year.id) {
+    throw new ServiceError(
+      `الطالب مسجل له سجل بتاريخ ${absenceDate} في سنة دراسية أخرى.`,
+      409,
+      'DUPLICATE_ABSENCE_DATE'
+    );
+  }
+
+  if (existing.status === 'full_day' || existing.status === 'full_day_leave') {
+    throw new ServiceError(
+      `الطالب مسجل له حالة يوم كامل بتاريخ ${absenceDate} ولا يمكن إضافة دروس جزئية فوقها.`,
+      409,
+      'CONFLICTING_DAY_STATUS'
+    );
+  }
+
+  const existingDetails = loadLessonDetailsMap(db, [existing.id]).get(existing.id) ?? [];
+  const existingLessonNums = new Set(existingDetails.map((d) => d.lesson_number));
+
+  for (const incoming of normalizedIncoming.lesson_details) {
+    if (existingLessonNums.has(incoming.lesson_number)) {
+      throw new ServiceError(
+        `لا يجوز تسجيل أكثر من سبب لعدم حضور الطالب في الدرس رقم ${incoming.lesson_number} بتاريخ ${absenceDate}.`,
+        409,
+        'DUPLICATE_LESSON_ENTRY'
+      );
+    }
+  }
+
+  const mergedDetails: LessonDetailItem[] = [
+    ...existingDetails,
+    ...normalizedIncoming.lesson_details,
+  ].sort((a, b) => a.lesson_number - b.lesson_number);
+
+  const mergedNumbers = mergedDetails.map((d) => d.lesson_number);
+  const primaryStatus = resolvePrimaryLessonStatus(existing.status, mergedDetails);
+  const hasPerm = mergedDetails.some((d) => d.lesson_status === 'lesson_permission');
+  const anyCounted = mergedDetails.some((d) => d.counted_as_absence === 1);
+  const mergedNotes = normalizeNullableString(
+    [existing.notes, normalizedIncoming.notes].filter(Boolean).join(' · ')
+  );
+
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE absences
+       SET status = ?,
+           lessons_count = ?,
+           permission_type = ?,
+           lesson_numbers_json = ?,
+           counted_as_absence = ?,
+           permission_rule_snapshot = COALESCE(permission_rule_snapshot, ?),
+           notes = ?,
+           updated_at = datetime('now')
+       WHERE id = ?`
+    ).run(
+      primaryStatus,
+      mergedDetails.length,
+      hasPerm ? 'lesson_permission' : null,
+      JSON.stringify(mergedNumbers),
+      anyCounted ? 1 : 0,
+      normalizedIncoming.permission_rule_snapshot,
+      mergedNotes,
+      existing.id
+    );
+
+    syncAbsenceLessonDetails(
+      db,
+      existing.id,
+      input.student_id,
+      absenceDate,
+      mergedDetails
+    );
+
+    reconcileStudentLessonCounter(db, input.student_id, year.id);
+  })();
+
+  const updated = db.prepare('SELECT * FROM absences WHERE id = ?').get(existing.id) as Record<
+    string,
+    unknown
+  >;
+  return {
+    ...updated,
+    lesson_numbers: mergedNumbers,
+    lesson_details: mergedDetails,
   };
 }
 
@@ -1092,41 +1648,66 @@ export function getStudentAbsenceDetails(
     updated_at: string;
   }>;
 
-  const lessonNumbersMap = loadLessonNumbersMap(
+  const lessonDetailsMap = loadLessonDetailsMap(
     db,
     rawRecords.map((r) => r.id)
   );
 
-  const records: StudentAbsenceDetailResponse['records'] = rawRecords.map((r) => ({
-    id: r.id,
-    absence_date: r.absence_date,
-    status: r.status,
-    lessons_count: r.lessons_count,
-    leave_type: r.leave_type,
-    permission_type: r.permission_type,
-    lesson_numbers:
-      r.status === 'lesson_permission'
-        ? (lessonNumbersMap.get(r.id) ?? parseLessonNumbersFallback(r.lesson_numbers_json))
-        : [],
-    counted_as_absence: r.counted_as_absence,
-    permission_rule_snapshot: r.permission_rule_snapshot,
-    applied_settings_at: r.applied_settings_at,
-    threshold_snapshot: r.threshold_snapshot,
-    notes: r.notes,
-    grade_name: r.grade_name,
-    section_name: r.section_name,
-    created_at: r.created_at,
-    updated_at: r.updated_at,
-  }));
+  const records: StudentAbsenceDetailResponse['records'] = rawRecords.map((r) => {
+    const resolved = buildEffectiveLessonDetails(
+      r.status,
+      r.lessons_count,
+      r.lesson_numbers_json,
+      r.counted_as_absence,
+      r.permission_rule_snapshot,
+      r.threshold_snapshot,
+      lessonDetailsMap.get(r.id)
+    );
+    return {
+      id: r.id,
+      absence_date: r.absence_date,
+      status: r.status,
+      lessons_count: r.lessons_count,
+      leave_type: r.leave_type,
+      permission_type: r.permission_type,
+      lesson_numbers: resolved.lesson_numbers,
+      lesson_details: resolved.lesson_details,
+      counted_as_absence: r.counted_as_absence,
+      permission_rule_snapshot: r.permission_rule_snapshot,
+      applied_settings_at: r.applied_settings_at,
+      threshold_snapshot: r.threshold_snapshot,
+      notes: r.notes,
+      grade_name: r.grade_name,
+      section_name: r.section_name,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    };
+  });
 
-  const conversions = db
+  const rawConversions = db
     .prepare(
-      `SELECT id, converted_date, lessons_consumed, threshold_used, created_at
+      `SELECT id, converted_date, lessons_consumed, threshold_used, contributing_lessons_json, created_at
        FROM lesson_converted_days
        WHERE student_id = ? AND academic_year_id = ?
        ORDER BY converted_date DESC, id DESC`
     )
-    .all(studentId, yearId) as StudentAbsenceDetailResponse['conversions'];
+    .all(studentId, yearId) as Array<{
+    id: number;
+    converted_date: string;
+    lessons_consumed: number;
+    threshold_used: number;
+    contributing_lessons_json: string | null;
+    created_at: string;
+  }>;
+
+  const conversions: StudentAbsenceDetailResponse['conversions'] = rawConversions.map((c) => ({
+    id: c.id,
+    converted_date: c.converted_date,
+    lessons_consumed: c.lessons_consumed,
+    threshold_used: c.threshold_used,
+    contributing_lessons: parseContributingLessonsJson(c.contributing_lessons_json),
+    created_at: c.created_at,
+  }));
 
   const directFullDays = records.filter((r) => r.status === 'full_day').length;
   const countedDailyPermissionDays = records.filter(
@@ -1142,17 +1723,36 @@ export function getStudentAbsenceDetails(
     (r) => r.status === 'full_day_leave' && r.leave_type === 'daily_permission'
   ).length;
   const lessonPermissionRecords = records.filter(
-    (r) => r.status === 'lesson_permission'
+    (r) =>
+      r.status === 'lesson_permission' ||
+      r.lesson_details.some((d) => d.lesson_status === 'lesson_permission')
   ).length;
 
+  let lessonAbsenceLessons = 0;
+  let lessonEscapeLessons = 0;
+  let countedLessonPermissionLessons = 0;
+
+  for (const r of records) {
+    if (r.lesson_details.length > 0) {
+      for (const d of r.lesson_details) {
+        if (d.lesson_status === 'lesson_absence') lessonAbsenceLessons += 1;
+        else if (d.lesson_status === 'lesson_escape') lessonEscapeLessons += 1;
+        else if (d.lesson_status === 'lesson_permission' && d.counted_as_absence === 1) {
+          countedLessonPermissionLessons += 1;
+        }
+      }
+    } else if (r.status === 'lesson_absence') {
+      lessonAbsenceLessons += r.lessons_count;
+    } else if (r.status === 'lesson_escape') {
+      lessonEscapeLessons += r.lessons_count;
+    } else if (r.status === 'lesson_permission' && r.counted_as_absence === 1) {
+      countedLessonPermissionLessons += r.lessons_count;
+    }
+  }
+
   const convertedLessonDays = conversions.length;
-  const totalLessonsMissed = records
-    .filter(
-      (r) =>
-        r.status === 'lesson_absence' ||
-        (r.status === 'lesson_permission' && r.counted_as_absence === 1)
-    )
-    .reduce((acc, r) => acc + r.lessons_count, 0);
+  const totalLessonsMissed =
+    lessonAbsenceLessons + lessonEscapeLessons + countedLessonPermissionLessons;
   const consumedLessons = conversions.reduce((acc, c) => acc + c.lessons_consumed, 0);
 
   return {
@@ -1167,6 +1767,9 @@ export function getStudentAbsenceDetails(
     sick_leave_days: sickLeaveDays,
     daily_permission_days: dailyPermissionDays,
     lesson_permission_records: lessonPermissionRecords,
+    lesson_absence_lessons: lessonAbsenceLessons,
+    lesson_escape_lessons: lessonEscapeLessons,
+    counted_lesson_permission_lessons: countedLessonPermissionLessons,
     converted_lesson_days: convertedLessonDays,
     total_full_days: directFullDays + countedDailyPermissionDays + convertedLessonDays,
     pending_lessons: Math.max(0, totalLessonsMissed - consumedLessons),

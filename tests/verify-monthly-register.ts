@@ -821,6 +821,144 @@ async function runMonthlyRegisterTests() {
     }
   });
 
+  // Scenario 22: Compact numeric summary in print/Excel, chronological details sorting, and manual note separation
+  await test('22. الملخص العددي في الطباعة وExcel وترتيب التفاصيل حسب التاريخ وفصل الملاحظة اليدوية', async () => {
+    updateSchoolSettings(db, {
+      school_name: 'ثانوية بغداد المركزية',
+      directorate_name: 'تربية الرصافة الأولى',
+      lessons_per_absence_day: 7,
+      daily_lessons_count: 7,
+      daily_permission_counts_as_absence: 0,
+      lesson_permission_counts_as_absence: 1,
+    });
+
+    const s4 = createStudent(db, {
+      full_name: 'حسين كريم ناصر',
+      grade_id: grade.id,
+      section_id: secB.id,
+      registry_number: '9940',
+    });
+
+    // Record 2 escape + 2 permission + 2 lesson absence in Jan 2027 for s4 (notes with dates preserved in DB)
+    saveSectionAttendance(db, {
+      academic_year_id: activeYear.id,
+      grade_id: grade.id,
+      section_id: secB.id,
+      attendance_date: '2027-01-03',
+      entries: [
+        {
+          student_id: s4.id,
+          status: 'lesson_escape',
+          lesson_details: [
+            { lesson_number: 1, lesson_status: 'lesson_escape' },
+            { lesson_number: 2, lesson_status: 'lesson_escape' },
+          ],
+        },
+        { student_id: s3.id, status: 'present' },
+      ],
+    });
+    saveSectionAttendance(db, {
+      academic_year_id: activeYear.id,
+      grade_id: grade.id,
+      section_id: secB.id,
+      attendance_date: '2027-01-05',
+      entries: [
+        {
+          student_id: s4.id,
+          status: 'lesson_permission',
+          lesson_details: [
+            { lesson_number: 3, lesson_status: 'lesson_permission' },
+            { lesson_number: 4, lesson_status: 'lesson_permission' },
+          ],
+        },
+        { student_id: s3.id, status: 'present' },
+      ],
+    });
+    saveSectionAttendance(db, {
+      academic_year_id: activeYear.id,
+      grade_id: grade.id,
+      section_id: secB.id,
+      attendance_date: '2027-01-10',
+      entries: [
+        {
+          student_id: s4.id,
+          status: 'lesson_absence',
+          lesson_details: [
+            { lesson_number: 5, lesson_status: 'lesson_absence' },
+            { lesson_number: 6, lesson_status: 'lesson_absence' },
+          ],
+        },
+        { student_id: s3.id, status: 'present' },
+      ],
+    });
+
+    // Save a manual note ONLY on s3 (who has 0 absences in Jan 2027)
+    saveMonthlyStudentNote(db, {
+      academic_year_id: activeYear.id,
+      student_id: s3.id,
+      year: 2027,
+      month: 1,
+      note_text: 'متابعة السلوك والانضباط فقط',
+    });
+
+    const janReg = getMonthlyAbsenceRegister(db, {
+      academic_year_id: activeYear.id,
+      year: 2027,
+      month: 1,
+      grade_id: grade.id,
+      section_id: secB.id,
+    });
+
+    const s4Row = janReg.students.find((r) => r.student_id === s4.id)!;
+    const s3Row = janReg.students.find((r) => r.student_id === s3.id)!;
+
+    // 1. Numeric summary exact match
+    assert.equal(s4Row.compact_notes_summary, '٢ هروب + ٢ رخصة + ٢ غياب عن درس');
+    // 2. Chronological auto_note_items preserve full dates & lesson ordinals
+    assert.equal(s4Row.auto_note_items.length >= 3, true);
+    for (let i = 1; i < s4Row.auto_note_items.length; i += 1) {
+      assert.ok(s4Row.auto_note_items[i].date >= s4Row.auto_note_items[i - 1].date);
+    }
+    assert.ok(s4Row.auto_note_items.some((n) => n.date === '2027-01-03' && n.text.includes('الدرس الأول')));
+    // 3. Manual note NEVER counted as absence record
+    assert.equal(s3Row.compact_notes_summary, '');
+    assert.equal(s3Row.total_counted_absence_days, 0);
+    assert.equal(s3Row.manual_note, 'متابعة السلوك والانضباط فقط');
+
+    // 4. Print HTML has numeric summary + separate manual summary, and NO individual dates or lesson ordinals
+    const printHtml = buildStandalonePrintableHtml(janReg, 'a3-landscape');
+    assert.ok(printHtml.includes('٢ هروب + ٢ رخصة + ٢ غياب عن درس'));
+    assert.ok(printHtml.includes('ملاحظة يدوية:'));
+    assert.ok(printHtml.includes('ملخص الملاحظات الإدارية اليدوية'));
+    assert.ok(printHtml.includes('متابعة السلوك والانضباط فقط'));
+    assert.equal(printHtml.includes('2027-01-03'), false);
+    assert.equal(printHtml.includes('2027-01-05'), false);
+    assert.equal(printHtml.includes('2027-01-10'), false);
+    assert.equal(printHtml.includes('الدرس الأول'), false);
+
+    // 5. Excel notes column uses numeric summary + separate manual note without individual dates
+    const { buffer } = await generateMonthlyRegisterExcel(db, {
+      academic_year_id: activeYear.id,
+      year: 2027,
+      month: 1,
+      grade_id: grade.id,
+      section_id: secB.id,
+    });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer as unknown as ArrayBuffer);
+    const sheet = wb.worksheets[0];
+    const lastCol = 1 + 31 + 8;
+    const allNoteCells: string[] = [];
+    for (let r = 6; r < 6 + janReg.students.length; r += 1) {
+      allNoteCells.push(String(sheet.getCell(r, lastCol).value ?? ''));
+    }
+    const joinedNotes = allNoteCells.join('\n');
+    assert.ok(joinedNotes.includes('٢ هروب + ٢ رخصة + ٢ غياب عن درس'));
+    assert.ok(joinedNotes.includes('ملاحظة يدوية: متابعة السلوك والانضباط فقط'));
+    assert.equal(joinedNotes.includes('2027-01-03'), false);
+    assert.equal(joinedNotes.includes('الدرس الأول'), false);
+  });
+
   db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 

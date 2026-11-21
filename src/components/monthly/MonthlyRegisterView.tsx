@@ -37,6 +37,7 @@ import type {
 } from '../../types/school';
 import { MonthlyDayDetailModal } from './MonthlyDayDetailModal';
 import { MonthlyManualNoteModal } from './MonthlyManualNoteModal';
+import { MonthlyStudentNotesModal } from './MonthlyStudentNotesModal';
 import {
   buildStandalonePrintableHtml,
   MonthlyPrintSheet,
@@ -79,6 +80,10 @@ function getCellStyleClasses(kind: MonthlyCellStatusKind): string {
       return 'bg-purple-100/90 dark:bg-purple-950/60 text-purple-900 dark:text-purple-200 font-extrabold hover:bg-purple-200/80 dark:hover:bg-purple-900/70';
     case 'lesson_absence':
       return 'bg-amber-100/90 dark:bg-amber-950/55 text-amber-900 dark:text-amber-200 font-bold hover:bg-amber-200/80 dark:hover:bg-amber-900/70';
+    case 'lesson_escape':
+      return 'bg-orange-100/90 dark:bg-orange-950/55 text-orange-900 dark:text-orange-200 font-bold hover:bg-orange-200/80 dark:hover:bg-orange-900/70';
+    case 'lesson_mixed':
+      return 'bg-rose-100/90 dark:bg-rose-950/55 text-rose-900 dark:text-rose-200 font-bold text-[10px] hover:bg-rose-200/80 dark:hover:bg-rose-900/70';
     case 'sick_leave':
       return 'bg-teal-100/90 dark:bg-teal-950/55 text-teal-900 dark:text-teal-200 font-bold hover:bg-teal-200/80 dark:hover:bg-teal-900/70';
     case 'daily_permission':
@@ -102,6 +107,8 @@ function getLegendSwatchClasses(symbol: string): string {
       return 'bg-purple-100 dark:bg-purple-950/60 border-purple-300 dark:border-purple-800 text-purple-900 dark:text-purple-200';
     case 'د':
       return 'bg-amber-100 dark:bg-amber-950/55 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200';
+    case 'هـ':
+      return 'bg-orange-100 dark:bg-orange-950/55 border-orange-300 dark:border-orange-800 text-orange-900 dark:text-orange-200';
     case 'م':
       return 'bg-teal-100 dark:bg-teal-950/55 border-teal-300 dark:border-teal-800 text-teal-900 dark:text-teal-200';
     case 'ر':
@@ -142,8 +149,25 @@ export function MonthlyRegisterView({
     cell: MonthlyDayCellData;
   } | null>(null);
 
-  const [noteModalStudent, setNoteModalStudent] = useState<MonthlyStudentRow | null>(null);
+  const [noteModalStudentId, setNoteModalStudentId] = useState<number | null>(null);
+  const [notesModalStudentId, setNotesModalStudentId] = useState<number | null>(null);
   const [savingNote, setSavingNote] = useState(false);
+
+  const noteModalStudent = useMemo(
+    () =>
+      noteModalStudentId !== null
+        ? (registerData?.students.find((s) => s.student_id === noteModalStudentId) ?? null)
+        : null,
+    [registerData, noteModalStudentId]
+  );
+
+  const notesModalStudent = useMemo(
+    () =>
+      notesModalStudentId !== null
+        ? (registerData?.students.find((s) => s.student_id === notesModalStudentId) ?? null)
+        : null,
+    [registerData, notesModalStudentId]
+  );
 
   // Print preview & sandbox handling
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
@@ -323,7 +347,7 @@ export function MonthlyRegisterView({
         note_text: noteText,
       });
       onNotify('success', 'تم حفظ الملاحظة الإدارية للطالب بنجاح.');
-      setNoteModalStudent(null);
+      setNoteModalStudentId(null);
       await loadRegister();
     } catch (err) {
       onNotify('error', err instanceof Error ? err.message : 'تعذر حفظ الملاحظة اليدوية.');
@@ -343,7 +367,7 @@ export function MonthlyRegisterView({
         month: registerData.month,
       });
       onNotify('success', 'تم حذف الملاحظة الإدارية اليدوية.');
-      setNoteModalStudent(null);
+      setNoteModalStudentId(null);
       await loadRegister();
     } catch (err) {
       onNotify('error', err instanceof Error ? err.message : 'تعذر حذف الملاحظة اليدوية.');
@@ -695,7 +719,7 @@ export function MonthlyRegisterView({
               دليل الرموز المعتمدة في السجل الشهري
             </h3>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              ملاحظة: الرقم بجانب (د) أو (ح) يمثل عدد الدروس، وعند النقر على أي خلية تُعرض التفاصيل
+              ملاحظة: الرقم بجانب (د) أو (هـ) أو (ح) يمثل عدد الدروس، وعند النقر على أي خلية تُعرض التفاصيل
               الكاملة وأرقام الدروس أو سبب العطلة.
             </p>
           </div>
@@ -841,8 +865,8 @@ export function MonthlyRegisterView({
                   </th>
 
                   {/* Notes Column */}
-                  <th className="border-b border-slate-700 bg-slate-800 dark:bg-slate-950 px-3 py-2 text-right min-w-[290px]">
-                    الملاحظات (التلقائية واليدوية)
+                  <th className="border-b border-slate-700 bg-slate-800 dark:bg-slate-950 px-3 py-2 text-right min-w-[320px]">
+                    الملاحظات (الملخص والتفاصيل)
                   </th>
                 </tr>
               </thead>
@@ -855,31 +879,31 @@ export function MonthlyRegisterView({
                       : 'bg-white dark:bg-slate-900';
 
                   return (
-                    <tr key={st.student_id} className={rowBg}>
-                      {/* Sticky Right Name Cell */}
+                    <tr key={st.student_id} className={`${rowBg} h-12`}>
+                      {/* Sticky Right Name Cell (Fixed Compact Height) */}
                       <td
-                        className={`sticky right-0 z-20 border-l-2 border-slate-300 dark:border-slate-700 px-3 py-2 text-right min-w-[205px] max-w-[240px] ${
+                        className={`sticky right-0 z-20 h-12 border-l-2 border-slate-300 dark:border-slate-700 px-3 py-1 text-right min-w-[205px] max-w-[240px] align-middle ${
                           rowIdx % 2 === 1
                             ? 'bg-slate-50 dark:bg-slate-900'
                             : 'bg-white dark:bg-slate-900'
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="font-bold text-slate-900 dark:text-slate-100 truncate">
-                              <span className="text-teal-700 dark:text-teal-400 ml-1">
-                                {st.original_order}.
+                        <div className="min-w-0 overflow-hidden">
+                          <p className="font-bold text-slate-900 dark:text-slate-100 truncate leading-tight">
+                            <span className="text-teal-700 dark:text-teal-400 ml-1">
+                              {st.original_order}.
+                            </span>
+                            {st.full_name}
+                          </p>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 whitespace-nowrap overflow-hidden leading-tight">
+                            <span className="truncate">
+                              {st.registry_number ? `قيد: ${st.registry_number}` : st.student_uid}
+                            </span>
+                            {st.year_pending_lessons > 0 && (
+                              <span className="text-amber-700 dark:text-amber-400 font-semibold shrink-0">
+                                رصيد معلق: {st.year_pending_lessons}
                               </span>
-                              {st.full_name}
-                            </p>
-                            <div className="flex flex-wrap items-center gap-2 text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5">
-                              <span>{st.registry_number ? `قيد: ${st.registry_number}` : st.student_uid}</span>
-                              {st.year_pending_lessons > 0 && (
-                                <span className="text-amber-700 dark:text-amber-400 font-semibold">
-                                  رصيد معلق: {st.year_pending_lessons} درس
-                                </span>
-                              )}
-                            </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -890,13 +914,13 @@ export function MonthlyRegisterView({
                         return (
                           <td
                             key={calDay.day_of_month}
-                            className="border-l border-slate-200 dark:border-slate-800 p-0 text-center"
+                            className="h-12 border-l border-slate-200 dark:border-slate-800 p-0 text-center"
                           >
                             <button
                               type="button"
                               onClick={() => setSelectedCellInfo({ student: st, cell })}
                               title={`${st.full_name} • ${calDay.day_name} ${calDay.date}`}
-                              className={`w-full h-10 min-w-[36px] flex items-center justify-center text-xs transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-600 ${getCellStyleClasses(
+                              className={`w-full h-12 min-w-[36px] flex items-center justify-center text-xs transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-600 ${getCellStyleClasses(
                                 cell.status_kind
                               )} ${
                                 cell.outside_section_membership &&
@@ -912,26 +936,31 @@ export function MonthlyRegisterView({
                       })}
 
                       {/* 7 Totals Cells */}
-                      <td className="border-l border-slate-200 dark:border-slate-800 px-2 py-2 text-center font-bold text-slate-800 dark:text-slate-200">
+                      <td className="h-12 border-l border-slate-200 dark:border-slate-800 px-2 py-1 text-center font-bold text-slate-800 dark:text-slate-200 align-middle">
                         {st.direct_full_days}
                       </td>
-                      <td className="border-l border-slate-200 dark:border-slate-800 px-2 py-2 text-center font-bold text-purple-800 dark:text-purple-300">
+                      <td className="h-12 border-l border-slate-200 dark:border-slate-800 px-2 py-1 text-center font-bold text-purple-800 dark:text-purple-300 align-middle">
                         {st.converted_lesson_days}
                       </td>
-                      <td className="border-l border-slate-200 dark:border-slate-800 px-2 py-2 text-center font-semibold text-amber-800 dark:text-amber-300">
-                        {st.missed_lessons_count}
+                      <td className="h-12 border-l border-slate-200 dark:border-slate-800 px-2 py-1 text-center font-semibold text-amber-800 dark:text-amber-300 align-middle leading-tight">
+                        <div>{st.missed_lessons_count}</div>
+                        {st.lesson_escape_lessons > 0 && (
+                          <div className="text-[9.5px] text-orange-700 dark:text-orange-400 font-bold whitespace-nowrap">
+                            هروب: {st.lesson_escape_lessons}
+                          </div>
+                        )}
                       </td>
-                      <td className="border-l border-slate-200 dark:border-slate-800 px-2 py-2 text-center font-semibold text-teal-800 dark:text-teal-300">
+                      <td className="h-12 border-l border-slate-200 dark:border-slate-800 px-2 py-1 text-center font-semibold text-teal-800 dark:text-teal-300 align-middle">
                         {st.sick_leave_days}
                       </td>
-                      <td className="border-l border-slate-200 dark:border-slate-800 px-2 py-2 text-center font-semibold text-sky-800 dark:text-sky-300">
+                      <td className="h-12 border-l border-slate-200 dark:border-slate-800 px-2 py-1 text-center font-semibold text-sky-800 dark:text-sky-300 align-middle">
                         {st.daily_permission_days}
                       </td>
-                      <td className="border-l border-slate-200 dark:border-slate-800 px-2 py-2 text-center font-semibold text-indigo-800 dark:text-indigo-300">
+                      <td className="h-12 border-l border-slate-200 dark:border-slate-800 px-2 py-1 text-center font-semibold text-indigo-800 dark:text-indigo-300 align-middle">
                         {st.lesson_permission_records}
                       </td>
                       <td
-                        className={`border-l border-slate-200 dark:border-slate-800 px-2 py-2 text-center font-extrabold ${
+                        className={`h-12 border-l border-slate-200 dark:border-slate-800 px-2 py-1 text-center font-extrabold align-middle ${
                           st.total_counted_absence_days > 0
                             ? 'bg-red-50/80 dark:bg-red-950/35 text-red-800 dark:text-red-200'
                             : 'text-slate-500 dark:text-slate-400'
@@ -940,52 +969,72 @@ export function MonthlyRegisterView({
                         {st.total_counted_absence_days}
                       </td>
 
-                      {/* Notes Cell (Auto + Manual + Edit Button) */}
-                      <td className="px-3 py-2 text-right min-w-[290px] max-w-[380px] align-top">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="space-y-1 text-[11px] leading-snug min-w-0 flex-1">
-                            {st.auto_notes.map((note, idx) => (
+                      {/* Compact Fixed-Height Notes Cell + View Details Button */}
+                      <td className="h-12 px-2.5 py-1 text-right min-w-[320px] max-w-[360px] align-middle">
+                        <div className="h-10 flex items-center justify-between gap-2 overflow-hidden">
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            {st.compact_notes_summary ? (
+                              <>
+                                <p
+                                  title={st.compact_notes_summary}
+                                  className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 truncate leading-tight"
+                                >
+                                  {st.compact_notes_summary}
+                                </p>
+                                {st.manual_note && (
+                                  <p
+                                    title={`ملاحظة يدوية: ${st.manual_note}`}
+                                    className="text-[10px] font-semibold text-teal-700 dark:text-teal-300 truncate leading-tight mt-0.5"
+                                  >
+                                    ملاحظة يدوية: {st.manual_note}
+                                  </p>
+                                )}
+                              </>
+                            ) : st.manual_note ? (
                               <p
-                                key={idx}
-                                className="text-slate-700 dark:text-slate-300 border-r-2 border-purple-500 pr-1.5"
+                                title={`ملاحظة يدوية: ${st.manual_note}`}
+                                className="text-[11px] font-semibold text-teal-700 dark:text-teal-300 truncate leading-tight"
                               >
-                                {note}
+                                ملاحظة يدوية: {st.manual_note}
                               </p>
-                            ))}
-
-                            {st.manual_note && (
-                              <p className="text-teal-900 dark:text-teal-200 font-semibold border-r-2 border-teal-600 pr-1.5 bg-teal-50/60 dark:bg-teal-950/30 py-0.5 rounded-l">
-                                ملاحظة الإدارة: {st.manual_note}
-                              </p>
-                            )}
-
-                            {st.auto_notes.length === 0 && !st.manual_note && (
-                              <span className="text-slate-400 dark:text-slate-500">لا توجد ملاحظات</span>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 dark:text-slate-500 truncate block">
+                                لا توجد ملاحظات
+                              </span>
                             )}
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => setNoteModalStudent(st)}
-                            title={
-                              st.manual_note
-                                ? 'تعديل أو حذف الملاحظة اليدوية'
-                                : 'إضافة ملاحظة إدارية يدوية'
-                            }
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-teal-600 hover:text-teal-700 dark:hover:text-teal-300 text-[10.5px] font-semibold shrink-0 transition-colors"
-                          >
-                            {st.manual_note ? (
-                              <>
+                          <div className="shrink-0 flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setNotesModalStudentId(st.student_id)}
+                              title="عرض جميع الملاحظات مرتبة حسب التاريخ"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-teal-200 dark:border-teal-800 bg-teal-50/80 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 hover:bg-teal-100 dark:hover:bg-teal-900/60 text-[10.5px] font-semibold whitespace-nowrap transition-colors"
+                            >
+                              <Eye className="w-3 h-3" />
+                              عرض التفاصيل
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setNoteModalStudentId(st.student_id)}
+                              title={
+                                st.manual_note
+                                  ? 'تعديل أو حذف الملاحظة اليدوية'
+                                  : 'إضافة ملاحظة إدارية يدوية'
+                              }
+                              aria-label={
+                                st.manual_note ? 'تعديل الملاحظة اليدوية' : 'إضافة ملاحظة يدوية'
+                              }
+                              className="inline-flex items-center justify-center p-1.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-teal-600 hover:text-teal-700 dark:hover:text-teal-300 transition-colors"
+                            >
+                              {st.manual_note ? (
                                 <Pencil className="w-3 h-3" />
-                                تعديل
-                              </>
-                            ) : (
-                              <>
+                              ) : (
                                 <Plus className="w-3 h-3" />
-                                ملاحظة
-                              </>
-                            )}
-                          </button>
+                              )}
+                            </button>
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -1021,6 +1070,17 @@ export function MonthlyRegisterView({
         onClose={() => setSelectedCellInfo(null)}
       />
 
+      <MonthlyStudentNotesModal
+        open={Boolean(notesModalStudent)}
+        student={notesModalStudent}
+        gradeName={registerData?.grade_name ?? ''}
+        sectionName={registerData?.section_name ?? ''}
+        monthName={registerData?.month_name ?? ''}
+        year={registerData?.year ?? calendarYear}
+        onEditManualNote={(student) => setNoteModalStudentId(student.student_id)}
+        onClose={() => setNotesModalStudentId(null)}
+      />
+
       <MonthlyManualNoteModal
         open={Boolean(noteModalStudent)}
         student={noteModalStudent}
@@ -1029,7 +1089,7 @@ export function MonthlyRegisterView({
         saving={savingNote}
         onSave={handleSaveManualNote}
         onDelete={handleDeleteManualNote}
-        onClose={() => setNoteModalStudent(null)}
+        onClose={() => setNoteModalStudentId(null)}
       />
 
       {/* In-App Print Preview & Sandbox Fallback Modal */}

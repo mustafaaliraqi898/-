@@ -9,6 +9,7 @@ import type {
   GradeWithSections,
   HolidayCheckResult,
   HolidayRecord,
+  LessonDetailInput,
   MonthCalendarDay,
   MonthlyRegisterData,
   MonthlyRegisterQuery,
@@ -390,6 +391,22 @@ export const schoolService = {
       return ipcCall<SaveSectionAttendanceResult>('absences:save-sheet', input);
     }
     return httpJson<SaveSectionAttendanceResult>('/api/absences/sheet', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  async addStudentLessonRecords(input: {
+    student_id: number;
+    academic_year_id?: number;
+    absence_date: string;
+    lesson_details: LessonDetailInput[];
+    notes?: string | null;
+  }): Promise<Record<string, unknown>> {
+    if (isElectronMode()) {
+      return ipcCall<Record<string, unknown>>('absences:add-lessons', input);
+    }
+    return httpJson<Record<string, unknown>>('/api/absences/lessons', {
       method: 'POST',
       body: JSON.stringify(input),
     });

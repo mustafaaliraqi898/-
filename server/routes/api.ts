@@ -1,6 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { getDb, type SqliteDb } from '../db/connection';
 import {
+  addStudentLessonRecords,
   createSingleAbsenceRecord,
   deleteAbsenceRecord,
   getSectionAttendanceSheet,
@@ -397,9 +398,23 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
         req.body?.lessons_count !== undefined ? Number(req.body.lessons_count) : undefined,
       leave_type: req.body?.leave_type ?? null,
       lesson_numbers: Array.isArray(req.body?.lesson_numbers) ? req.body.lesson_numbers : undefined,
+      lesson_details: Array.isArray(req.body?.lesson_details) ? req.body.lesson_details : undefined,
       notes: req.body?.notes ?? null,
     });
     res.status(201).json(created);
+  });
+
+  router.post('/absences/lessons', (req, res) => {
+    const db = dbProvider();
+    const studentId = parsePositiveInt(String(req.body?.student_id ?? ''), 'الطالب');
+    const saved = addStudentLessonRecords(db, {
+      student_id: studentId,
+      academic_year_id: parseOptionalInt(req.body?.academic_year_id),
+      absence_date: String(req.body?.absence_date ?? ''),
+      lesson_details: Array.isArray(req.body?.lesson_details) ? req.body.lesson_details : [],
+      notes: req.body?.notes ?? null,
+    });
+    res.status(201).json(saved);
   });
 
   router.delete('/absences/record/:id', (req, res) => {

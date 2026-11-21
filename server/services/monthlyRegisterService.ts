@@ -2,11 +2,15 @@ import ExcelJS from 'exceljs';
 import type {
   AbsenceStatus,
   AcademicYear,
+  ConversionContributingLesson,
   HolidayCheckResult,
   LeaveType,
+  LessonDetailItem,
+  LessonStatusType,
   MonthCalendarDay,
   MonthlyDayCellData,
   MonthlyLegendItem,
+  MonthlyNoteDetailItem,
   MonthlyRegisterData,
   MonthlyRegisterQuery,
   MonthlyRegisterStats,
@@ -59,6 +63,46 @@ export function formatLessonOrdinals(numbers: number[]): string {
   return numbers.map((n) => LESSON_ORDINALS[n - 1] ?? `الدرس ${n}`).join('، ');
 }
 
+export function buildCompactNotesSummary(counts: {
+  lessonEscapeLessons: number;
+  lessonPermissionLessons: number;
+  lessonAbsenceLessons: number;
+  dailyPermissionDays: number;
+  directFullDays: number;
+  convertedLessonDays: number;
+  sickLeaveDays: number;
+  transferEventsCount: number;
+}): string {
+  const parts: string[] = [];
+  if (counts.lessonEscapeLessons > 0) {
+    parts.push(`${toArabicIndicDigits(counts.lessonEscapeLessons)} هروب`);
+  }
+  if (counts.lessonPermissionLessons > 0 && counts.dailyPermissionDays > 0) {
+    parts.push(`${toArabicIndicDigits(counts.lessonPermissionLessons)} رخصة درس`);
+    parts.push(`${toArabicIndicDigits(counts.dailyPermissionDays)} رخصة يومية`);
+  } else if (counts.lessonPermissionLessons > 0) {
+    parts.push(`${toArabicIndicDigits(counts.lessonPermissionLessons)} رخصة`);
+  } else if (counts.dailyPermissionDays > 0) {
+    parts.push(`${toArabicIndicDigits(counts.dailyPermissionDays)} رخصة يومية`);
+  }
+  if (counts.lessonAbsenceLessons > 0) {
+    parts.push(`${toArabicIndicDigits(counts.lessonAbsenceLessons)} غياب عن درس`);
+  }
+  if (counts.directFullDays > 0) {
+    parts.push(`${toArabicIndicDigits(counts.directFullDays)} غياب يوم كامل`);
+  }
+  if (counts.convertedLessonDays > 0) {
+    parts.push(`${toArabicIndicDigits(counts.convertedLessonDays)} يوم متراكم`);
+  }
+  if (counts.sickLeaveDays > 0) {
+    parts.push(`${toArabicIndicDigits(counts.sickLeaveDays)} إجازة مرضية`);
+  }
+  if (counts.transferEventsCount > 0) {
+    parts.push(`${toArabicIndicDigits(counts.transferEventsCount)} نقل`);
+  }
+  return parts.join(' + ');
+}
+
 export const MONTHLY_LEGEND: MonthlyLegendItem[] = [
   {
     symbol: 'غ',
@@ -73,7 +117,12 @@ export const MONTHLY_LEGEND: MonthlyLegendItem[] = [
   {
     symbol: 'د',
     label: 'غائب عن درس / دروس',
-    description: 'الرقم بجانب (د) مثل د١، د٢ يمثل عدد الدروس الغائبة في ذلك اليوم.',
+    description: 'الرقم بجانب (د) مثل د١، د٢ يمثل عدد الدروس الغائبة في ذلك اليوم ويُحتسب في العداد الموحد.',
+  },
+  {
+    symbol: 'هـ',
+    label: 'هروب من درس / دروس',
+    description: 'الرقم بجانب (هـ) مثل هـ١، هـ٢ يمثل عدد الدروس التي هرب منها الطالب ويُحتسب دائماً في العداد الموحد.',
   },
   {
     symbol: 'م',
@@ -111,6 +160,25 @@ function parseLessonNumbersFallback(jsonStr: string | null): number[] {
         .map(Number)
         .filter((n) => Number.isInteger(n) && n >= 1 && n <= 12)
         .sort((a, b) => a - b);
+    }
+  } catch {
+    // ignore malformed JSON
+  }
+  return [];
+}
+
+function parseContributingLessonsJson(jsonStr: string | null): ConversionContributingLesson[] {
+  if (!jsonStr) return [];
+  try {
+    const parsed = JSON.parse(jsonStr);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(
+        (item): item is ConversionContributingLesson =>
+          Boolean(item) &&
+          typeof item.absence_id === 'number' &&
+          typeof item.absence_date === 'string' &&
+          typeof item.lesson_status === 'string'
+      );
     }
   } catch {
     // ignore malformed JSON
@@ -325,7 +393,8 @@ export function getMonthlyAbsenceRegister(
 
   const monthConversions = db
     .prepare(
-      `SELECT id, student_id, source_absence_id, converted_date, lessons_consumed, threshold_used
+      `SELECT id, student_id, source_absence_id, converted_date, lessons_consumed, threshold_used,
+              contributing_lessons_json
        FROM lesson_converted_days
        WHERE academic_year_id = ?
          AND grade_id = ?
@@ -347,6 +416,7 @@ export function getMonthlyAbsenceRegister(
     converted_date: string;
     lessons_consumed: number;
     threshold_used: number;
+    contributing_lessons_json: string | null;
   }>;
 
   const sessionRows = db
@@ -495,24 +565,39 @@ export function getMonthlyAbsenceRegister(
   // Original order = deterministic SQLite student ID ascending (original enrollment order)
   memberList.sort((a, b) => a.student_id - b.student_id);
 
-  // 4. Load lesson numbers for lesson_permission records in this month
+  // 4. Load full per-lesson details for lesson records in this month
   const absenceIds = monthAbsences.map((a) => a.id);
-  const lessonNumbersMap = new Map<number, number[]>();
+  const lessonDetailsMap = new Map<number, LessonDetailItem[]>();
   if (absenceIds.length > 0) {
     const placeholders = absenceIds.map(() => '?').join(',');
     const detailRows = db
       .prepare(
-        `SELECT absence_id, lesson_number
+        `SELECT absence_id, lesson_number, lesson_status, counted_as_absence,
+                permission_rule_snapshot, threshold_snapshot
          FROM absence_lesson_details
          WHERE absence_id IN (${placeholders})
          ORDER BY lesson_number ASC`
       )
-      .all(...absenceIds) as Array<{ absence_id: number; lesson_number: number }>;
+      .all(...absenceIds) as Array<{
+      absence_id: number;
+      lesson_number: number;
+      lesson_status: LessonStatusType;
+      counted_as_absence: number;
+      permission_rule_snapshot: number | null;
+      threshold_snapshot: number;
+    }>;
 
     for (const r of detailRows) {
-      const arr = lessonNumbersMap.get(r.absence_id);
-      if (arr) arr.push(r.lesson_number);
-      else lessonNumbersMap.set(r.absence_id, [r.lesson_number]);
+      const item: LessonDetailItem = {
+        lesson_number: r.lesson_number,
+        lesson_status: r.lesson_status,
+        counted_as_absence: r.counted_as_absence,
+        permission_rule_snapshot: r.permission_rule_snapshot,
+        threshold_snapshot: r.threshold_snapshot,
+      };
+      const arr = lessonDetailsMap.get(r.absence_id);
+      if (arr) arr.push(item);
+      else lessonDetailsMap.set(r.absence_id, [item]);
     }
   }
 
@@ -523,16 +608,11 @@ export function getMonthlyAbsenceRegister(
   }
 
   const conversionsByStudentDate = new Map<string, Array<(typeof monthConversions)[number]>>();
-  const conversionsByStudent = new Map<number, Array<(typeof monthConversions)[number]>>();
   for (const c of monthConversions) {
     const key = `${c.student_id}:${c.converted_date}`;
     const list = conversionsByStudentDate.get(key);
     if (list) list.push(c);
     else conversionsByStudentDate.set(key, [c]);
-
-    const sList = conversionsByStudent.get(c.student_id);
-    if (sList) sList.push(c);
-    else conversionsByStudent.set(c.student_id, [c]);
   }
 
   // 5. Load year-wide pending lessons & manual notes for member students
@@ -545,11 +625,19 @@ export function getMonthlyAbsenceRegister(
 
     const yearMissedRows = db
       .prepare(
-        `SELECT student_id,
-                COALESCE(SUM(CASE WHEN status = 'lesson_absence' OR (status = 'lesson_permission' AND counted_as_absence = 1) THEN lessons_count ELSE 0 END), 0) as total_missed
-         FROM absences
-         WHERE academic_year_id = ? AND student_id IN (${placeholders})
-         GROUP BY student_id`
+        `SELECT a.student_id,
+                COALESCE(SUM(
+                  CASE
+                    WHEN EXISTS (SELECT 1 FROM absence_lesson_details ald WHERE ald.absence_id = a.id) THEN
+                      (SELECT COUNT(*) FROM absence_lesson_details ald WHERE ald.absence_id = a.id AND ald.counted_as_absence = 1)
+                    WHEN a.status IN ('lesson_absence', 'lesson_escape') THEN a.lessons_count
+                    WHEN a.status = 'lesson_permission' AND a.counted_as_absence = 1 THEN a.lessons_count
+                    ELSE 0
+                  END
+                ), 0) as total_missed
+         FROM absences a
+         WHERE a.academic_year_id = ? AND a.student_id IN (${placeholders})
+         GROUP BY a.student_id`
       )
       .all(ctx.academicYear.id, ...memberIds) as Array<{
       student_id: number;
@@ -594,22 +682,37 @@ export function getMonthlyAbsenceRegister(
   // 6. Build rows & full section statistics
   const allStudentRows: MonthlyStudentRow[] = memberList.map((member, index) => {
     const days: Record<number, MonthlyDayCellData> = {};
-    const autoNotes: string[] = [];
+    const autoNoteItems: MonthlyNoteDetailItem[] = [];
+    let transferEventsCount = 0;
 
     if (member.transfer_in_date && member.transfer_in_from) {
-      autoNotes.push(
-        `نُقل الطالب إلى هذه الشعبة بتاريخ ${member.transfer_in_date} قادماً من (${member.transfer_in_from}).`
-      );
+      transferEventsCount += 1;
+      autoNoteItems.push({
+        date: member.transfer_in_date,
+        category: 'transfer',
+        text: `نُقل الطالب إلى هذه الشعبة بتاريخ ${member.transfer_in_date} قادماً من (${member.transfer_in_from}).`,
+        counted_as_absence: false,
+        count: 1,
+      });
     }
     if (member.transfer_out_date && member.transfer_out_to) {
-      autoNotes.push(
-        `نُقل الطالب من هذه الشعبة بتاريخ ${member.transfer_out_date} إلى (${member.transfer_out_to}).`
-      );
+      transferEventsCount += 1;
+      autoNoteItems.push({
+        date: member.transfer_out_date,
+        category: 'transfer',
+        text: `نُقل الطالب من هذه الشعبة بتاريخ ${member.transfer_out_date} إلى (${member.transfer_out_to}).`,
+        counted_as_absence: false,
+        count: 1,
+      });
     }
 
     let directFullDays = 0;
     let convertedLessonDays = 0;
     let missedLessonsCount = 0;
+    let lessonAbsenceLessons = 0;
+    let lessonEscapeLessons = 0;
+    let countedLessonPermissionLessons = 0;
+    let uncountedLessonPermissionLessons = 0;
     let sickLeaveDays = 0;
     let dailyPermissionDays = 0;
     let countedDailyPermissionDays = 0;
@@ -634,12 +737,15 @@ export function getMonthlyAbsenceRegister(
           raw_status: null,
           lessons_count: 0,
           lesson_numbers: [],
+          lesson_details: [],
+          counted_lessons_today: 0,
           leave_type: null,
           counted_as_absence: false,
           contributed_to_counter: false,
           generated_converted_day: false,
           converted_days_count: 0,
           threshold_used: null,
+          contributing_lessons: [],
           notes: null,
           holiday_info: calendarDayToHolidayCheck(calDay),
           outside_section_membership: outsideMembership,
@@ -647,15 +753,91 @@ export function getMonthlyAbsenceRegister(
         continue;
       }
 
-      const lessonNumbers =
-        absRow && absRow.status === 'lesson_permission'
-          ? (lessonNumbersMap.get(absRow.id) ??
-            parseLessonNumbersFallback(absRow.lesson_numbers_json))
-          : [];
+      const storedDetails = absRow ? (lessonDetailsMap.get(absRow.id) ?? []) : [];
+      const fallbackNums = absRow ? parseLessonNumbersFallback(absRow.lesson_numbers_json) : [];
+      let effectiveDetails: LessonDetailItem[] = storedDetails;
+      if (
+        effectiveDetails.length === 0 &&
+        absRow &&
+        (absRow.status === 'lesson_absence' ||
+          absRow.status === 'lesson_permission' ||
+          absRow.status === 'lesson_escape') &&
+        fallbackNums.length > 0
+      ) {
+        const lStatus = absRow.status as LessonStatusType;
+        effectiveDetails = fallbackNums.map((num) => ({
+          lesson_number: num,
+          lesson_status: lStatus,
+          counted_as_absence: lStatus === 'lesson_permission' ? absRow.counted_as_absence : 1,
+          permission_rule_snapshot:
+            lStatus === 'lesson_permission' ? absRow.permission_rule_snapshot : null,
+          threshold_snapshot: absRow.threshold_snapshot,
+        }));
+      }
 
-      const lessonsCount = absRow ? absRow.lessons_count : 0;
+      const lessonNumbers =
+        effectiveDetails.length > 0
+          ? effectiveDetails.map((d) => d.lesson_number)
+          : fallbackNums;
+
+      const isLessonRow =
+        Boolean(absRow) &&
+        (effectiveDetails.length > 0 ||
+          absRow!.status === 'lesson_absence' ||
+          absRow!.status === 'lesson_permission' ||
+          absRow!.status === 'lesson_escape');
+
+      let dayAbsCount = 0;
+      let dayEscCount = 0;
+      let dayPermCount = 0;
+      let dayCountedPermCount = 0;
+      let dayUncountedPermCount = 0;
+      const absNums: number[] = [];
+      const escNums: number[] = [];
+      const permCountedNums: number[] = [];
+      const permUncountedNums: number[] = [];
+
+      if (effectiveDetails.length > 0) {
+        for (const d of effectiveDetails) {
+          if (d.lesson_status === 'lesson_absence') {
+            dayAbsCount += 1;
+            absNums.push(d.lesson_number);
+          } else if (d.lesson_status === 'lesson_escape') {
+            dayEscCount += 1;
+            escNums.push(d.lesson_number);
+          } else if (d.lesson_status === 'lesson_permission') {
+            dayPermCount += 1;
+            if (d.counted_as_absence === 1) {
+              dayCountedPermCount += 1;
+              permCountedNums.push(d.lesson_number);
+            } else {
+              dayUncountedPermCount += 1;
+              permUncountedNums.push(d.lesson_number);
+            }
+          }
+        }
+      } else if (absRow) {
+        if (absRow.status === 'lesson_absence') {
+          dayAbsCount = absRow.lessons_count;
+        } else if (absRow.status === 'lesson_escape') {
+          dayEscCount = absRow.lessons_count;
+        } else if (absRow.status === 'lesson_permission') {
+          dayPermCount = absRow.lessons_count;
+          if (absRow.counted_as_absence === 1) {
+            dayCountedPermCount = absRow.lessons_count;
+          } else {
+            dayUncountedPermCount = absRow.lessons_count;
+          }
+        }
+      }
+
+      const countedLessonsToday = dayAbsCount + dayEscCount + dayCountedPermCount;
+      const lessonsCount = absRow ? absRow.lessons_count || effectiveDetails.length : 0;
       const convertedCountToday = dayConversions.length;
       const generatedConverted = convertedCountToday > 0;
+      const contributingLessons = dayConversions.flatMap((c) =>
+        parseContributingLessonsJson(c.contributing_lessons_json)
+      );
       const thresholdUsed = generatedConverted
         ? dayConversions[0].threshold_used
         : absRow
@@ -666,57 +848,118 @@ export function getMonthlyAbsenceRegister(
       if (absRow) {
         if (absRow.status === 'full_day') {
           directFullDays += 1;
-        } else if (absRow.status === 'lesson_absence') {
-          missedLessonsCount += absRow.lessons_count;
+          const reasonSuffix = absRow.notes ? ` (${absRow.notes})` : '';
+          autoNoteItems.push({
+            date: calDay.date,
+            category: 'full_day',
+            text: `غياب يوم كامل بتاريخ ${calDay.date} — يوم واحد محتسب${reasonSuffix}.`,
+            counted_as_absence: true,
+            count: 1,
+          });
         } else if (absRow.status === 'full_day_leave') {
           if (absRow.leave_type === 'sick_leave') {
             sickLeaveDays += 1;
             const reasonSuffix = absRow.notes ? ` (${absRow.notes})` : '';
-            autoNotes.push(
-              `إجازة مرضية بتاريخ ${calDay.date} — لا تُحتسب غياباً${reasonSuffix}.`
-            );
+            autoNoteItems.push({
+              date: calDay.date,
+              category: 'sick_leave',
+              text: `إجازة مرضية بتاريخ ${calDay.date} — لا تُحتسب غياباً${reasonSuffix}.`,
+              counted_as_absence: false,
+              count: 1,
+            });
           } else if (absRow.leave_type === 'daily_permission') {
             dailyPermissionDays += 1;
             const isCounted = absRow.counted_as_absence === 1;
             if (isCounted) countedDailyPermissionDays += 1;
             const reasonSuffix = absRow.notes ? ` (${absRow.notes})` : '';
-            autoNotes.push(
-              isCounted
+            autoNoteItems.push({
+              date: calDay.date,
+              category: 'daily_permission',
+              text: isCounted
                 ? `رخصة يومية بتاريخ ${calDay.date} — احتُسبت يوم غياب كامل${reasonSuffix}.`
-                : `رخصة يومية بتاريخ ${calDay.date} — غير محسوبة ضمن الغياب${reasonSuffix}.`
-            );
+                : `رخصة يومية بتاريخ ${calDay.date} — غير محسوبة ضمن الغياب${reasonSuffix}.`,
+              counted_as_absence: isCounted,
+              count: 1,
+            });
           }
-        } else if (absRow.status === 'lesson_permission') {
-          lessonPermissionRecords += 1;
-          const isCounted = absRow.counted_as_absence === 1;
-          if (isCounted) {
-            missedLessonsCount += absRow.lessons_count;
-          }
-          const lessonNamesText = formatLessonOrdinals(lessonNumbers);
+        } else if (isLessonRow) {
+          lessonAbsenceLessons += dayAbsCount;
+          lessonEscapeLessons += dayEscCount;
+          countedLessonPermissionLessons += dayCountedPermCount;
+          uncountedLessonPermissionLessons += dayUncountedPermCount;
+          missedLessonsCount += countedLessonsToday;
+
           const reasonSuffix = absRow.notes ? ` (${absRow.notes})` : '';
-          autoNotes.push(
-            isCounted
-              ? `رخصة درس بتاريخ ${calDay.date} (${lessonNamesText}) — أُضيفت لعداد الدروس${reasonSuffix}.`
-              : `رخصة درس بتاريخ ${calDay.date} (${lessonNamesText}) — غير محسوبة${reasonSuffix}.`
-          );
+
+          if (dayAbsCount > 0) {
+            const absText = absNums.length > 0 ? ` (${formatLessonOrdinals(absNums)})` : '';
+            autoNoteItems.push({
+              date: calDay.date,
+              category: 'lesson_absence',
+              text: `غياب عن درس بتاريخ ${calDay.date}${absText} — أُضيف لعداد الدروس${reasonSuffix}.`,
+              counted_as_absence: true,
+              count: dayAbsCount,
+            });
+          }
+          if (dayEscCount > 0) {
+            const escText = escNums.length > 0 ? ` (${formatLessonOrdinals(escNums)})` : '';
+            autoNoteItems.push({
+              date: calDay.date,
+              category: 'lesson_escape',
+              text: `هروب من درس بتاريخ ${calDay.date}${escText} — أُضيف لعداد الدروس${reasonSuffix}.`,
+              counted_as_absence: true,
+              count: dayEscCount,
+            });
+          }
+          if (dayPermCount > 0) {
+            lessonPermissionRecords += 1;
+            if (permCountedNums.length > 0 || (effectiveDetails.length === 0 && dayCountedPermCount > 0)) {
+              const permNamesText = formatLessonOrdinals(
+                permCountedNums.length > 0 ? permCountedNums : lessonNumbers
+              );
+              autoNoteItems.push({
+                date: calDay.date,
+                category: 'lesson_permission',
+                text: `رخصة درس بتاريخ ${calDay.date} (${permNamesText}) — أُضيفت لعداد الدروس${reasonSuffix}.`,
+                counted_as_absence: true,
+                count: dayCountedPermCount,
+              });
+            }
+            if (
+              permUncountedNums.length > 0 ||
+              (effectiveDetails.length === 0 && dayUncountedPermCount > 0)
+            ) {
+              const permNamesText = formatLessonOrdinals(
+                permUncountedNums.length > 0 ? permUncountedNums : lessonNumbers
+              );
+              autoNoteItems.push({
+                date: calDay.date,
+                category: 'lesson_permission',
+                text: `رخصة درس بتاريخ ${calDay.date} (${permNamesText}) — غير محسوبة${reasonSuffix}.`,
+                counted_as_absence: false,
+                count: dayUncountedPermCount,
+              });
+            }
+          }
         }
       }
 
       if (generatedConverted) {
         convertedLessonDays += convertedCountToday;
         for (const conv of dayConversions) {
-          autoNotes.push(
-            `تم احتساب يوم غياب كامل بتاريخ ${conv.converted_date} نتيجة تراكم ${conv.threshold_used} دروس غياب (بواقع يوم واحد).`
-          );
+          autoNoteItems.push({
+            date: conv.converted_date,
+            category: 'lesson_converted',
+            text: `تم احتساب يوم غياب كامل بتاريخ ${conv.converted_date} نتيجة تراكم ${conv.threshold_used} دروس غياب (بواقع يوم واحد).`,
+            counted_as_absence: true,
+            count: 1,
+          });
         }
       }
 
       // Cell Symbol Determination:
       // Conversion takes display priority ('ج') on the date it completed
       if (generatedConverted) {
-        const contributed =
-          absRow?.status === 'lesson_absence' ||
-          (absRow?.status === 'lesson_permission' && absRow.counted_as_absence === 1);
         days[calDay.day_of_month] = {
           date: calDay.date,
           day_of_month: calDay.day_of_month,
@@ -728,12 +971,15 @@ export function getMonthlyAbsenceRegister(
           raw_status: absRow?.status ?? null,
           lessons_count: lessonsCount,
           lesson_numbers: lessonNumbers,
+          lesson_details: effectiveDetails,
+          counted_lessons_today: countedLessonsToday,
           leave_type: absRow?.leave_type ?? null,
           counted_as_absence: true,
-          contributed_to_counter: Boolean(contributed),
+          contributed_to_counter: countedLessonsToday > 0,
           generated_converted_day: true,
           converted_days_count: convertedCountToday,
           threshold_used: thresholdUsed,
+          contributing_lessons: contributingLessons,
           notes: absRow?.notes ?? null,
           holiday_info: null,
           outside_section_membership: outsideMembership,
@@ -757,12 +1003,15 @@ export function getMonthlyAbsenceRegister(
           raw_status: absRow?.status ?? null,
           lessons_count: 0,
           lesson_numbers: [],
+          lesson_details: [],
+          counted_lessons_today: 0,
           leave_type: null,
           counted_as_absence: false,
           contributed_to_counter: false,
           generated_converted_day: false,
           converted_days_count: 0,
           threshold_used: null,
+          contributing_lessons: [],
           notes: absRow?.notes ?? null,
           holiday_info: null,
           outside_section_membership: outsideMembership,
@@ -782,34 +1031,15 @@ export function getMonthlyAbsenceRegister(
           raw_status: absRow.status,
           lessons_count: 0,
           lesson_numbers: [],
+          lesson_details: [],
+          counted_lessons_today: 0,
           leave_type: null,
           counted_as_absence: true,
           contributed_to_counter: false,
           generated_converted_day: false,
           converted_days_count: 0,
           threshold_used: null,
-          notes: absRow.notes,
-          holiday_info: null,
-          outside_section_membership: outsideMembership,
-        };
-      } else if (absRow.status === 'lesson_absence') {
-        days[calDay.day_of_month] = {
-          date: calDay.date,
-          day_of_month: calDay.day_of_month,
-          day_name: calDay.day_name,
-          symbol: `د${toArabicIndicDigits(absRow.lessons_count)}`,
-          status_kind: 'lesson_absence',
-          has_record: true,
-          record_id: absRow.id,
-          raw_status: absRow.status,
-          lessons_count: absRow.lessons_count,
-          lesson_numbers: [],
-          leave_type: null,
-          counted_as_absence: false,
-          contributed_to_counter: true,
-          generated_converted_day: false,
-          converted_days_count: 0,
-          threshold_used: absRow.threshold_snapshot,
+          contributing_lessons: [],
           notes: absRow.notes,
           holiday_info: null,
           outside_section_membership: outsideMembership,
@@ -827,37 +1057,60 @@ export function getMonthlyAbsenceRegister(
           raw_status: absRow.status,
           lessons_count: 0,
           lesson_numbers: [],
+          lesson_details: [],
+          counted_lessons_today: 0,
           leave_type: absRow.leave_type,
           counted_as_absence: isSick ? false : absRow.counted_as_absence === 1,
           contributed_to_counter: false,
           generated_converted_day: false,
           converted_days_count: 0,
           threshold_used: null,
+          contributing_lessons: [],
           notes: absRow.notes,
           holiday_info: null,
           outside_section_membership: outsideMembership,
         };
       } else {
-        // lesson_permission
-        const count = absRow.lessons_count || lessonNumbers.length;
-        const isCounted = absRow.counted_as_absence === 1;
+        // Lesson-level day: lesson_absence | lesson_escape | lesson_permission | mixed
+        const symbolParts: string[] = [];
+        if (dayAbsCount > 0) symbolParts.push(`د${toArabicIndicDigits(dayAbsCount)}`);
+        if (dayEscCount > 0) symbolParts.push(`هـ${toArabicIndicDigits(dayEscCount)}`);
+        if (dayPermCount > 0) symbolParts.push(`ح${toArabicIndicDigits(dayPermCount)}`);
+
+        const symbol =
+          symbolParts.length > 0
+            ? symbolParts.join('+')
+            : `د${toArabicIndicDigits(lessonsCount)}`;
+
+        const statusKind: MonthlyDayCellData['status_kind'] =
+          symbolParts.length > 1
+            ? 'lesson_mixed'
+            : dayEscCount > 0
+              ? 'lesson_escape'
+              : dayPermCount > 0
+                ? 'lesson_permission'
+                : 'lesson_absence';
+
         days[calDay.day_of_month] = {
           date: calDay.date,
           day_of_month: calDay.day_of_month,
           day_name: calDay.day_name,
-          symbol: `ح${toArabicIndicDigits(count)}`,
-          status_kind: 'lesson_permission',
+          symbol,
+          status_kind: statusKind,
           has_record: true,
           record_id: absRow.id,
           raw_status: absRow.status,
-          lessons_count: count,
+          lessons_count: lessonsCount,
           lesson_numbers: lessonNumbers,
+          lesson_details: effectiveDetails,
+          counted_lessons_today: countedLessonsToday,
           leave_type: null,
-          counted_as_absence: isCounted,
-          contributed_to_counter: isCounted,
+          counted_as_absence: countedLessonsToday > 0,
+          contributed_to_counter: countedLessonsToday > 0,
           generated_converted_day: false,
           converted_days_count: 0,
-          threshold_used: isCounted ? absRow.threshold_snapshot : null,
+          threshold_used: countedLessonsToday > 0 ? absRow.threshold_snapshot : null,
+          contributing_lessons: [],
           notes: absRow.notes,
           holiday_info: null,
           outside_section_membership: outsideMembership,
@@ -867,6 +1120,21 @@ export function getMonthlyAbsenceRegister(
 
     const totalCountedAbsenceDays =
       directFullDays + countedDailyPermissionDays + convertedLessonDays;
+
+    // Guarantee chronological sorting by date (YYYY-MM-DD)
+    autoNoteItems.sort((a, b) => a.date.localeCompare(b.date));
+    const autoNotes = autoNoteItems.map((item) => item.text);
+
+    const compactNotesSummary = buildCompactNotesSummary({
+      lessonEscapeLessons,
+      lessonPermissionLessons: countedLessonPermissionLessons + uncountedLessonPermissionLessons,
+      lessonAbsenceLessons,
+      dailyPermissionDays,
+      directFullDays,
+      convertedLessonDays,
+      sickLeaveDays,
+      transferEventsCount,
+    });
 
     return {
       student_id: member.student_id,
@@ -884,6 +1152,10 @@ export function getMonthlyAbsenceRegister(
       direct_full_days: directFullDays,
       converted_lesson_days: convertedLessonDays,
       missed_lessons_count: missedLessonsCount,
+      lesson_absence_lessons: lessonAbsenceLessons,
+      lesson_escape_lessons: lessonEscapeLessons,
+      counted_lesson_permission_lessons: countedLessonPermissionLessons,
+      uncounted_lesson_permission_lessons: uncountedLessonPermissionLessons,
       sick_leave_days: sickLeaveDays,
       daily_permission_days: dailyPermissionDays,
       counted_daily_permission_days: countedDailyPermissionDays,
@@ -891,6 +1163,8 @@ export function getMonthlyAbsenceRegister(
       total_counted_absence_days: totalCountedAbsenceDays,
       year_pending_lessons: yearPendingMap.get(member.student_id) ?? 0,
       auto_notes: autoNotes,
+      auto_note_items: autoNoteItems,
+      compact_notes_summary: compactNotesSummary,
       manual_note: manualNotesMap.get(member.student_id) ?? null,
     };
   });
@@ -917,6 +1191,10 @@ export function getMonthlyAbsenceRegister(
     ),
     total_lesson_permission_records: allStudentRows.reduce(
       (sum, r) => sum + r.lesson_permission_records,
+      0
+    ),
+    total_lesson_escape_lessons: allStudentRows.reduce(
+      (sum, r) => sum + r.lesson_escape_lessons,
       0
     ),
   };
@@ -1048,6 +1326,10 @@ function getExcelCellStyleForSymbol(cellData: MonthlyDayCellData): {
       return { bg: 'FFF3E8FF', fg: 'FF6B21A8', bold: true };
     case 'lesson_absence':
       return { bg: 'FFFEF3C7', fg: 'FF92400E', bold: true };
+    case 'lesson_escape':
+      return { bg: 'FFFFEDD5', fg: 'FF9A3412', bold: true };
+    case 'lesson_mixed':
+      return { bg: 'FFFFE4E6', fg: 'FF9F1239', bold: true };
     case 'sick_leave':
       return { bg: 'FFCCFBF1', fg: 'FF115E59', bold: true };
     case 'daily_permission':
@@ -1133,7 +1415,7 @@ export async function generateMonthlyRegisterExcel(
   sheet.mergeCells(3, 1, 3, totalCols);
   const legendCell = sheet.getCell(3, 1);
   legendCell.value =
-    'دليل الرموز:   ✓ = حاضر   |   غ = غائب يوم كامل   |   ج = يوم غياب من تراكم الدروس   |   د١.. = عدد الدروس الغائبة   |   م = إجازة مرضية (لا تُحسب)   |   ر = رخصة يومية   |   ح١.. = رخصة عن دروس   |   ع = عطلة';
+    'دليل الرموز:   ✓ = حاضر   |   غ = غائب يوم كامل   |   ج = يوم غياب من تراكم الدروس   |   د١.. = غياب دروس   |   هـ١.. = هروب من دروس   |   م = إجازة مرضية (لا تُحسب)   |   ر = رخصة يومية   |   ح١.. = رخصة عن دروس   |   ع = عطلة';
   legendCell.font = { name: 'Almarai', size: 10, color: { argb: 'FF334155' } };
   legendCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAF5FF' } };
   legendCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
@@ -1268,11 +1550,11 @@ export async function generateMonthlyRegisterExcel(
     }
 
     const combinedNotesParts: string[] = [];
-    if (st.auto_notes.length > 0) {
-      combinedNotesParts.push(...st.auto_notes);
+    if (st.compact_notes_summary) {
+      combinedNotesParts.push(st.compact_notes_summary);
     }
     if (st.manual_note) {
-      combinedNotesParts.push(`ملاحظة الإدارة: ${st.manual_note}`);
+      combinedNotesParts.push(`ملاحظة يدوية: ${st.manual_note}`);
     }
     const notesCell = row.getCell(summaryStartCol + 7);
     notesCell.value = combinedNotesParts.length > 0 ? combinedNotesParts.join(' | ') : '—';

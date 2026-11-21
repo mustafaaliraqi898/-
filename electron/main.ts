@@ -3,6 +3,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import { closeDb, createDatabaseConnection, setDbInstance, getDb } from '../server/db/connection';
 import {
+  addStudentLessonRecords,
   createSingleAbsenceRecord,
   deleteAbsenceRecord,
   getSectionAttendanceSheet,
@@ -237,6 +238,12 @@ function registerIpcHandlers() {
     'absences:create-record',
     wrap((payload: Parameters<typeof createSingleAbsenceRecord>[1]) =>
       createSingleAbsenceRecord(getDb(), payload)
+    )
+  );
+  ipcMain.handle(
+    'absences:add-lessons',
+    wrap((payload: Parameters<typeof addStudentLessonRecords>[1]) =>
+      addStudentLessonRecords(getDb(), payload)
     )
   );
   ipcMain.handle(
