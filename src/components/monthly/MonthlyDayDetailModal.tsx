@@ -98,16 +98,24 @@ function getStatusDisplayInfo(cell: MonthlyDayCellData): {
         boxClass:
           'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/70 text-slate-900 dark:text-slate-100',
       };
+    case 'present':
+      return {
+        title: 'حاضر (✓)',
+        subtitle: 'حضر الطالب الدوام المدرسي في هذا اليوم وفق سجل الحضور المعتمد.',
+        boxClass:
+          'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-900 dark:text-emerald-200',
+      };
+    case 'unrecorded':
     default:
       return {
         title: cell.outside_section_membership
           ? 'خارج فترة انتماء الطالب للشعبة'
-          : 'حاضر / لا يوجد غياب',
+          : 'لم يُسجل دوام هذا اليوم بعد',
         subtitle: cell.outside_section_membership
           ? 'لم يكن الطالب مسجلاً ضمن هذه الشعبة في هذا التاريخ.'
-          : 'لا توجد أي حالة غياب أو إجازة أو رخصة مسجلة للطالب في هذا التاريخ.',
+          : 'لم يتم تسجيل ورقة الحضور والغياب لهذه الشعبة في هذا التاريخ.',
         boxClass:
-          'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-900 dark:text-emerald-200',
+          'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-200',
       };
   }
 }
@@ -135,7 +143,10 @@ export function MonthlyDayDetailModal({
   const holidayInfo = cell.holiday_info;
 
   const countedLabel =
-    cell.status_kind === 'holiday' || cell.status_kind === 'present' || cell.status_kind === 'sick_leave'
+    cell.status_kind === 'holiday' ||
+    cell.status_kind === 'present' ||
+    cell.status_kind === 'unrecorded' ||
+    cell.status_kind === 'sick_leave'
       ? 'لا'
       : cell.status_kind === 'lesson_absence'
         ? 'نعم (تُجمع ضمن عداد تراكم الدروس)'
@@ -195,7 +206,7 @@ export function MonthlyDayDetailModal({
             </div>
             <div className="w-11 h-11 rounded-lg border border-current/25 bg-white/80 dark:bg-slate-950/60 flex items-center justify-center shrink-0">
               <span className="text-lg font-extrabold font-display tabular-nums">
-                {cell.symbol}
+                {cell.symbol || '—'}
               </span>
             </div>
           </div>

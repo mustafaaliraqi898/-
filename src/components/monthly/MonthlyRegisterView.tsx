@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   ArrowUpDown,
   BookOpen,
   Calendar,
@@ -7,6 +8,8 @@ import {
   CheckCircle2,
   ClipboardList,
   Download,
+  ExternalLink,
+  Eye,
   FileSpreadsheet,
   FileText,
   Filter,
@@ -19,8 +22,9 @@ import {
   UserCheck,
   UserX,
   Users,
+  X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { schoolService } from '../../services/schoolService';
 import type {
@@ -34,6 +38,7 @@ import type {
 import { MonthlyDayDetailModal } from './MonthlyDayDetailModal';
 import { MonthlyManualNoteModal } from './MonthlyManualNoteModal';
 import {
+  buildStandalonePrintableHtml,
   MonthlyPrintSheet,
   type PrintPaperPreset,
   resolveEffectivePrintSpec,
@@ -64,6 +69,10 @@ const ARABIC_MONTH_OPTIONS: Array<{ value: number; label: string }> = [
 
 function getCellStyleClasses(kind: MonthlyCellStatusKind): string {
   switch (kind) {
+    case 'present':
+      return 'bg-emerald-50/85 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-extrabold hover:bg-emerald-100/80 dark:hover:bg-emerald-900/50';
+    case 'unrecorded':
+      return 'bg-slate-50/40 dark:bg-slate-900/40 text-slate-300 dark:text-slate-600 font-normal hover:bg-slate-100 dark:hover:bg-slate-800/70';
     case 'full_day':
       return 'bg-red-100/90 dark:bg-red-950/60 text-red-900 dark:text-red-200 font-extrabold hover:bg-red-200/80 dark:hover:bg-red-900/70';
     case 'lesson_converted':
@@ -85,6 +94,8 @@ function getCellStyleClasses(kind: MonthlyCellStatusKind): string {
 
 function getLegendSwatchClasses(symbol: string): string {
   switch (symbol) {
+    case '✓':
+      return 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-extrabold';
     case 'غ':
       return 'bg-red-100 dark:bg-red-950/60 border-red-300 dark:border-red-800 text-red-900 dark:text-red-200';
     case 'ج':
@@ -133,6 +144,12 @@ export function MonthlyRegisterView({
 
   const [noteModalStudent, setNoteModalStudent] = useState<MonthlyStudentRow | null>(null);
   const [savingNote, setSavingNote] = useState(false);
+
+  // Print preview & sandbox handling
+  const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
+  const [printBlockedNotice, setPrintBlockedNotice] = useState(false);
+  const [standaloneHtmlUrl, setStandaloneHtmlUrl] = useState<string | null>(null);
+  const printTimerRef = useRef<number | null>(null);
 
   // Sync grade & section selections cleanly
   useEffect(() => {
@@ -227,9 +244,71 @@ export function MonthlyRegisterView({
     }
   }
 
+  // Create and clean up standalone printable HTML Blob URL when preview is open
+  useEffect(() => {
+    if ((!printPreviewOpen && !printBlockedNotice) || !registerData) {
+      setStandaloneHtmlUrl(null);
+      return;
+    }
+
+    const html = buildStandalonePrintableHtml(registerData, paperPreset);
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const objectUrl = URL.createObjectURL(blob);
+    setStandaloneHtmlUrl(objectUrl);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [printPreviewOpen, printBlockedNotice, registerData, paperPreset]);
+
+  useEffect(() => {
+    return () => {
+      if (printTimerRef.current !== null) {
+        window.clearTimeout(printTimerRef.current);
+      }
+    };
+  }, []);
+
   function handlePrint() {
-    if (!registerData) return;
-    window.print();
+    if (!registerData || loading) return;
+
+    if (printTimerRef.current !== null) {
+      window.clearTimeout(printTimerRef.current);
+      printTimerRef.current = null;
+    }
+
+    setPrintBlockedNotice(false);
+
+    // Wait two animation frames so portal #monthly-print-sheet & @page style are committed
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        let didTriggerBeforePrint = false;
+        const onBeforePrint = () => {
+          didTriggerBeforePrint = true;
+        };
+
+        window.addEventListener('beforeprint', onBeforePrint, { once: true });
+
+        try {
+          window.print();
+        } catch {
+          // Handled cleanly below when beforeprint did not fire
+        }
+
+        printTimerRef.current = window.setTimeout(() => {
+          window.removeEventListener('beforeprint', onBeforePrint);
+          printTimerRef.current = null;
+          if (!didTriggerBeforePrint) {
+            setPrintBlockedNotice(true);
+            setPrintPreviewOpen(true);
+            onNotify(
+              'info',
+              'بيئة المعاينة الحالية تمنع نافذة الطباعة المباشرة؛ تم فتح معاينة الطباعة مع خيار الفتح في تبويب جديد أو تنزيل نسخة HTML للطباعة.'
+            );
+          }
+        }, 300);
+      });
+    });
   }
 
   async function handleSaveManualNote(noteText: string) {
@@ -314,6 +393,19 @@ export function MonthlyRegisterView({
                 <FileSpreadsheet className="w-3.5 h-3.5" />
               )}
               {exporting ? 'جاري التصدير...' : 'تصدير Excel'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setPrintBlockedNotice(false);
+                setPrintPreviewOpen(true);
+              }}
+              disabled={loading || !registerData}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              معاينة الطباعة
             </button>
 
             <button
@@ -807,7 +899,8 @@ export function MonthlyRegisterView({
                               className={`w-full h-10 min-w-[36px] flex items-center justify-center text-xs transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-600 ${getCellStyleClasses(
                                 cell.status_kind
                               )} ${
-                                cell.outside_section_membership && cell.status_kind === 'present'
+                                cell.outside_section_membership &&
+                                (cell.status_kind === 'present' || cell.status_kind === 'unrecorded')
                                   ? 'opacity-45'
                                   : ''
                               }`}
@@ -867,7 +960,7 @@ export function MonthlyRegisterView({
                             )}
 
                             {st.auto_notes.length === 0 && !st.manual_note && (
-                              <span className="text-slate-400 dark:text-slate-500">—</span>
+                              <span className="text-slate-400 dark:text-slate-500">لا توجد ملاحظات</span>
                             )}
                           </div>
 
@@ -939,10 +1032,105 @@ export function MonthlyRegisterView({
         onClose={() => setNoteModalStudent(null)}
       />
 
+      {/* In-App Print Preview & Sandbox Fallback Modal */}
+      {printPreviewOpen && registerData && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-3 sm:p-5"
+          role="dialog"
+          aria-modal="true"
+          aria-label="معاينة طباعة السجل الشهري"
+        >
+          <div className="w-full max-w-6xl max-h-[92vh] flex flex-col rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display flex items-center gap-2">
+                  <Printer className="w-4 h-4 text-teal-700 dark:text-teal-400" />
+                  معاينة الطباعة — شهر {registerData.month_name} {registerData.year} ({registerData.grade_name} / {registerData.section_name})
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  إعداد الورق المختار: <strong>{printSpec.label}</strong>
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {standaloneHtmlUrl && (
+                  <>
+                    <a
+                      href={standaloneHtmlUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      فتح نسخة الطباعة في تبويب جديد
+                    </a>
+
+                    <a
+                      href={standaloneHtmlUrl}
+                      download={`السجل-الشهري-${registerData.grade_name}-${registerData.section_name}-${registerData.year}-${registerData.month}.html`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      تحميل ملف HTML للطباعة
+                    </a>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal-700/30 bg-teal-50 dark:bg-teal-950/50 text-teal-800 dark:text-teal-300 text-xs font-semibold hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  طباعة مباشرة
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPrintPreviewOpen(false);
+                    setPrintBlockedNotice(false);
+                  }}
+                  aria-label="إغلاق معاينة الطباعة"
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Honest Notice when Iframe Sandbox Blocks window.print() */}
+            {printBlockedNotice && (
+              <div className="px-4 sm:px-5 py-3 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/70 flex items-start gap-2.5 text-xs text-amber-950 dark:text-amber-200">
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold">
+                    نافذة الطباعة التلقائية محجوبة داخل إطار المعاينة المدمج (Preview Sandbox).
+                  </p>
+                  <p className="text-[11px] leading-relaxed">
+                    للطباعة الفورية أو الحفظ بصيغة PDF، استخدم زر «فتح نسخة الطباعة في تبويب جديد» أعلاه ثم اضغط طباعة (أو Ctrl+P)، أو قم بتنزيل «ملف HTML للطباعة» وفتحه مباشرة في المتصفح. في تطبيق المتصفح المستقل أو نسخة سطح المكتب تعمل «طباعة مباشرة» بشكل طبيعي.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Preview Pages Body */}
+            <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-100 dark:bg-slate-950">
+              <MonthlyPrintSheet
+                data={registerData}
+                paperPreset={paperPreset}
+                mode="preview"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Portal Print Sheet directly to document.body outside .no-print wrapper */}
       {typeof document !== 'undefined' &&
         createPortal(
-          <MonthlyPrintSheet data={registerData} paperPreset={paperPreset} />,
+          <MonthlyPrintSheet data={registerData} paperPreset={paperPreset} mode="print" />,
           document.body
         )}
     </div>

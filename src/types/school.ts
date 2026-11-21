@@ -444,6 +444,7 @@ export interface MonthCalendarDay {
 // Monthly Absence Register Types
 export type MonthlyCellStatusKind =
   | 'present'
+  | 'unrecorded'
   | 'full_day'
   | 'lesson_absence'
   | 'lesson_converted'
@@ -456,7 +457,7 @@ export interface MonthlyDayCellData {
   date: string;
   day_of_month: number;
   day_name: string;
-  symbol: string; // 'غ' | 'ج' | 'د١'.. | 'م' | 'ر' | 'ح١'.. | 'ع' | '—'
+  symbol: string; // '✓' | 'غ' | 'ج' | 'د١'.. | 'م' | 'ر' | 'ح١'.. | 'ع' | ''
   status_kind: MonthlyCellStatusKind;
   has_record: boolean;
   record_id: number | null;

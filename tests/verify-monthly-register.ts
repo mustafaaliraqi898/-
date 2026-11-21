@@ -27,7 +27,10 @@ import {
   createStudent,
   transferStudent,
 } from '../server/services/studentService';
-import { computeMonthlyPrintPages } from '../src/components/monthly/MonthlyPrintSheet';
+import {
+  buildStandalonePrintableHtml,
+  computeMonthlyPrintPages,
+} from '../src/components/monthly/MonthlyPrintSheet';
 
 async function runMonthlyRegisterTests() {
   const results: Array<{ name: string; ok: boolean; error?: string }> = [];
@@ -98,7 +101,12 @@ async function runMonthlyRegisterTests() {
     assert.equal(reg.stats.total_students, 3);
     assert.equal(reg.stats.students_with_counted_absence, 0);
     assert.equal(reg.students[0].full_name, s1.full_name); // original enrollment order
-    assert.equal(reg.students[0].days[1].symbol, '—');
+    // Day 1 (Oct 1, Thursday) has no saved attendance yet -> unrecorded empty cell (not '—' and not '✓')
+    assert.equal(reg.students[0].days[1].symbol, '');
+    assert.equal(reg.students[0].days[1].status_kind, 'unrecorded');
+    // Legend contains '✓' ('حاضر') and never contains legacy '—'
+    assert.ok(reg.legend.some((item) => item.symbol === '✓' && item.label === 'حاضر'));
+    assert.equal(reg.legend.some((item) => item.symbol === '—'), false);
   });
 
   // Scenario 2: Correct month lengths & leap-year February (28 vs 29)
@@ -173,6 +181,7 @@ async function runMonthlyRegisterTests() {
     });
     const row1 = reg.students.find((r) => r.student_id === s1.id)!;
     const row2 = reg.students.find((r) => r.student_id === s2.id)!;
+    const row3 = reg.students.find((r) => r.student_id === s3.id)!;
 
     assert.equal(row1.days[4].symbol, 'غ');
     assert.equal(row1.days[4].counted_as_absence, true);
@@ -184,6 +193,12 @@ async function runMonthlyRegisterTests() {
     assert.equal(row2.days[4].contributed_to_counter, true);
     assert.equal(row2.missed_lessons_count, 2);
     assert.equal(row2.converted_lesson_days, 0);
+
+    // Explicitly recorded 'present' on Oct 4 -> green '✓'; unrecorded Oct 20 -> empty 'unrecorded'
+    assert.equal(row3.days[4].symbol, '✓');
+    assert.equal(row3.days[4].status_kind, 'present');
+    assert.equal(row3.days[20].symbol, '');
+    assert.equal(row3.days[20].status_kind, 'unrecorded');
   });
 
   // Scenario 6: Sick leave ('م') never counted as absence
@@ -648,6 +663,8 @@ async function runMonthlyRegisterTests() {
     assert.equal(sheet.views[0]?.rightToLeft, true);
     assert.ok(String(sheet.getCell(1, 1).value).includes('ثانوية بغداد المركزية'));
     assert.ok(String(sheet.getCell(3, 1).value).includes('دليل الرموز'));
+    assert.ok(String(sheet.getCell(3, 1).value).includes('✓ = حاضر'));
+    assert.equal(String(sheet.getCell(3, 1).value).includes('—'), false);
 
     // Find row for s1 (row 6)
     assert.ok(String(sheet.getCell(6, 1).value).includes(s1.full_name));
@@ -655,13 +672,18 @@ async function runMonthlyRegisterTests() {
     assert.equal(sheet.getCell(6, 5).value, 'غ');
     // Oct 5 = column 6 -> 'م'
     assert.equal(sheet.getCell(6, 6).value, 'م');
+    // Row 8 is s3 (who was present on Oct 4 in Sec A) -> '✓'
+    assert.ok(String(sheet.getCell(8, 1).value).includes(s3.full_name));
+    assert.equal(sheet.getCell(8, 5).value, '✓');
+    // Unrecorded day Oct 20 (col 1 + 20 = 21) -> empty (not '—' and not '✓')
+    assert.equal(sheet.getCell(6, 21).value, '');
     // Notes column (last column) includes manual note
     const lastCol = 1 + 31 + 8;
     assert.ok(String(sheet.getCell(6, lastCol).value).includes('متابعة مستمرة مع المرشد'));
   });
 
-  // Scenario 19: Print pagination & chunking for A3 Landscape vs A4 Portrait
-  await test('19. اختبار تجهيز الطباعة وتقسيم الأعمدة التلقائي للورق الصغير A4 دون اقتصاص', () => {
+  // Scenario 19: Print pagination & standalone printable HTML builder
+  await test('19. اختبار تجهيز الطباعة وتقسيم الأعمدة للورق الصغير + توليد صفحة HTML للطباعة', () => {
     const reg = getMonthlyAbsenceRegister(db, {
       academic_year_id: activeYear.id,
       year: 2026,
@@ -683,6 +705,28 @@ async function runMonthlyRegisterTests() {
     assert.equal(a4Portrait[2].days.length, 0);
     assert.equal(a4Portrait[2].includeTotals, true);
     assert.equal(a4Portrait[2].includeNotes, true);
+
+    // Test standalone printable HTML content & XSS escaping
+    const regWithUnsafeNote = {
+      ...reg,
+      students: reg.students.map((st, index) =>
+        index === 0 ? { ...st, manual_note: '<script>alert(1)</script>' } : st
+      ),
+    };
+
+    const htmlA3 = buildStandalonePrintableHtml(regWithUnsafeNote, 'a3-landscape');
+    assert.ok(htmlA3.includes('dir="rtl"'));
+    assert.ok(htmlA3.includes('size: A3 landscape;'));
+    assert.ok(htmlA3.includes('✓</strong> = حاضر'));
+    assert.ok(htmlA3.includes('cell-present'));
+    assert.ok(htmlA3.includes('>✓</td>'));
+    assert.ok(htmlA3.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+    assert.equal(htmlA3.includes('<script>alert(1)</script>'), false);
+
+    const htmlA4 = buildStandalonePrintableHtml(reg, 'a4-portrait');
+    assert.ok(htmlA4.includes('size: A4 portrait;'));
+    assert.ok(htmlA4.includes('جزء 1 من 3'));
+    assert.ok(htmlA4.includes('جزء 3 من 3'));
   });
 
   // Scenario 20: Quick search & alphabetical sort without modifying DB original order

@@ -96,9 +96,9 @@ export const MONTHLY_LEGEND: MonthlyLegendItem[] = [
     description: 'عطلة أسبوعية أو رسمية أو استثنائية أو خاصة بالمدرسة ولا تُحتسب غياباً.',
   },
   {
-    symbol: '—',
-    label: 'حاضر / لا يوجد',
-    description: 'لا يوجد غياب أو إجازة مسجلة للطالب في هذا اليوم.',
+    symbol: '✓',
+    label: 'حاضر',
+    description: 'الطالب حاضر في الدوام المدرسي وفق سجل الحضور المعتمد لذلك اليوم.',
   },
 ];
 
@@ -348,6 +348,23 @@ export function getMonthlyAbsenceRegister(
     lessons_consumed: number;
     threshold_used: number;
   }>;
+
+  const sessionRows = db
+    .prepare(
+      `SELECT attendance_date
+       FROM attendance_sessions
+       WHERE academic_year_id = ?
+         AND section_id = ?
+         AND attendance_date >= ?
+         AND attendance_date <= ?`
+    )
+    .all(ctx.academicYear.id, ctx.sectionId, ctx.monthStart, ctx.monthEnd) as Array<{
+    attendance_date: string;
+  }>;
+
+  const recordedDatesSet = new Set<string>();
+  for (const sr of sessionRows) recordedDatesSet.add(sr.attendance_date);
+  for (const a of monthAbsences) recordedDatesSet.add(a.absence_date);
 
   const activeStudentsInMonthSet = new Set<number>();
   for (const a of monthAbsences) activeStudentsInMonthSet.add(a.student_id);
@@ -725,12 +742,16 @@ export function getMonthlyAbsenceRegister(
       }
 
       if (!absRow || absRow.status === 'present') {
+        const isRecordedPresent =
+          absRow?.status === 'present' ||
+          (inMembership && recordedDatesSet.has(calDay.date));
+
         days[calDay.day_of_month] = {
           date: calDay.date,
           day_of_month: calDay.day_of_month,
           day_name: calDay.day_name,
-          symbol: '—',
-          status_kind: 'present',
+          symbol: isRecordedPresent ? '✓' : '',
+          status_kind: isRecordedPresent ? 'present' : 'unrecorded',
           has_record: Boolean(absRow),
           record_id: absRow?.id ?? null,
           raw_status: absRow?.status ?? null,
@@ -1035,8 +1056,10 @@ function getExcelCellStyleForSymbol(cellData: MonthlyDayCellData): {
       return { bg: 'FFE0E7FF', fg: 'FF3730A3', bold: true };
     case 'holiday':
       return { bg: 'FFF1F5F9', fg: 'FF475569', bold: true };
+    case 'present':
+      return { bg: 'FFDCFCE7', fg: 'FF15803D', bold: true };
     default:
-      return { bg: 'FFFFFFFF', fg: 'FF94A3B8', bold: false };
+      return { bg: 'FFFFFFFF', fg: 'FFCBD5E1', bold: false };
   }
 }
 
@@ -1110,7 +1133,7 @@ export async function generateMonthlyRegisterExcel(
   sheet.mergeCells(3, 1, 3, totalCols);
   const legendCell = sheet.getCell(3, 1);
   legendCell.value =
-    'دليل الرموز:   غ = غائب يوم كامل   |   ج = يوم غياب من تراكم الدروس   |   د١.. = عدد الدروس الغائبة   |   م = إجازة مرضية (لا تُحسب)   |   ر = رخصة يومية   |   ح١.. = رخصة عن دروس   |   ع = عطلة   |   — = حاضر / لا يوجد';
+    'دليل الرموز:   ✓ = حاضر   |   غ = غائب يوم كامل   |   ج = يوم غياب من تراكم الدروس   |   د١.. = عدد الدروس الغائبة   |   م = إجازة مرضية (لا تُحسب)   |   ر = رخصة يومية   |   ح١.. = رخصة عن دروس   |   ع = عطلة';
   legendCell.font = { name: 'Almarai', size: 10, color: { argb: 'FF334155' } };
   legendCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAF5FF' } };
   legendCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
