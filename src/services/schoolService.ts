@@ -1,8 +1,10 @@
 import type {
+  AbsenceReportsQuery,
+  AbsenceReportsResponse,
+  AbsenceThresholdsSettings,
   AcademicYear,
   CreateHolidayInput,
   CreateStudentInput,
-  CreateStudentLegalProcedureInput,
   DashboardStats,
   EducationalStage,
   ExcelCommitResult,
@@ -11,14 +13,12 @@ import type {
   GradeWithSections,
   HolidayCheckResult,
   HolidayRecord,
-  LegalRegulationVersion,
-  LegalStageRegulation,
+  ImageCategory,
   LessonDetailInput,
+  MediaAssetInfo,
   MonthCalendarDay,
   MonthlyRegisterData,
   MonthlyRegisterQuery,
-  ReportsCenterQuery,
-  ReportsCenterResponse,
   SaveHolidayResult,
   SaveMonthlyNoteInput,
   SaveSectionAttendanceInput,
@@ -28,13 +28,11 @@ import type {
   SectionItem,
   StudentAbsenceDetailResponse,
   StudentEnrollmentHistoryItem,
-  StudentLegalProcedureRecord,
   StudentListQuery,
   StudentRecord,
   TransferStudentInput,
-  UpdateLegalRegulationInput,
+  UpdateAbsenceThresholdsInput,
   UpdateStudentInput,
-  UpdateStudentLegalProcedureInput,
   UpdateWeeklyHolidaysInput,
   UpdateWeeklyHolidaysResult,
   WeeklyHolidaySettings,
@@ -125,12 +123,71 @@ export const schoolService = {
     daily_permission_counts_as_absence?: number;
     lesson_permission_counts_as_absence?: number;
     school_logo_data?: string | null;
+    school_logo_asset_id?: number | null;
   }): Promise<SchoolSettings> {
     if (isElectronMode()) return ipcCall<SchoolSettings>('settings:update', payload);
     return httpJson<SchoolSettings>('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
+  },
+
+  // Centralized Image Processing & Storage Service
+  async uploadImage(file: File, category: ImageCategory = 'general'): Promise<MediaAssetInfo> {
+    if (isElectronMode()) {
+      const arrayBuf = await file.arrayBuffer();
+      return ipcCall<MediaAssetInfo>('media:upload', {
+        bytes: new Uint8Array(arrayBuf),
+        filename: file.name,
+        category,
+        mimeHint: file.type || null,
+      });
+    }
+
+    const res = await fetch('/api/media/upload', {
+      method: 'POST',
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'X-Image-Filename': encodeURIComponent(file.name || 'image'),
+        'X-Image-Category': category,
+        'X-Image-Mime': file.type || '',
+      },
+      body: file,
+    });
+
+    const text = await res.text();
+    let parsed: { error?: string } | MediaAssetInfo | null = null;
+    if (text) {
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = null;
+      }
+    }
+
+    if (!res.ok) {
+      const errMsg =
+        (parsed && typeof parsed === 'object' && 'error' in parsed && parsed.error) ||
+        'تعذر معالجة الصورة أو رفعها إلى الخادم.';
+      throw new Error(String(errMsg));
+    }
+
+    return parsed as MediaAssetInfo;
+  },
+
+  async getMediaMeta(assetId: number): Promise<MediaAssetInfo> {
+    if (isElectronMode()) {
+      return ipcCall<MediaAssetInfo>('media:meta', { id: assetId });
+    }
+    return httpJson<MediaAssetInfo>(`/api/media/${assetId}/meta`);
+  },
+
+  async getMediaCompatDataUrl(assetId: number): Promise<string> {
+    if (isElectronMode()) {
+      return ipcCall<string>('media:compat-data-url', { id: assetId });
+    }
+    const res = await httpJson<{ data_url: string }>(`/api/media/${assetId}/compat-data-url`);
+    return res.data_url;
   },
 
   async listAcademicYears(): Promise<AcademicYear[]> {
@@ -603,69 +660,48 @@ export const schoolService = {
     triggerBlobDownload(blob, fallbackName);
   },
 
-  // Legal Absence Regulations & Versioning
-  async getLegalRegulations(
-    academicYearId?: number
-  ): Promise<Record<EducationalStage, LegalStageRegulation>> {
+  // Simplified Absence Thresholds & Effective Limit (Preparatory)
+  async getAbsenceThresholds(academicYearId?: number): Promise<AbsenceThresholdsSettings> {
     if (isElectronMode()) {
-      return ipcCall<Record<EducationalStage, LegalStageRegulation>>('legal:list', {
+      return ipcCall<AbsenceThresholdsSettings>('thresholds:get', {
         academic_year_id: academicYearId,
       });
     }
     const qs = academicYearId ? `?academic_year_id=${academicYearId}` : '';
-    return httpJson<Record<EducationalStage, LegalStageRegulation>>(`/api/legal-regulations${qs}`);
+    return httpJson<AbsenceThresholdsSettings>(`/api/absence-thresholds${qs}`);
   },
 
-  async updateStageLegalRegulation(
-    stage: EducationalStage,
-    payload: UpdateLegalRegulationInput
-  ): Promise<{ regulation: LegalStageRegulation; version: LegalRegulationVersion }> {
+  async updateAbsenceThresholds(
+    payload: UpdateAbsenceThresholdsInput
+  ): Promise<AbsenceThresholdsSettings> {
     if (isElectronMode()) {
-      return ipcCall<{ regulation: LegalStageRegulation; version: LegalRegulationVersion }>(
-        'legal:update',
-        { stage, payload }
-      );
+      return ipcCall<AbsenceThresholdsSettings>('thresholds:update', payload);
     }
-    return httpJson<{ regulation: LegalStageRegulation; version: LegalRegulationVersion }>(
-      `/api/legal-regulations/${stage}`,
-      {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      }
-    );
+    return httpJson<AbsenceThresholdsSettings>('/api/absence-thresholds', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
   },
 
-  async listLegalRegulationVersions(stage?: EducationalStage): Promise<LegalRegulationVersion[]> {
+  // Simplified 4 Absence Warning & Limit Reports
+  async getAbsenceReports(query: AbsenceReportsQuery): Promise<AbsenceReportsResponse> {
     if (isElectronMode()) {
-      return ipcCall<LegalRegulationVersion[]>('legal:versions', { stage });
-    }
-    const url = stage
-      ? `/api/legal-regulations/${stage}/versions`
-      : '/api/legal-regulations-versions';
-    return httpJson<LegalRegulationVersion[]>(url);
-  },
-
-  // Reports Center & Student Legal Procedures
-  async getReportsCenter(query: ReportsCenterQuery): Promise<ReportsCenterResponse> {
-    if (isElectronMode()) {
-      return ipcCall<ReportsCenterResponse>('reports:center', query);
+      return ipcCall<AbsenceReportsResponse>('reports:absences', query);
     }
     const qs = new URLSearchParams({
       report_type: query.report_type,
     });
     if (query.academic_year_id) qs.set('academic_year_id', String(query.academic_year_id));
-    if (query.stage && query.stage !== 'all') qs.set('stage', query.stage);
     if (query.grade_id) qs.set('grade_id', String(query.grade_id));
     if (query.section_id) qs.set('section_id', String(query.section_id));
     if (query.search) qs.set('search', query.search);
-    if (query.include_approaching) qs.set('include_approaching', '1');
-    return httpJson<ReportsCenterResponse>(`/api/reports/center?${qs.toString()}`);
+    return httpJson<AbsenceReportsResponse>(`/api/reports/absences?${qs.toString()}`);
   },
 
-  async exportReportsExcel(query: ReportsCenterQuery): Promise<void> {
+  async exportAbsenceReportsExcel(query: AbsenceReportsQuery): Promise<void> {
     if (isElectronMode()) {
       const result = await ipcCall<{ base64: string; filename: string }>(
-        'reports:export-excel',
+        'reports:absences-export',
         query
       );
       const bytes = Uint8Array.from(atob(result.base64), (c) => c.charCodeAt(0));
@@ -680,52 +716,17 @@ export const schoolService = {
       report_type: query.report_type,
     });
     if (query.academic_year_id) qs.set('academic_year_id', String(query.academic_year_id));
-    if (query.stage && query.stage !== 'all') qs.set('stage', query.stage);
     if (query.grade_id) qs.set('grade_id', String(query.grade_id));
     if (query.section_id) qs.set('section_id', String(query.section_id));
     if (query.search) qs.set('search', query.search);
-    if (query.include_approaching) qs.set('include_approaching', '1');
 
-    const res = await fetch(`/api/reports/export?${qs.toString()}`);
+    const res = await fetch(`/api/reports/absences/export?${qs.toString()}`);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || 'تعذر تصدير التقرير إلى ملف Excel.');
     }
     const blob = await res.blob();
     triggerBlobDownload(blob, `تقرير_${query.report_type}.xlsx`);
-  },
-
-  async createStudentLegalProcedure(
-    payload: CreateStudentLegalProcedureInput
-  ): Promise<StudentLegalProcedureRecord> {
-    if (isElectronMode()) {
-      return ipcCall<StudentLegalProcedureRecord>('reports:create-procedure', payload);
-    }
-    return httpJson<StudentLegalProcedureRecord>('/api/reports/procedures', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  },
-
-  async updateStudentLegalProcedure(
-    id: number,
-    payload: UpdateStudentLegalProcedureInput
-  ): Promise<StudentLegalProcedureRecord> {
-    if (isElectronMode()) {
-      return ipcCall<StudentLegalProcedureRecord>('reports:update-procedure', { id, ...payload });
-    }
-    return httpJson<StudentLegalProcedureRecord>(`/api/reports/procedures/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    });
-  },
-
-  async deleteStudentLegalProcedure(id: number): Promise<void> {
-    if (isElectronMode()) {
-      await ipcCall('reports:delete-procedure', { id });
-      return;
-    }
-    await httpJson(`/api/reports/procedures/${id}`, { method: 'DELETE' });
   },
 };
 

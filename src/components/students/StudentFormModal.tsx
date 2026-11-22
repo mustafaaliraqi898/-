@@ -1,7 +1,12 @@
-import { Camera, Trash2, User, X } from 'lucide-react';
+import { Camera, Loader2, Trash2, User, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import type { GradeWithSections, StudentRecord, StudentStatus } from '../../types/school';
 import { schoolService } from '../../services/schoolService';
+import {
+  ACCEPTED_IMAGE_INPUT,
+  describeMediaProcessingResult,
+  processAndUploadImageFile,
+} from '../../utils/imageUpload';
 
 interface StudentFormModalProps {
   open: boolean;
@@ -31,6 +36,9 @@ export function StudentFormModal({
   const [birthDate, setBirthDate] = useState('');
   const [phone, setPhone] = useState('');
   const [photoData, setPhotoData] = useState<string | null>(null);
+  const [photoAssetId, setPhotoAssetId] = useState<number | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoStatusText, setPhotoStatusText] = useState<string | null>(null);
   const [status, setStatus] = useState<StudentStatus>('active');
   const [submitting, setSubmitting] = useState(false);
 
@@ -47,6 +55,8 @@ export function StudentFormModal({
       setBirthDate(student.birth_date ?? '');
       setPhone(student.phone ?? '');
       setPhotoData(student.photo_data ?? null);
+      setPhotoAssetId(student.photo_asset_id ?? null);
+      setPhotoStatusText(null);
       setStatus(student.status);
     } else {
       setFullName('');
@@ -61,8 +71,11 @@ export function StudentFormModal({
       setBirthDate('');
       setPhone('');
       setPhotoData(null);
+      setPhotoAssetId(null);
+      setPhotoStatusText(null);
       setStatus('active');
     }
+    setUploadingPhoto(false);
   }, [open, mode, student, grades]);
 
   if (!open) return null;
@@ -81,30 +94,32 @@ export function StudentFormModal({
     }
   }
 
-  function handlePhotoSelect(e: ChangeEvent<HTMLInputElement>) {
+  async function handlePhotoSelect(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
 
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-      onError('يسمح فقط برفع صور بصيغة PNG أو JPG أو WebP.');
-      return;
+    setUploadingPhoto(true);
+    setPhotoStatusText('جاري فحص ومعالجة الصورة تلقائياً...');
+    try {
+      const asset = await processAndUploadImageFile(file, 'student_photo');
+      setPhotoData(asset.optimized_url);
+      setPhotoAssetId(asset.id);
+      setPhotoStatusText(describeMediaProcessingResult(asset));
+    } catch (err) {
+      setPhotoStatusText(null);
+      onError(err instanceof Error ? err.message : 'تعذر معالجة الصورة المختارة.');
+    } finally {
+      setUploadingPhoto(false);
     }
-    if (file.size > 1.8 * 1024 * 1024) {
-      onError('حجم الصورة يجب أن يكون أقل من 1.8 ميغابايت.');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setPhotoData(reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
   }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (uploadingPhoto) {
+      onError('يرجى الانتظار حتى تكتمل معالجة الصورة.');
+      return;
+    }
     if (!fullName.trim()) {
       onError('اسم الطالب حقل إجباري.');
       return;
@@ -128,6 +143,7 @@ export function StudentFormModal({
           birth_date: birthDate || null,
           phone: phone.trim() || null,
           photo_data: photoData,
+          photo_asset_id: photoAssetId,
           academic_year_id: selectedYearId ?? undefined,
         });
         await onSuccess(`تمت إضافة الطالب "${fullName.trim()}" بنجاح.`);
@@ -138,6 +154,7 @@ export function StudentFormModal({
           birth_date: birthDate || null,
           phone: phone.trim() || null,
           photo_data: photoData,
+          photo_asset_id: photoAssetId,
           status,
         });
         await onSuccess(`تم تحديث بيانات الطالب "${fullName.trim()}" بنجاح.`);
@@ -201,22 +218,37 @@ export function StudentFormModal({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/png,image/jpeg,image/webp"
+                  accept={ACCEPTED_IMAGE_INPUT}
                   onChange={handlePhotoSelect}
                   className="hidden"
                 />
                 <button
                   type="button"
+                  disabled={uploadingPhoto}
                   onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-60"
                 >
-                  <Camera className="w-3.5 h-3.5" />
-                  <span>{photoData ? 'تغيير الصورة' : 'رفع صورة'}</span>
+                  {uploadingPhoto ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-700 dark:text-teal-400" />
+                  ) : (
+                    <Camera className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    {uploadingPhoto
+                      ? 'جاري المعالجة...'
+                      : photoData
+                        ? 'تغيير الصورة'
+                        : 'رفع صورة'}
+                  </span>
                 </button>
-                {photoData && (
+                {photoData && !uploadingPhoto && (
                   <button
                     type="button"
-                    onClick={() => setPhotoData(null)}
+                    onClick={() => {
+                      setPhotoData(null);
+                      setPhotoAssetId(null);
+                      setPhotoStatusText(null);
+                    }}
                     className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -224,6 +256,13 @@ export function StudentFormModal({
                   </button>
                 )}
               </div>
+              {photoStatusText ? (
+                <p className="text-[11px] text-teal-700 dark:text-teal-400">{photoStatusText}</p>
+              ) : (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  تتم معالجة الصور وضغطها تلقائياً مع حفظ النسخة الأصلية (PNG, JPG, WebP وغيرها).
+                </p>
+              )}
             </div>
           </div>
 

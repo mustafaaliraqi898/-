@@ -8,6 +8,7 @@ import {
   Clock,
   FileCheck2,
   ImagePlus,
+  Loader2,
   Pencil,
   Plus,
   Scale,
@@ -26,6 +27,11 @@ import type {
   WeeklyHolidayDay,
 } from '../../types/school';
 import { schoolService } from '../../services/schoolService';
+import {
+  ACCEPTED_IMAGE_INPUT,
+  describeMediaProcessingResult,
+  processAndUploadImageFile,
+} from '../../utils/imageUpload';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { LegalRegulationsView } from './LegalRegulationsView';
 
@@ -78,6 +84,11 @@ export function SettingsView({
   const [schoolLogoData, setSchoolLogoData] = useState<string | null>(
     settings?.school_logo_data ?? null
   );
+  const [schoolLogoAssetId, setSchoolLogoAssetId] = useState<number | null>(
+    settings?.school_logo_asset_id ?? null
+  );
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoStatusText, setLogoStatusText] = useState<string | null>(null);
   const [lessonsPerDay, setLessonsPerDay] = useState(
     String(settings?.lessons_per_absence_day ?? 5)
   );
@@ -134,6 +145,7 @@ export function SettingsView({
       setSchoolName(settings.school_name);
       setDirectorateName(settings.directorate_name);
       setSchoolLogoData(settings.school_logo_data ?? null);
+      setSchoolLogoAssetId(settings.school_logo_asset_id ?? null);
       setLessonsPerDay(String(settings.lessons_per_absence_day ?? 5));
       setDailyLessonsCount(String(settings.daily_lessons_count ?? 7));
       setDailyPermCountsAsAbsence(settings.daily_permission_counts_as_absence ? 1 : 0);
@@ -141,20 +153,24 @@ export function SettingsView({
     }
   }, [settings]);
 
-  function handleLogoFileChange(e: ChangeEvent<HTMLInputElement>) {
+  async function handleLogoFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-    if (file.size > 1024 * 1024) {
-      onNotify('error', 'حجم شعار المدرسة يجب ألا يتجاوز 1 ميجابايت.');
-      return;
+
+    setUploadingLogo(true);
+    setLogoStatusText('جاري فحص ومعالجة الشعار تلقائياً...');
+    try {
+      const asset = await processAndUploadImageFile(file, 'school_logo');
+      setSchoolLogoData(asset.optimized_url);
+      setSchoolLogoAssetId(asset.id);
+      setLogoStatusText(describeMediaProcessingResult(asset));
+    } catch (err) {
+      setLogoStatusText(null);
+      onNotify('error', err instanceof Error ? err.message : 'تعذر معالجة صورة الشعار.');
+    } finally {
+      setUploadingLogo(false);
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setSchoolLogoData(reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
   }
 
   const loadHolidaysData = useCallback(async () => {
@@ -209,6 +225,11 @@ export function SettingsView({
       return;
     }
 
+    if (uploadingLogo) {
+      onNotify('info', 'يرجى الانتظار حتى تكتمل معالجة الشعار.');
+      return;
+    }
+
     setSavingSettings(true);
     try {
       await schoolService.updateSettings({
@@ -219,6 +240,7 @@ export function SettingsView({
         daily_permission_counts_as_absence: dailyPermCountsAsAbsence,
         lesson_permission_counts_as_absence: lessonPermCountsAsAbsence,
         school_logo_data: schoolLogoData,
+        school_logo_asset_id: schoolLogoAssetId,
       });
       onNotify('success', successMessage);
       await onRefresh();
@@ -407,10 +429,11 @@ export function SettingsView({
     <div className="space-y-5 sm:space-y-6 max-w-5xl">
       <div>
         <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 font-display">
-          إعدادات المدرسة والضوابط الإدارية والقانونية
+          إعدادات المدرسة وحدود الغياب والإنذارات
         </h2>
         <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-          ضبط المعلومات الرسمية للمدرسة وقواعد احتساب الغياب والعطل الأسبوعية والرسمية والضوابط القانونية للغياب والإنذارات
+          ضبط المعلومات الرسمية للمدرسة وقواعد احتساب الغياب والعطل الأسبوعية والرسمية وحد الغياب
+          المؤثر وعتبات التحذير والإنذارات
         </p>
       </div>
 
@@ -462,7 +485,7 @@ export function SettingsView({
           }`}
         >
           <Scale className="w-4 h-4" />
-          <span>الضوابط القانونية للغياب والإنذارات</span>
+          <span>حدود الغياب والإنذارات</span>
         </button>
       </div>
 
@@ -528,28 +551,44 @@ export function SettingsView({
                     />
                     <button
                       type="button"
-                      onClick={() => setSchoolLogoData(null)}
+                      disabled={uploadingLogo}
+                      onClick={() => {
+                        setSchoolLogoData(null);
+                        setSchoolLogoAssetId(null);
+                        setLogoStatusText(null);
+                      }}
                       title="إزالة الشعار"
-                      className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center shadow"
+                      className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center shadow disabled:opacity-50"
                     >
                       <X className="w-3 h-3" />
                     </button>
                   </div>
                 ) : (
                   <div className="w-14 h-14 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center text-slate-400 shrink-0">
-                    <ImagePlus className="w-5 h-5" />
+                    {uploadingLogo ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-teal-700 dark:text-teal-400" />
+                    ) : (
+                      <ImagePlus className="w-5 h-5" />
+                    )}
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
                   <input
                     type="file"
-                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    accept={ACCEPTED_IMAGE_INPUT}
+                    disabled={uploadingLogo}
                     onChange={handleLogoFileChange}
-                    className="block w-full text-xs text-slate-600 dark:text-slate-300 file:ml-2 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-slate-200 dark:file:border-slate-700 file:text-xs file:font-semibold file:bg-slate-50 dark:file:bg-slate-800 file:text-slate-700 dark:file:text-slate-200"
+                    className="block w-full text-xs text-slate-600 dark:text-slate-300 file:ml-2 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-slate-200 dark:file:border-slate-700 file:text-xs file:font-semibold file:bg-slate-50 dark:file:bg-slate-800 file:text-slate-700 dark:file:text-slate-200 disabled:opacity-60"
                   />
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                    PNG أو JPG (حد أقصى 1 ميجابايت).
-                  </p>
+                  {logoStatusText ? (
+                    <p className="text-[11px] text-teal-700 dark:text-teal-400 mt-1">
+                      {logoStatusText}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      يدعم PNG الشفاف وJPG وWebP وSVG بأي دقة، مع المعالجة الذكية وحفظ الأصل.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

@@ -1,5 +1,5 @@
 /// <reference path="./electron.d.ts" />
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol } from 'electron';
 import path from 'path';
 import { closeDb, createDatabaseConnection, setDbInstance, getDb } from '../server/db/connection';
 import {
@@ -38,9 +38,8 @@ import {
   updateWeeklyHolidays,
 } from '../server/services/holidayService';
 import {
-  listAllStageRegulations,
-  listRegulationVersions,
-  updateStageRegulation,
+  getSimplifiedAbsenceThresholds,
+  updateSimplifiedAbsenceThresholds,
 } from '../server/services/legalRegulationsService';
 import {
   deleteMonthlyStudentNote,
@@ -49,11 +48,8 @@ import {
   saveMonthlyStudentNote,
 } from '../server/services/monthlyRegisterService';
 import {
-  createStudentLegalProcedure,
-  deleteStudentLegalProcedure,
-  generateReportsExcel,
-  getReportsCenterData,
-  updateStudentLegalProcedure,
+  generateSimplifiedReportsExcel,
+  getSimplifiedAbsenceReports,
 } from '../server/services/reportsCenterService';
 import {
   createAcademicYear,
@@ -63,6 +59,17 @@ import {
   updateSchoolSettings,
 } from '../server/services/settingsService';
 import {
+  exportDatabaseBackupBuffer,
+  restoreDatabaseBackupBuffer,
+} from '../server/services/backupService';
+import {
+  getMediaAssetBlob,
+  getMediaAssetMetaById,
+  migrateLegacyDataUrlsToMediaAssets,
+  processAndStoreImage,
+  resolveMediaAssetDataUrl,
+} from '../server/services/imageService';
+import {
   createStudent,
   deleteStudent,
   getStudentById,
@@ -71,6 +78,17 @@ import {
   transferStudent,
   updateStudent,
 } from '../server/services/studentService';
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'app-media',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+    },
+  },
+]);
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -97,6 +115,8 @@ function registerIpcHandlers() {
         daily_lessons_count?: number;
         daily_permission_counts_as_absence?: number | boolean;
         lesson_permission_counts_as_absence?: number | boolean;
+        school_logo_data?: string | null;
+        school_logo_asset_id?: number | null;
       }) => updateSchoolSettings(getDb(), payload)
     )
   );
@@ -346,58 +366,76 @@ function registerIpcHandlers() {
   );
 
   ipcMain.handle(
-    'legal:list',
+    'thresholds:get',
     wrap((payload?: { academic_year_id?: number }) =>
-      listAllStageRegulations(getDb(), payload?.academic_year_id)
+      getSimplifiedAbsenceThresholds(getDb(), payload?.academic_year_id)
     )
   );
   ipcMain.handle(
-    'legal:update',
-    wrap(
-      (payload: {
-        stage: string;
-        payload: Parameters<typeof updateStageRegulation>[2];
-      }) => updateStageRegulation(getDb(), payload.stage, payload.payload)
-    )
-  );
-  ipcMain.handle(
-    'legal:versions',
-    wrap((payload?: { stage?: 'primary' | 'intermediate' | 'preparatory' }) =>
-      listRegulationVersions(getDb(), payload?.stage)
+    'thresholds:update',
+    wrap((payload: Parameters<typeof updateSimplifiedAbsenceThresholds>[1]) =>
+      updateSimplifiedAbsenceThresholds(getDb(), payload)
     )
   );
 
   ipcMain.handle(
-    'reports:center',
-    wrap((payload: Parameters<typeof getReportsCenterData>[1]) =>
-      getReportsCenterData(getDb(), payload)
+    'reports:absences',
+    wrap((payload: Parameters<typeof getSimplifiedAbsenceReports>[1]) =>
+      getSimplifiedAbsenceReports(getDb(), payload)
     )
   );
   ipcMain.handle(
-    'reports:export-excel',
-    wrap(async (payload: Parameters<typeof generateReportsExcel>[1]) => {
-      const { buffer, filename } = await generateReportsExcel(getDb(), payload);
+    'reports:absences-export',
+    wrap(async (payload: Parameters<typeof generateSimplifiedReportsExcel>[1]) => {
+      const { buffer, filename } = await generateSimplifiedReportsExcel(getDb(), payload);
       return { base64: buffer.toString('base64'), filename };
     })
   );
   ipcMain.handle(
-    'reports:create-procedure',
-    wrap((payload: Parameters<typeof createStudentLegalProcedure>[1]) =>
-      createStudentLegalProcedure(getDb(), payload)
-    )
-  );
-  ipcMain.handle(
-    'reports:update-procedure',
+    'media:upload',
     wrap(
-      (payload: { id: number } & Parameters<typeof updateStudentLegalProcedure>[2]) =>
-        updateStudentLegalProcedure(getDb(), payload.id, payload)
+      async (payload: {
+        bytes: Uint8Array | ArrayBuffer;
+        filename?: string | null;
+        category?: string | null;
+        mimeHint?: string | null;
+      }) => {
+        const buffer = Buffer.from(
+          payload.bytes instanceof ArrayBuffer ? new Uint8Array(payload.bytes) : payload.bytes
+        );
+        const asset = await processAndStoreImage(getDb(), buffer, {
+          filename: payload.filename,
+          category: payload.category,
+          mimeHint: payload.mimeHint,
+        });
+        return {
+          ...asset,
+          optimized_url: `app-media://asset/${asset.id}/optimized`,
+          original_url: `app-media://asset/${asset.id}/original`,
+          compat_url: `app-media://asset/${asset.id}/compat`,
+        };
+      }
     )
   );
   ipcMain.handle(
-    'reports:delete-procedure',
-    wrap((payload: { id: number }) => {
-      deleteStudentLegalProcedure(getDb(), payload.id);
-      return { deleted: true };
+    'media:meta',
+    wrap((payload: { id: number }) => getMediaAssetMetaById(getDb(), payload.id))
+  );
+  ipcMain.handle(
+    'media:compat-data-url',
+    wrap((payload: { id: number }) => resolveMediaAssetDataUrl(getDb(), payload.id, 'compat'))
+  );
+  ipcMain.handle(
+    'backup:export',
+    wrap(() => exportDatabaseBackupBuffer(getDb()).toString('base64'))
+  );
+  ipcMain.handle(
+    'backup:restore',
+    wrap(async (payload: { bytes: Uint8Array | ArrayBuffer }) => {
+      const buffer = Buffer.from(
+        payload.bytes instanceof ArrayBuffer ? new Uint8Array(payload.bytes) : payload.bytes
+      );
+      return restoreDatabaseBackupBuffer(getDb(), buffer);
     })
   );
 }
@@ -433,6 +471,31 @@ app.whenReady().then(() => {
   const dbPath = path.join(userDataPath, 'school_attendance.db');
   const db = createDatabaseConnection(dbPath);
   setDbInstance(db);
+  void migrateLegacyDataUrlsToMediaAssets(db).catch(() => {});
+
+  protocol.handle('app-media', async (request) => {
+    const url = new URL(request.url);
+    const match = url.pathname.match(/^\/?(\d+)\/(optimized|original|compat)$/);
+    if (!match) {
+      return new Response('Not Found', { status: 404 });
+    }
+    try {
+      const asset = await getMediaAssetBlob(
+        getDb(),
+        Number(match[1]),
+        match[2] as 'optimized' | 'original' | 'compat'
+      );
+      return new Response(new Uint8Array(asset.buffer), {
+        status: 200,
+        headers: {
+          'Content-Type': asset.mime,
+          'X-Content-Type-Options': 'nosniff',
+        },
+      });
+    } catch {
+      return new Response('Not Found', { status: 404 });
+    }
+  });
 
   registerIpcHandlers();
   createMainWindow();

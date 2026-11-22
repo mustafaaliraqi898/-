@@ -6,6 +6,28 @@ CREATE TABLE IF NOT EXISTS academic_years (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS media_assets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  original_sha256 TEXT NOT NULL UNIQUE,
+  optimized_sha256 TEXT NOT NULL,
+  original_filename TEXT,
+  category TEXT NOT NULL DEFAULT 'general' CHECK (category IN ('school_logo', 'student_photo', 'general')),
+  original_mime TEXT NOT NULL,
+  optimized_mime TEXT NOT NULL,
+  original_size INTEGER NOT NULL CHECK (original_size > 0),
+  optimized_size INTEGER NOT NULL CHECK (optimized_size > 0),
+  width INTEGER,
+  height INTEGER,
+  has_alpha INTEGER NOT NULL DEFAULT 0 CHECK (has_alpha IN (0, 1)),
+  strategy TEXT NOT NULL CHECK (strategy IN ('webp-lossless', 'webp-lossy', 'original-kept', 'fallback-original')),
+  is_processed INTEGER NOT NULL DEFAULT 1 CHECK (is_processed IN (0, 1)),
+  processing_note TEXT,
+  original_blob BLOB NOT NULL,
+  optimized_blob BLOB NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS school_settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   school_name TEXT NOT NULL DEFAULT 'المدرسة النموذجية',
@@ -17,6 +39,7 @@ CREATE TABLE IF NOT EXISTS school_settings (
   lesson_permission_counts_as_absence INTEGER NOT NULL DEFAULT 0 CHECK (lesson_permission_counts_as_absence IN (0, 1)),
   weekly_holiday_reason TEXT NOT NULL DEFAULT 'عطلة أسبوعية رسمية',
   school_logo_data TEXT,
+  school_logo_asset_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -47,6 +70,7 @@ CREATE TABLE IF NOT EXISTS students (
   birth_date TEXT,
   phone TEXT,
   photo_data TEXT,
+  photo_asset_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'transferred_out', 'graduated', 'archived')),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -268,4 +292,6 @@ CREATE INDEX IF NOT EXISTS idx_monthly_notes_lookup ON monthly_student_notes(aca
 CREATE INDEX IF NOT EXISTS idx_legal_versions_stage ON legal_regulation_versions(stage, version_number DESC);
 CREATE INDEX IF NOT EXISTS idx_legal_procedures_student_year ON student_legal_procedures(student_id, academic_year_id, procedure_type);
 CREATE INDEX IF NOT EXISTS idx_legal_procedures_year_stage_date ON student_legal_procedures(academic_year_id, stage, procedure_date DESC);
+CREATE INDEX IF NOT EXISTS idx_media_assets_optimized_sha256 ON media_assets(optimized_sha256);
+CREATE INDEX IF NOT EXISTS idx_media_assets_category ON media_assets(category);
 `;

@@ -17,7 +17,25 @@ import {
   validateEnrollmentDate,
   validatePhotoDataUrl,
 } from '../utils/validation';
+import { resolveAssetIdFromImageRef } from './imageService';
 import { getActiveAcademicYear } from './settingsService';
+
+function resolveLinkedPhotoAssetId(
+  db: SqliteDb,
+  photoData: string | null,
+  explicitAssetId?: number | null
+): number | null {
+  if (!photoData && !explicitAssetId) return null;
+  const candidateId = explicitAssetId ?? resolveAssetIdFromImageRef(photoData);
+  if (!candidateId) return null;
+  const exists = db.prepare('SELECT id FROM media_assets WHERE id = ?').get(candidateId) as
+    | { id: number }
+    | undefined;
+  if (!exists) {
+    throw new ServiceError('الصورة المرفقة غير موجودة في وحدة تخزين الصور.', 400, 'MEDIA_NOT_FOUND');
+  }
+  return exists.id;
+}
 
 const SORT_COLUMNS: Record<NonNullable<StudentListQuery['sort_by']>, string> = {
   full_name: 'st.full_name',
@@ -59,7 +77,7 @@ export function getStudentById(
   const row = db
     .prepare(
       `SELECT st.id, st.student_uid, st.registry_number, st.full_name, st.birth_date,
-              st.phone, st.photo_data, st.status, st.created_at, st.updated_at,
+              st.phone, st.photo_data, st.photo_asset_id, st.status, st.created_at, st.updated_at,
               se.id as enrollment_id, se.academic_year_id, ay.name as academic_year_name,
               se.grade_id, g.name as grade_name, se.section_id, s.name as section_name,
               se.enrollment_date
@@ -116,7 +134,7 @@ export function listStudents(db: SqliteDb, query: StudentListQuery = {}): Studen
 
   const sql = `
     SELECT st.id, st.student_uid, st.registry_number, st.full_name, st.birth_date,
-           st.phone, st.photo_data, st.status, st.created_at, st.updated_at,
+           st.phone, st.photo_data, st.photo_asset_id, st.status, st.created_at, st.updated_at,
            se.id as enrollment_id, se.academic_year_id, ay.name as academic_year_name,
            se.grade_id, g.name as grade_name, se.section_id, s.name as section_name,
            se.enrollment_date
@@ -142,6 +160,9 @@ export function createStudent(db: SqliteDb, input: CreateStudentInput): StudentR
   const birthDate = validateBirthDate(input.birth_date);
   const phone = normalizeNullableString(input.phone);
   const photoData = validatePhotoDataUrl(input.photo_data);
+  const photoAssetId = resolveLinkedPhotoAssetId(db, photoData, input.photo_asset_id);
+  const effectivePhotoData =
+    photoData ?? (photoAssetId ? `/api/media/${photoAssetId}/optimized` : null);
   const enrollmentDate = validateEnrollmentDate(input.enrollment_date);
 
   const yearId = input.academic_year_id ?? getActiveAcademicYear(db).id;
@@ -171,10 +192,18 @@ export function createStudent(db: SqliteDb, input: CreateStudentInput): StudentR
     const tempUid = `TMP-${crypto.randomUUID()}`;
     const info = db
       .prepare(
-        `INSERT INTO students (student_uid, registry_number, full_name, birth_date, phone, photo_data, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'active')`
+        `INSERT INTO students (student_uid, registry_number, full_name, birth_date, phone, photo_data, photo_asset_id, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`
       )
-      .run(tempUid, registryNumber, fullName, birthDate, phone, photoData);
+      .run(
+        tempUid,
+        registryNumber,
+        fullName,
+        birthDate,
+        phone,
+        effectivePhotoData,
+        photoAssetId
+      );
 
     const newId = Number(info.lastInsertRowid);
     const permanentUid = `STD-${String(newId).padStart(5, '0')}`;
@@ -214,6 +243,9 @@ export function updateStudent(
   const birthDate = validateBirthDate(input.birth_date);
   const phone = normalizeNullableString(input.phone);
   const photoData = validatePhotoDataUrl(input.photo_data);
+  const photoAssetId = resolveLinkedPhotoAssetId(db, photoData, input.photo_asset_id);
+  const effectivePhotoData =
+    photoData ?? (photoAssetId ? `/api/media/${photoAssetId}/optimized` : null);
   const status = input.status ?? existing.status;
 
   if (!['active', 'transferred_out', 'graduated', 'archived'].includes(status)) {
@@ -236,9 +268,18 @@ export function updateStudent(
   db.prepare(
     `UPDATE students
      SET full_name = ?, registry_number = ?, birth_date = ?, phone = ?, photo_data = ?,
-         status = ?, updated_at = datetime('now')
+         photo_asset_id = ?, status = ?, updated_at = datetime('now')
      WHERE id = ?`
-  ).run(fullName, registryNumber, birthDate, phone, photoData, status, studentId);
+  ).run(
+    fullName,
+    registryNumber,
+    birthDate,
+    phone,
+    effectivePhotoData,
+    photoAssetId,
+    status,
+    studentId
+  );
 
   return getStudentById(db, studentId);
 }

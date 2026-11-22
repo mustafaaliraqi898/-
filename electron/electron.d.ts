@@ -43,4 +43,21 @@ declare module 'electron' {
   export const contextBridge: {
     exposeInMainWorld(apiKey: string, api: Record<string, unknown>): void;
   };
+
+  export const protocol: {
+    registerSchemesAsPrivileged(
+      customSchemes: Array<{
+        scheme: string;
+        privileges?: {
+          standard?: boolean;
+          secure?: boolean;
+          supportFetchAPI?: boolean;
+        };
+      }>
+    ): void;
+    handle(
+      scheme: string,
+      handler: (request: { url: string }) => Response | Promise<Response>
+    ): void;
+  };
 }

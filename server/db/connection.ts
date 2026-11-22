@@ -201,6 +201,19 @@ function runSafeMigrations(db: SqliteDb): void {
   if (!settingsCols.some((c) => c.name === 'school_logo_data')) {
     db.exec('ALTER TABLE school_settings ADD COLUMN school_logo_data TEXT');
   }
+  if (!settingsCols.some((c) => c.name === 'school_logo_asset_id')) {
+    db.exec(
+      'ALTER TABLE school_settings ADD COLUMN school_logo_asset_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL'
+    );
+  }
+
+  // 1a. Ensure students has photo_asset_id column for centralized media storage
+  const studentsCols = db.prepare('PRAGMA table_info(students)').all() as Array<{ name: string }>;
+  if (!studentsCols.some((c) => c.name === 'photo_asset_id')) {
+    db.exec(
+      'ALTER TABLE students ADD COLUMN photo_asset_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL'
+    );
+  }
 
   // 1b. Ensure grades has stage column and infer stage safely for existing rows if NULL
   const gradesCols = db.prepare('PRAGMA table_info(grades)').all() as Array<{ name: string }>;

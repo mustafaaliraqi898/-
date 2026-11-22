@@ -1,6 +1,12 @@
 import type { AcademicYear, SchoolSettings } from '../../src/types/school';
 import type { SqliteDb } from '../db/connection';
-import { ServiceError, normalizeNullableString, normalizeWhitespace } from '../utils/validation';
+import {
+  ServiceError,
+  normalizeNullableString,
+  normalizeWhitespace,
+  validatePhotoDataUrl,
+} from '../utils/validation';
+import { resolveAssetIdFromImageRef } from './imageService';
 
 export function getSchoolSettings(db: SqliteDb): SchoolSettings {
   const row = db
@@ -8,7 +14,7 @@ export function getSchoolSettings(db: SqliteDb): SchoolSettings {
       `SELECT s.id, s.school_name, s.directorate_name, s.academic_year_id,
               s.lessons_per_absence_day, s.daily_lessons_count,
               s.daily_permission_counts_as_absence, s.lesson_permission_counts_as_absence,
-              s.school_logo_data, s.updated_at,
+              s.school_logo_data, s.school_logo_asset_id, s.updated_at,
               ay.name as academic_year_name
        FROM school_settings s
        LEFT JOIN academic_years ay ON ay.id = s.academic_year_id
@@ -32,6 +38,7 @@ export function updateSchoolSettings(
     daily_permission_counts_as_absence?: number | boolean;
     lesson_permission_counts_as_absence?: number | boolean;
     school_logo_data?: string | null;
+    school_logo_asset_id?: number | null;
   }
 ): SchoolSettings {
   const schoolName = normalizeWhitespace(input.school_name);
@@ -50,6 +57,7 @@ export function updateSchoolSettings(
   let dailyPermCounts = current.daily_permission_counts_as_absence;
   let lessonPermCounts = current.lesson_permission_counts_as_absence;
   let schoolLogoData = current.school_logo_data ?? null;
+  let schoolLogoAssetId = current.school_logo_asset_id ?? null;
 
   if (input.lessons_per_absence_day !== undefined) {
     const parsed = Number(input.lessons_per_absence_day);
@@ -85,12 +93,27 @@ export function updateSchoolSettings(
     lessonPermCounts = raw === 1 || raw === true ? 1 : 0;
   }
 
-  if (input.school_logo_data !== undefined) {
-    const normalizedLogo = normalizeNullableString(input.school_logo_data);
-    if (normalizedLogo && normalizedLogo.length > 2_500_000) {
-      throw new ServiceError('حجم شعار المدرسة كبير جداً. يُرجى استخدام صورة أصغر من 2 ميغابايت.');
+  if (input.school_logo_data !== undefined || input.school_logo_asset_id !== undefined) {
+    const normalizedLogo =
+      input.school_logo_data !== undefined
+        ? validatePhotoDataUrl(normalizeNullableString(input.school_logo_data))
+        : null;
+    const candidateId =
+      input.school_logo_asset_id ?? resolveAssetIdFromImageRef(normalizedLogo);
+
+    if (candidateId) {
+      const exists = db.prepare('SELECT id FROM media_assets WHERE id = ?').get(candidateId) as
+        | { id: number }
+        | undefined;
+      if (!exists) {
+        throw new ServiceError('ملف الشعار غير موجود في وحدة تخزين الصور.', 400, 'MEDIA_NOT_FOUND');
+      }
+      schoolLogoAssetId = exists.id;
+      schoolLogoData = normalizedLogo ?? `/api/media/${exists.id}/optimized`;
+    } else {
+      schoolLogoAssetId = null;
+      schoolLogoData = normalizedLogo;
     }
-    schoolLogoData = normalizedLogo;
   }
 
   db.prepare(
@@ -102,6 +125,7 @@ export function updateSchoolSettings(
          daily_permission_counts_as_absence = ?,
          lesson_permission_counts_as_absence = ?,
          school_logo_data = ?,
+         school_logo_asset_id = ?,
          updated_at = datetime('now')
      WHERE id = 1`
   ).run(
@@ -111,7 +135,8 @@ export function updateSchoolSettings(
     dailyLessonsCount,
     dailyPermCounts,
     lessonPermCounts,
-    schoolLogoData
+    schoolLogoData,
+    schoolLogoAssetId
   );
 
   return getSchoolSettings(db);

@@ -36,11 +36,8 @@ import {
   updateWeeklyHolidays,
 } from '../services/holidayService';
 import {
-  getStageRegulationForYear,
-  listAllStageRegulations,
-  listRegulationVersions,
-  updateStageRegulation,
-  validateStage,
+  getSimplifiedAbsenceThresholds,
+  updateSimplifiedAbsenceThresholds,
 } from '../services/legalRegulationsService';
 import {
   deleteMonthlyStudentNote,
@@ -49,11 +46,8 @@ import {
   saveMonthlyStudentNote,
 } from '../services/monthlyRegisterService';
 import {
-  createStudentLegalProcedure,
-  deleteStudentLegalProcedure,
-  generateReportsExcel,
-  getReportsCenterData,
-  updateStudentLegalProcedure,
+  generateSimplifiedReportsExcel,
+  getSimplifiedAbsenceReports,
 } from '../services/reportsCenterService';
 import {
   createAcademicYear,
@@ -62,6 +56,17 @@ import {
   setActiveAcademicYear,
   updateSchoolSettings,
 } from '../services/settingsService';
+import {
+  exportDatabaseBackupBuffer,
+  restoreDatabaseBackupBuffer,
+} from '../services/backupService';
+import {
+  decodeBase64DataUrl,
+  getMediaAssetBlob,
+  getMediaAssetMetaById,
+  processAndStoreImage,
+  resolveMediaAssetDataUrl,
+} from '../services/imageService';
 import {
   createStudent,
   deleteStudent,
@@ -124,6 +129,10 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
           : undefined,
       school_logo_data:
         req.body?.school_logo_data !== undefined ? req.body.school_logo_data : undefined,
+      school_logo_asset_id:
+        req.body?.school_logo_asset_id !== undefined
+          ? parseOptionalInt(req.body.school_logo_asset_id) ?? null
+          : undefined,
     });
     res.json(updated);
   });
@@ -334,6 +343,7 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
       birth_date: req.body?.birth_date ?? null,
       phone: req.body?.phone ?? null,
       photo_data: req.body?.photo_data ?? null,
+      photo_asset_id: parseOptionalInt(req.body?.photo_asset_id) ?? null,
       academic_year_id: parseOptionalInt(req.body?.academic_year_id),
       enrollment_date: req.body?.enrollment_date ?? null,
     });
@@ -349,6 +359,7 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
       birth_date: req.body?.birth_date ?? null,
       phone: req.body?.phone ?? null,
       photo_data: req.body?.photo_data ?? null,
+      photo_asset_id: parseOptionalInt(req.body?.photo_asset_id) ?? null,
       status: req.body?.status,
     });
     res.json(updated);
@@ -628,92 +639,64 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
     }
   });
 
-  // Legal Absence Regulations & Versioning
-  router.get('/legal-regulations', (req, res) => {
+  // Simplified Absence Thresholds & Effective Limit (Preparatory)
+  router.get('/absence-thresholds', (req, res) => {
     const db = dbProvider();
     const yearId = parseOptionalInt(req.query.academic_year_id);
-    res.json(listAllStageRegulations(db, yearId));
+    res.json(getSimplifiedAbsenceThresholds(db, yearId));
   });
 
-  router.get('/legal-regulations-versions', (req, res) => {
+  router.put('/absence-thresholds', (req, res) => {
     const db = dbProvider();
-    const stageParam = typeof req.query.stage === 'string' ? validateStage(req.query.stage) : undefined;
-    res.json(listRegulationVersions(db, stageParam));
+    const updated = updateSimplifiedAbsenceThresholds(db, {
+      warning_days: Number(req.body?.warning_days),
+      preliminary_warning_days: Number(req.body?.preliminary_warning_days),
+      final_warning_days: Number(req.body?.final_warning_days),
+      effective_absence_limit: Number(req.body?.effective_absence_limit),
+      academic_year_id: parseOptionalInt(req.body?.academic_year_id),
+    });
+    res.json(updated);
   });
 
-  router.get('/legal-regulations/:stage', (req, res) => {
-    const db = dbProvider();
-    const stage = validateStage(String(req.params.stage ?? ''));
-    const yearId = parseOptionalInt(req.query.academic_year_id);
-    res.json(getStageRegulationForYear(db, stage, yearId));
-  });
-
-  router.get('/legal-regulations/:stage/versions', (req, res) => {
-    const db = dbProvider();
-    const stage = validateStage(String(req.params.stage ?? ''));
-    res.json(listRegulationVersions(db, stage));
-  });
-
-  router.put('/legal-regulations/:stage', (req, res) => {
-    const db = dbProvider();
-    const stage = validateStage(String(req.params.stage ?? ''));
-    const result = updateStageRegulation(db, stage, req.body ?? {});
-    res.json(result);
-  });
-
-  // Reports Center & Student Legal Procedures
-  router.get('/reports/center', (req, res) => {
+  // Simplified 4 Absence Warning & Limit Reports (Single Source of Truth from Absences)
+  router.get('/reports/absences', (req, res) => {
     const db = dbProvider();
     const academicYearId = parseOptionalInt(req.query.academic_year_id);
-    const reportType = String(req.query.report_type ?? 'preliminary_warnings') as Parameters<
-      typeof getReportsCenterData
+    const reportType = String(req.query.report_type ?? 'warning') as Parameters<
+      typeof getSimplifiedAbsenceReports
     >[1]['report_type'];
-    const stage =
-      typeof req.query.stage === 'string' && req.query.stage !== 'all'
-        ? validateStage(req.query.stage)
-        : 'all';
     const gradeId = parseOptionalInt(req.query.grade_id);
     const sectionId = parseOptionalInt(req.query.section_id);
     const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-    const includeApproaching = req.query.include_approaching === 'true' || req.query.include_approaching === '1';
 
     res.json(
-      getReportsCenterData(db, {
+      getSimplifiedAbsenceReports(db, {
         academic_year_id: academicYearId,
         report_type: reportType,
-        stage,
         grade_id: gradeId,
         section_id: sectionId,
         search,
-        include_approaching: includeApproaching,
       })
     );
   });
 
-  router.get('/reports/export', async (req, res, next) => {
+  router.get('/reports/absences/export', async (req, res, next) => {
     try {
       const db = dbProvider();
       const academicYearId = parseOptionalInt(req.query.academic_year_id);
-      const reportType = String(req.query.report_type ?? 'preliminary_warnings') as Parameters<
-        typeof getReportsCenterData
+      const reportType = String(req.query.report_type ?? 'warning') as Parameters<
+        typeof getSimplifiedAbsenceReports
       >[1]['report_type'];
-      const stage =
-        typeof req.query.stage === 'string' && req.query.stage !== 'all'
-          ? validateStage(req.query.stage)
-          : 'all';
       const gradeId = parseOptionalInt(req.query.grade_id);
       const sectionId = parseOptionalInt(req.query.section_id);
       const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-      const includeApproaching = req.query.include_approaching === 'true' || req.query.include_approaching === '1';
 
-      const { buffer, filename } = await generateReportsExcel(db, {
+      const { buffer, filename } = await generateSimplifiedReportsExcel(db, {
         academic_year_id: academicYearId,
         report_type: reportType,
-        stage,
         grade_id: gradeId,
         section_id: sectionId,
         search,
-        include_approaching: includeApproaching,
       });
 
       const encodedName = encodeURIComponent(filename);
@@ -728,42 +711,155 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
     }
   });
 
-  router.post('/reports/procedures', (req, res) => {
+  // Centralized Media Processing, Storage, Serving & Compatibility Routes
+  router.post(
+    '/media/upload',
+    express.raw({
+      type: ['image/*', 'application/octet-stream'],
+      limit: '100mb',
+    }),
+    async (req, res, next) => {
+      try {
+        const db = dbProvider();
+        let buffer: Buffer | null = null;
+        let filename: string | null = null;
+        let category: string | null = null;
+        let mimeHint: string | null = null;
+
+        if (Buffer.isBuffer(req.body)) {
+          buffer = req.body;
+          const rawHeaderName = req.header('x-image-filename');
+          if (rawHeaderName) {
+            try {
+              filename = decodeURIComponent(rawHeaderName);
+            } catch {
+              filename = rawHeaderName;
+            }
+          }
+          category = req.header('x-image-category') ?? null;
+          mimeHint = req.header('x-image-mime') ?? req.header('content-type') ?? null;
+        } else if (req.body && typeof req.body === 'object' && typeof req.body.dataUrl === 'string') {
+          const decoded = decodeBase64DataUrl(req.body.dataUrl);
+          if (!decoded) {
+            throw new ServiceError('بيانات الصورة غير صالحة.', 400, 'INVALID_IMAGE');
+          }
+          buffer = decoded.buffer;
+          mimeHint = decoded.mime;
+          filename = typeof req.body.filename === 'string' ? req.body.filename : null;
+          category = typeof req.body.category === 'string' ? req.body.category : null;
+        }
+
+        if (!buffer || buffer.length === 0) {
+          throw new ServiceError('لم يتم استلام بيانات الصورة.', 400, 'EMPTY_IMAGE');
+        }
+
+        const asset = await processAndStoreImage(db, buffer, {
+          filename,
+          category,
+          mimeHint,
+        });
+        res.status(asset.deduplicated ? 200 : 201).json(asset);
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  router.get('/media/:id/meta', (req, res) => {
     const db = dbProvider();
-    const created = createStudentLegalProcedure(db, {
-      student_id: parsePositiveInt(String(req.body?.student_id ?? ''), 'الطالب'),
-      academic_year_id: parseOptionalInt(req.body?.academic_year_id),
-      procedure_type: req.body?.procedure_type,
-      procedure_date: req.body?.procedure_date,
-      delivery_method: req.body?.delivery_method ?? null,
-      summons_result: req.body?.summons_result ?? null,
-      recorded_by: req.body?.recorded_by ?? null,
-      notes: req.body?.notes ?? null,
-      override_reason: req.body?.override_reason ?? null,
-      is_official_legal_issue: Boolean(req.body?.is_official_legal_issue),
-    });
-    res.status(201).json(created);
+    const id = parsePositiveInt(req.params.id, 'الصورة');
+    res.json(getMediaAssetMetaById(db, id));
   });
 
-  router.put('/reports/procedures/:id', (req, res) => {
-    const db = dbProvider();
-    const id = parsePositiveInt(req.params.id, 'الإجراء الإداري');
-    const updated = updateStudentLegalProcedure(db, id, {
-      procedure_date: req.body?.procedure_date,
-      delivery_method: req.body?.delivery_method,
-      summons_result: req.body?.summons_result,
-      recorded_by: req.body?.recorded_by,
-      notes: req.body?.notes,
-    });
-    res.json(updated);
+  router.get('/media/:id/compat-data-url', async (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const id = parsePositiveInt(req.params.id, 'الصورة');
+      const dataUrl = await resolveMediaAssetDataUrl(db, id, 'compat');
+      res.json({ data_url: dataUrl });
+    } catch (err) {
+      next(err);
+    }
   });
 
-  router.delete('/reports/procedures/:id', (req, res) => {
-    const db = dbProvider();
-    const id = parsePositiveInt(req.params.id, 'الإجراء الإداري');
-    deleteStudentLegalProcedure(db, id);
-    res.json({ deleted: true });
+  router.get('/media/:id/:variant(optimized|original|compat)', async (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const id = parsePositiveInt(req.params.id, 'الصورة');
+      let variant = req.params.variant as 'optimized' | 'original' | 'compat';
+
+      // Automatic fallback to PNG/JPEG if client explicitly states it does not accept WebP
+      const acceptHeader = String(req.header('accept') ?? '');
+      const forceCompat = req.query.compat === '1' || req.query.compat === 'true';
+      if (
+        variant === 'optimized' &&
+        (forceCompat ||
+          (acceptHeader.includes('image/') &&
+            !acceptHeader.includes('*/*') &&
+            !acceptHeader.includes('image/webp')))
+      ) {
+        variant = 'compat';
+      }
+
+      const preferFormat =
+        req.query.format === 'png' || req.query.format === 'jpeg'
+          ? (req.query.format as 'png' | 'jpeg')
+          : undefined;
+
+      const asset = await getMediaAssetBlob(db, id, variant, preferFormat);
+      res.setHeader('Content-Type', asset.mime);
+      res.setHeader('Content-Length', String(asset.buffer.length));
+      res.setHeader('ETag', `"${asset.sha256}"`);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      if (asset.mime === 'image/svg+xml') {
+        res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
+      }
+      res.send(asset.buffer);
+    } catch (err) {
+      next(err);
+    }
   });
+
+  // SQLite Backup & Restore (Preserves all data + media originals and optimized versions)
+  router.get('/backup/export', (_req, res, next) => {
+    try {
+      const db = dbProvider();
+      const buffer = exportDatabaseBackupBuffer(db);
+      const stamp = new Date().toISOString().slice(0, 10);
+      const encodedName = encodeURIComponent(`نسخة_احتياطية_نظام_الغيابات_${stamp}.db`);
+      res.setHeader('Content-Type', 'application/x-sqlite3');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
+      res.setHeader('Content-Length', String(buffer.length));
+      res.send(buffer);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post(
+    '/backup/restore',
+    express.raw({
+      type: ['application/octet-stream', 'application/x-sqlite3', '*/*'],
+      limit: '250mb',
+    }),
+    async (req, res, next) => {
+      try {
+        const db = dbProvider();
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+          throw new ServiceError('يرجى إرفاق ملف نسخة احتياطية صالح.', 400, 'INVALID_BACKUP');
+        }
+        const result = await restoreDatabaseBackupBuffer(db, req.body);
+        res.json({
+          restored: true,
+          media_assets_count: result.media_assets_count,
+          students_count: result.students_count,
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
 
   // Error handler
   router.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

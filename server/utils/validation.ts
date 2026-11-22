@@ -58,13 +58,20 @@ export function validatePhotoDataUrl(value: string | null | undefined): string |
   const trimmed = value.trim();
   if (!trimmed) return null;
 
-  const allowedPrefix = /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/i;
-  if (!allowedPrefix.test(trimmed)) {
-    throw new ServiceError('صيغة صورة الطالب غير مدعومة. يسمح فقط بصور PNG أو JPG أو WebP.', 400);
+  const isMediaRef =
+    /^\/api\/media\/\d+\/(?:optimized|original|compat)(?:\?.*)?$/i.test(trimmed) ||
+    /^app-media:\/\/asset\/\d+\/(?:optimized|original|compat)(?:\?.*)?$/i.test(trimmed);
+
+  if (isMediaRef) {
+    return trimmed;
   }
-  // Max ~2MB base64 payload
-  if (trimmed.length > 2_800_000) {
-    throw new ServiceError('حجم صورة الطالب كبير جداً. يرجى اختيار صورة أصغر من 2 ميغابايت.', 400);
+
+  const allowedPrefix = /^data:image\/(png|jpeg|jpg|webp|gif|svg\+xml);base64,[A-Za-z0-9+/=\s]+$/i;
+  if (!allowedPrefix.test(trimmed)) {
+    throw new ServiceError(
+      'مرجع أو صيغة الصورة غير مدعومة. يسمح برفع الصور عبر الخدمة المركزية أو بصيغ PNG وJPG وWebP وGIF وSVG.',
+      400
+    );
   }
   return trimmed;
 }

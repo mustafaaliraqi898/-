@@ -696,6 +696,109 @@ function buildEffectiveLessonDetails(
   };
 }
 
+export interface StudentAcademicYearAbsenceTotals {
+  student_id: number;
+  direct_full_days: number;
+  counted_daily_permission_days: number;
+  sick_leave_days: number;
+  daily_permission_days: number;
+  lesson_permission_records: number;
+  lesson_absence_lessons: number;
+  lesson_escape_lessons: number;
+  counted_lesson_permission_lessons: number;
+  converted_lesson_days: number;
+  total_full_days: number;
+  pending_lessons: number;
+  total_lessons_missed: number;
+}
+
+export function getAcademicYearAbsenceTotalsMap(
+  db: SqliteDb,
+  academicYearId: number
+): Map<number, StudentAcademicYearAbsenceTotals> {
+  const summaryRows = db
+    .prepare(
+      `SELECT
+         a.student_id,
+         SUM(CASE WHEN a.status = 'full_day' THEN 1 ELSE 0 END) as direct_full_days,
+         SUM(CASE WHEN a.status = 'full_day_leave' AND a.leave_type = 'daily_permission' AND a.counted_as_absence = 1 THEN 1 ELSE 0 END) as counted_daily_permission_days,
+         SUM(CASE WHEN a.status = 'full_day_leave' AND a.leave_type = 'sick_leave' THEN 1 ELSE 0 END) as sick_leave_days,
+         SUM(CASE WHEN a.status = 'full_day_leave' AND a.leave_type = 'daily_permission' THEN 1 ELSE 0 END) as daily_permission_days,
+         SUM(CASE
+           WHEN a.status = 'lesson_permission'
+             OR EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_permission')
+           THEN 1 ELSE 0 END) as lesson_permission_records,
+         COALESCE(SUM(CASE
+           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
+             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_absence')
+           WHEN a.status = 'lesson_absence' THEN a.lessons_count
+           ELSE 0 END), 0) as lesson_absence_lessons,
+         COALESCE(SUM(CASE
+           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
+             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_escape')
+           WHEN a.status = 'lesson_escape' THEN a.lessons_count
+           ELSE 0 END), 0) as lesson_escape_lessons,
+         COALESCE(SUM(CASE
+           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
+             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_permission' AND d.counted_as_absence = 1)
+           WHEN a.status = 'lesson_permission' AND a.counted_as_absence = 1 THEN a.lessons_count
+           ELSE 0 END), 0) as counted_lesson_permission_lessons,
+         COALESCE(SUM(CASE
+           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
+             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND (d.lesson_status IN ('lesson_absence', 'lesson_escape') OR (d.lesson_status = 'lesson_permission' AND d.counted_as_absence = 1)))
+           WHEN a.status IN ('lesson_absence', 'lesson_escape') OR (a.status = 'lesson_permission' AND a.counted_as_absence = 1) THEN a.lessons_count
+           ELSE 0 END), 0) as total_lessons_missed
+       FROM absences a
+       WHERE a.academic_year_id = ?
+       GROUP BY a.student_id`
+    )
+    .all(academicYearId) as Array<{
+    student_id: number;
+    direct_full_days: number;
+    counted_daily_permission_days: number;
+    sick_leave_days: number;
+    daily_permission_days: number;
+    lesson_permission_records: number;
+    lesson_absence_lessons: number;
+    lesson_escape_lessons: number;
+    counted_lesson_permission_lessons: number;
+    total_lessons_missed: number;
+  }>;
+
+  const convertedRows = db
+    .prepare(
+      `SELECT student_id, COUNT(*) as converted_days, COALESCE(SUM(lessons_consumed), 0) as consumed_lessons
+       FROM lesson_converted_days
+       WHERE academic_year_id = ?
+       GROUP BY student_id`
+    )
+    .all(academicYearId) as Array<{
+    student_id: number;
+    converted_days: number;
+    consumed_lessons: number;
+  }>;
+
+  const convertedMap = new Map<number, { converted_days: number; consumed_lessons: number }>();
+  for (const r of convertedRows) {
+    convertedMap.set(r.student_id, {
+      converted_days: r.converted_days,
+      consumed_lessons: r.consumed_lessons,
+    });
+  }
+
+  const result = new Map<number, StudentAcademicYearAbsenceTotals>();
+  for (const sum of summaryRows) {
+    const conv = convertedMap.get(sum.student_id) ?? { converted_days: 0, consumed_lessons: 0 };
+    result.set(sum.student_id, {
+      ...sum,
+      converted_lesson_days: conv.converted_days,
+      total_full_days: sum.direct_full_days + sum.counted_daily_permission_days + conv.converted_days,
+      pending_lessons: Math.max(0, sum.total_lessons_missed - conv.consumed_lessons),
+    });
+  }
+  return result;
+}
+
 export function getSectionAttendanceSheet(
   db: SqliteDb,
   params: {
@@ -793,84 +896,11 @@ export function getSectionAttendanceSheet(
     .filter((id): id is number => id !== null);
   const lessonDetailsMap = loadLessonDetailsMap(db, recordIds);
 
-  // Cumulative counts per student for this academic year (consistent across detailed & legacy rows)
-  const summaryRows = db
-    .prepare(
-      `SELECT
-         a.student_id,
-         SUM(CASE WHEN a.status = 'full_day' THEN 1 ELSE 0 END) as direct_full_days,
-         SUM(CASE WHEN a.status = 'full_day_leave' AND a.leave_type = 'daily_permission' AND a.counted_as_absence = 1 THEN 1 ELSE 0 END) as counted_daily_permission_days,
-         SUM(CASE WHEN a.status = 'full_day_leave' AND a.leave_type = 'sick_leave' THEN 1 ELSE 0 END) as sick_leave_days,
-         SUM(CASE WHEN a.status = 'full_day_leave' AND a.leave_type = 'daily_permission' THEN 1 ELSE 0 END) as daily_permission_days,
-         SUM(CASE
-           WHEN a.status = 'lesson_permission'
-             OR EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_permission')
-           THEN 1 ELSE 0 END) as lesson_permission_records,
-         COALESCE(SUM(CASE
-           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
-             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_absence')
-           WHEN a.status = 'lesson_absence' THEN a.lessons_count
-           ELSE 0 END), 0) as lesson_absence_lessons,
-         COALESCE(SUM(CASE
-           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
-             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_escape')
-           WHEN a.status = 'lesson_escape' THEN a.lessons_count
-           ELSE 0 END), 0) as lesson_escape_lessons,
-         COALESCE(SUM(CASE
-           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
-             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_permission' AND d.counted_as_absence = 1)
-           WHEN a.status = 'lesson_permission' AND a.counted_as_absence = 1 THEN a.lessons_count
-           ELSE 0 END), 0) as counted_lesson_permission_lessons,
-         COALESCE(SUM(CASE
-           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
-             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND (d.lesson_status IN ('lesson_absence', 'lesson_escape') OR (d.lesson_status = 'lesson_permission' AND d.counted_as_absence = 1)))
-           WHEN a.status IN ('lesson_absence', 'lesson_escape') OR (a.status = 'lesson_permission' AND a.counted_as_absence = 1) THEN a.lessons_count
-           ELSE 0 END), 0) as total_lessons_missed
-       FROM absences a
-       WHERE a.academic_year_id = ?
-       GROUP BY a.student_id`
-    )
-    .all(year.id) as Array<{
-    student_id: number;
-    direct_full_days: number;
-    counted_daily_permission_days: number;
-    sick_leave_days: number;
-    daily_permission_days: number;
-    lesson_permission_records: number;
-    lesson_absence_lessons: number;
-    lesson_escape_lessons: number;
-    counted_lesson_permission_lessons: number;
-    total_lessons_missed: number;
-  }>;
-
-  const summaryMap = new Map<number, (typeof summaryRows)[number]>();
-  for (const row of summaryRows) {
-    summaryMap.set(row.student_id, row);
-  }
-
-  const convertedRows = db
-    .prepare(
-      `SELECT student_id, COUNT(*) as converted_days, COALESCE(SUM(lessons_consumed), 0) as consumed_lessons
-       FROM lesson_converted_days
-       WHERE academic_year_id = ?
-       GROUP BY student_id`
-    )
-    .all(year.id) as Array<{
-    student_id: number;
-    converted_days: number;
-    consumed_lessons: number;
-  }>;
-
-  const convertedMap = new Map<number, { converted_days: number; consumed_lessons: number }>();
-  for (const r of convertedRows) {
-    convertedMap.set(r.student_id, {
-      converted_days: r.converted_days,
-      consumed_lessons: r.consumed_lessons,
-    });
-  }
+  // Cumulative counts per student for this academic year (shared read-only source of truth)
+  const totalsMap = getAcademicYearAbsenceTotalsMap(db, year.id);
 
   const students: StudentAbsenceSheetRow[] = roster.map((r) => {
-    const sum = summaryMap.get(r.student_id) ?? {
+    const tot = totalsMap.get(r.student_id) ?? {
       student_id: r.student_id,
       direct_full_days: 0,
       counted_daily_permission_days: 0,
@@ -880,10 +910,11 @@ export function getSectionAttendanceSheet(
       lesson_absence_lessons: 0,
       lesson_escape_lessons: 0,
       counted_lesson_permission_lessons: 0,
+      converted_lesson_days: 0,
+      total_full_days: 0,
+      pending_lessons: 0,
       total_lessons_missed: 0,
     };
-    const conv = convertedMap.get(r.student_id) ?? { converted_days: 0, consumed_lessons: 0 };
-    const pendingLessons = Math.max(0, sum.total_lessons_missed - conv.consumed_lessons);
 
     const savedStatus = r.saved_status ?? 'present';
     const storedDetails = r.record_id ? lessonDetailsMap.get(r.record_id) : undefined;
@@ -924,18 +955,18 @@ export function getSectionAttendanceSheet(
       record_created_at: r.record_created_at ?? null,
       record_updated_at: r.record_updated_at ?? null,
       has_saved_record: r.record_id !== null,
-      direct_full_days: sum.direct_full_days,
-      counted_daily_permission_days: sum.counted_daily_permission_days,
-      sick_leave_days: sum.sick_leave_days,
-      daily_permission_days: sum.daily_permission_days,
-      lesson_permission_records: sum.lesson_permission_records,
-      lesson_absence_lessons: sum.lesson_absence_lessons,
-      lesson_escape_lessons: sum.lesson_escape_lessons,
-      counted_lesson_permission_lessons: sum.counted_lesson_permission_lessons,
-      converted_lesson_days: conv.converted_days,
-      total_full_days: sum.direct_full_days + sum.counted_daily_permission_days + conv.converted_days,
-      pending_lessons: pendingLessons,
-      total_lessons_missed: sum.total_lessons_missed,
+      direct_full_days: tot.direct_full_days,
+      counted_daily_permission_days: tot.counted_daily_permission_days,
+      sick_leave_days: tot.sick_leave_days,
+      daily_permission_days: tot.daily_permission_days,
+      lesson_permission_records: tot.lesson_permission_records,
+      lesson_absence_lessons: tot.lesson_absence_lessons,
+      lesson_escape_lessons: tot.lesson_escape_lessons,
+      counted_lesson_permission_lessons: tot.counted_lesson_permission_lessons,
+      converted_lesson_days: tot.converted_lesson_days,
+      total_full_days: tot.total_full_days,
+      pending_lessons: tot.pending_lessons,
+      total_lessons_missed: tot.total_lessons_missed,
     };
   });
 

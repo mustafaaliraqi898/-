@@ -63,7 +63,36 @@ export interface SchoolSettings {
   daily_permission_counts_as_absence: number;
   lesson_permission_counts_as_absence: number;
   school_logo_data?: string | null;
+  school_logo_asset_id?: number | null;
   updated_at: string;
+}
+
+export type ImageCategory = 'school_logo' | 'student_photo' | 'general';
+
+export interface MediaAssetInfo {
+  id: number;
+  original_sha256: string;
+  optimized_sha256: string;
+  original_filename: string | null;
+  category: ImageCategory;
+  original_mime: string;
+  optimized_mime: string;
+  original_size: number;
+  optimized_size: number;
+  saved_bytes: number;
+  reduction_percent: number;
+  width: number | null;
+  height: number | null;
+  has_alpha: boolean;
+  strategy: 'webp-lossless' | 'webp-lossy' | 'original-kept' | 'fallback-original';
+  is_processed: boolean;
+  processing_note: string | null;
+  deduplicated: boolean;
+  skipped_recompression: boolean;
+  optimized_url: string;
+  original_url: string;
+  compat_url: string;
+  created_at: string;
 }
 
 export interface SectionItem {
@@ -96,6 +125,7 @@ export interface StudentRecord {
   birth_date: string | null;
   phone: string | null;
   photo_data: string | null;
+  photo_asset_id?: number | null;
   status: StudentStatus;
   created_at: string;
   updated_at: string;
@@ -134,6 +164,7 @@ export interface CreateStudentInput {
   birth_date?: string | null;
   phone?: string | null;
   photo_data?: string | null;
+  photo_asset_id?: number | null;
   academic_year_id?: number;
   enrollment_date?: string | null;
 }
@@ -144,6 +175,7 @@ export interface UpdateStudentInput {
   birth_date?: string | null;
   phone?: string | null;
   photo_data?: string | null;
+  photo_asset_id?: number | null;
   status?: StudentStatus;
 }
 
@@ -895,5 +927,80 @@ export interface ReportsCenterQuery {
   include_approaching?: boolean;
 }
 
+// Simplified Absence Limits & 4-Report Types (Preparatory)
+export interface AbsenceThresholdsSettings {
+  effective_absence_limit: number;
+  warning_days: number;
+  preliminary_warning_days: number;
+  final_warning_days: number;
+  updated_at: string;
+}
 
+export interface UpdateAbsenceThresholdsInput {
+  effective_absence_limit: number;
+  warning_days: number;
+  preliminary_warning_days: number;
+  final_warning_days: number;
+  academic_year_id?: number;
+}
 
+export type AbsenceReportTypeId =
+  | 'warning'
+  | 'preliminary_warning'
+  | 'final_warning'
+  | 'exceeded_limit';
+
+export type AbsenceAlertLevel =
+  | 'within_limit'
+  | 'warning'
+  | 'preliminary_warning'
+  | 'final_warning'
+  | 'exceeded_limit';
+
+export interface AbsenceReportStudentRow {
+  student_id: number;
+  student_uid: string;
+  registry_number: string | null;
+  full_name: string;
+  grade_id: number;
+  grade_name: string;
+  section_id: number;
+  section_name: string;
+  direct_full_days: number;
+  counted_daily_permission_days: number;
+  converted_lesson_days: number;
+  counted_absence_days: number;
+  pending_lessons: number;
+  alert_level: AbsenceAlertLevel;
+  alert_label: string;
+  report_threshold_days: number;
+  days_over_report_threshold: number;
+  remaining_to_effective_limit: number;
+  days_over_effective_limit: number;
+}
+
+export interface AbsenceReportsSummary {
+  total_active_students: number;
+  within_limit_count: number;
+  warning_count: number;
+  preliminary_warning_count: number;
+  final_warning_count: number;
+  exceeded_limit_count: number;
+}
+
+export interface AbsenceReportsResponse {
+  academic_year: AcademicYear;
+  school_settings: SchoolSettings;
+  report_type: AbsenceReportTypeId;
+  thresholds: AbsenceThresholdsSettings;
+  summary: AbsenceReportsSummary;
+  rows: AbsenceReportStudentRow[];
+}
+
+export interface AbsenceReportsQuery {
+  academic_year_id?: number;
+  report_type: AbsenceReportTypeId;
+  grade_id?: number;
+  section_id?: number;
+  search?: string;
+}
