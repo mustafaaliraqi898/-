@@ -7,15 +7,19 @@ import {
   Check,
   Clock,
   FileCheck2,
+  ImagePlus,
   Pencil,
   Plus,
+  Scale,
   ShieldCheck,
   Trash2,
+  X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import type {
   AcademicYear,
   ExistingRecordsWarning,
+  GradeWithSections,
   HolidayRecord,
   HolidayType,
   SchoolSettings,
@@ -23,10 +27,16 @@ import type {
 } from '../../types/school';
 import { schoolService } from '../../services/schoolService';
 import { ConfirmDialog } from '../common/ConfirmDialog';
+import { LegalRegulationsView } from './LegalRegulationsView';
+
+export type SettingsTabId = 'general' | 'holidays' | 'legal';
 
 interface SettingsViewProps {
   settings: SchoolSettings | null;
   academicYears: AcademicYear[];
+  grades?: GradeWithSections[];
+  selectedYearId?: number | null;
+  initialTab?: SettingsTabId;
   onRefresh: () => Promise<void>;
   onNotify: (type: 'success' | 'error' | 'info', message: string) => void;
 }
@@ -56,11 +66,18 @@ const HOLIDAY_TYPE_TEXT_CLASSES: Record<HolidayType, string> = {
 export function SettingsView({
   settings,
   academicYears,
+  grades = [],
+  selectedYearId = null,
+  initialTab = 'general',
   onRefresh,
   onNotify,
 }: SettingsViewProps) {
+  const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab);
   const [schoolName, setSchoolName] = useState(settings?.school_name ?? '');
   const [directorateName, setDirectorateName] = useState(settings?.directorate_name ?? '');
+  const [schoolLogoData, setSchoolLogoData] = useState<string | null>(
+    settings?.school_logo_data ?? null
+  );
   const [lessonsPerDay, setLessonsPerDay] = useState(
     String(settings?.lessons_per_absence_day ?? 5)
   );
@@ -78,6 +95,10 @@ export function SettingsView({
   const [newYearName, setNewYearName] = useState('');
   const [setNewYearActive, setSetNewYearActive] = useState(true);
   const [creatingYear, setCreatingYear] = useState(false);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   // Weekly Holidays State
   const [weeklyDaysList, setWeeklyDaysList] = useState<WeeklyHolidayDay[]>(() =>
@@ -112,12 +133,29 @@ export function SettingsView({
     if (settings) {
       setSchoolName(settings.school_name);
       setDirectorateName(settings.directorate_name);
+      setSchoolLogoData(settings.school_logo_data ?? null);
       setLessonsPerDay(String(settings.lessons_per_absence_day ?? 5));
       setDailyLessonsCount(String(settings.daily_lessons_count ?? 7));
       setDailyPermCountsAsAbsence(settings.daily_permission_counts_as_absence ? 1 : 0);
       setLessonPermCountsAsAbsence(settings.lesson_permission_counts_as_absence ? 1 : 0);
     }
   }, [settings]);
+
+  function handleLogoFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 1024 * 1024) {
+      onNotify('error', 'حجم شعار المدرسة يجب ألا يتجاوز 1 ميجابايت.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setSchoolLogoData(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
 
   const loadHolidaysData = useCallback(async () => {
     setLoadingHolidays(true);
@@ -180,6 +218,7 @@ export function SettingsView({
         daily_lessons_count: parsedDailyLessons,
         daily_permission_counts_as_absence: dailyPermCountsAsAbsence,
         lesson_permission_counts_as_absence: lessonPermCountsAsAbsence,
+        school_logo_data: schoolLogoData,
       });
       onNotify('success', successMessage);
       await onRefresh();
@@ -368,13 +407,77 @@ export function SettingsView({
     <div className="space-y-5 sm:space-y-6 max-w-5xl">
       <div>
         <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 font-display">
-          إعدادات المدرسة والسنوات الدراسية
+          إعدادات المدرسة والضوابط الإدارية والقانونية
         </h2>
         <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-          ضبط المعلومات الرسمية للمدرسة وقواعد احتساب غياب الدروس والإجازات والرخص والعطل الأسبوعية والرسمية
+          ضبط المعلومات الرسمية للمدرسة وقواعد احتساب الغياب والعطل الأسبوعية والرسمية والضوابط القانونية للغياب والإنذارات
         </p>
       </div>
 
+      {/* Settings Sub-Tabs Navigation */}
+      <div
+        role="tablist"
+        aria-label="أقسام الإعدادات"
+        className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-800 pb-3"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'general'}
+          onClick={() => setActiveTab('general')}
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+            activeTab === 'general'
+              ? 'bg-teal-700 text-white'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Building2 className="w-4 h-4" />
+          <span>الإعدادات العامة والسنوات والإجازات</span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'holidays'}
+          onClick={() => setActiveTab('holidays')}
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+            activeTab === 'holidays'
+              ? 'bg-teal-700 text-white'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+          }`}
+        >
+          <CalendarOff className="w-4 h-4" />
+          <span>العطل الأسبوعية والرسمية</span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'legal'}
+          onClick={() => setActiveTab('legal')}
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+            activeTab === 'legal'
+              ? 'bg-teal-700 text-white'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Scale className="w-4 h-4" />
+          <span>الضوابط القانونية للغياب والإنذارات</span>
+        </button>
+      </div>
+
+      {activeTab === 'legal' && (
+        <LegalRegulationsView
+          grades={grades}
+          academicYears={academicYears}
+          selectedYearId={selectedYearId}
+          onRefresh={onRefresh}
+          onNotify={onNotify}
+        />
+      )}
+
+      {activeTab === 'general' && (
+      <>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 items-start">
         {/* School Info & Lesson Threshold Form */}
         <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
@@ -409,6 +512,46 @@ export function SettingsView({
                 onChange={(e) => setDirectorateName(e.target.value)}
                 className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                شعار المدرسة الرسمي (يظهر في الكتب والتقارير الرسمية)
+              </label>
+              <div className="flex items-center gap-3">
+                {schoolLogoData ? (
+                  <div className="relative w-14 h-14 rounded-lg border border-slate-200 dark:border-slate-700 bg-white p-1 shrink-0">
+                    <img
+                      src={schoolLogoData}
+                      alt="شعار المدرسة"
+                      className="w-full h-full object-contain"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSchoolLogoData(null)}
+                      title="إزالة الشعار"
+                      className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center shadow"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-14 h-14 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center text-slate-400 shrink-0">
+                    <ImagePlus className="w-5 h-5" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    onChange={handleLogoFileChange}
+                    className="block w-full text-xs text-slate-600 dark:text-slate-300 file:ml-2 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-slate-200 dark:file:border-slate-700 file:text-xs file:font-semibold file:bg-slate-50 dark:file:bg-slate-800 file:text-slate-700 dark:file:text-slate-200"
+                  />
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    PNG أو JPG (حد أقصى 1 ميجابايت).
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-4">
@@ -685,7 +828,11 @@ export function SettingsView({
           </div>
         </form>
       </section>
+      </>
+      )}
 
+      {activeTab === 'holidays' && (
+      <>
       {/* Weekly Holidays Settings Section */}
       <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
         <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5">
@@ -1067,6 +1214,8 @@ export function SettingsView({
           )}
         </div>
       </section>
+      </>
+      )}
 
       <ConfirmDialog
         open={Boolean(deleteHolidayTarget)}

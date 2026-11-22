@@ -105,49 +105,47 @@ export function buildCompactNotesSummary(counts: {
 
 export const MONTHLY_LEGEND: MonthlyLegendItem[] = [
   {
+    symbol: '✓',
+    label: 'حاضر',
+    description:
+      'الطالب حاضر في الدوام المدرسي؛ وعند تسجيل غياب أو هروب أو رخصة عن درس يظهر ✓ في أعلى الخلية وتحته اختصار الحالة.',
+  },
+  {
+    symbol: 'د،غ',
+    label: 'غائب عن درس',
+    description: 'عدد الدروس الغائب عنها مع حضوره للدوام (مثل ١ د،غ أو ٢ د،غ) وتُضاف للعداد الموحد.',
+  },
+  {
+    symbol: 'د،هـ',
+    label: 'هروب من درس',
+    description: 'عدد دروس الهروب مع حضوره للدوام (مثل ١ د،هـ أو ٢ د،هـ) وتُضاف دائماً للعداد الموحد.',
+  },
+  {
+    symbol: 'رخ',
+    label: 'رخصة عن درس',
+    description:
+      'عدد الدروس المرخصة مع حضوره للدوام (مثل ١ رخ أو ٢ رخ) وتُحتسب في العداد حسب إعداد المدرسة وقت التسجيل.',
+  },
+  {
     symbol: 'غ',
     label: 'غائب يوم كامل',
-    description: 'غياب يوم كامل مباشر ويُحسب يوماً واحداً ضمن أيام الغياب.',
-  },
-  {
-    symbol: 'ج',
-    label: 'غياب متراكم من الدروس',
-    description: 'يوم غياب كامل ناتج عن اكتمال نصاب تراكم الدروس في هذا التاريخ.',
-  },
-  {
-    symbol: 'د',
-    label: 'غائب عن درس / دروس',
-    description: 'الرقم بجانب (د) مثل د١، د٢ يمثل عدد الدروس الغائبة في ذلك اليوم ويُحتسب في العداد الموحد.',
-  },
-  {
-    symbol: 'هـ',
-    label: 'هروب من درس / دروس',
-    description: 'الرقم بجانب (هـ) مثل هـ١، هـ٢ يمثل عدد الدروس التي هرب منها الطالب ويُحتسب دائماً في العداد الموحد.',
+    description: 'غياب يوم كامل مباشر ويُحسب يوماً واحداً ضمن أيام الغياب، ولا يظهر معه رمز ✓.',
   },
   {
     symbol: 'م',
     label: 'إجازة مرضية',
-    description: 'إجازة مرضية معتمدة وتُعرض إدارياً ولا تُحتسب غياباً.',
+    description: 'إجازة مرضية ليوم كامل ولا تُحتسب غياباً، ولا يظهر معها رمز ✓.',
   },
   {
     symbol: 'ر',
     label: 'رخصة يومية',
-    description: 'رخصة خروج/غياب ليوم كامل، وتُحتسب غياباً أو تُعفى حسب إعدادات المدرسة وقت التسجيل.',
-  },
-  {
-    symbol: 'ح',
-    label: 'رخصة عن درس / دروس',
-    description: 'الرقم بجانب (ح) مثل ح١، ح٢ يمثل عدد الدروس المرخصة في ذلك اليوم.',
+    description:
+      'رخصة خروج/غياب ليوم كامل، وتُحتسب غياباً أو تُعفى حسب إعدادات المدرسة وقت التسجيل، ولا يظهر معها رمز ✓.',
   },
   {
     symbol: 'ع',
     label: 'عطلة',
     description: 'عطلة أسبوعية أو رسمية أو استثنائية أو خاصة بالمدرسة ولا تُحتسب غياباً.',
-  },
-  {
-    symbol: '✓',
-    label: 'حاضر',
-    description: 'الطالب حاضر في الدوام المدرسي وفق سجل الحضور المعتمد لذلك اليوم.',
   },
 ];
 
@@ -731,6 +729,8 @@ export function getMonthlyAbsenceRegister(
           day_of_month: calDay.day_of_month,
           day_name: calDay.day_name,
           symbol: 'ع',
+          symbol_top: '',
+          symbol_bottom: '',
           status_kind: 'holiday',
           has_record: false,
           record_id: null,
@@ -958,36 +958,9 @@ export function getMonthlyAbsenceRegister(
       }
 
       // Cell Symbol Determination:
-      // Conversion takes display priority ('ج') on the date it completed
-      if (generatedConverted) {
-        days[calDay.day_of_month] = {
-          date: calDay.date,
-          day_of_month: calDay.day_of_month,
-          day_name: calDay.day_name,
-          symbol: 'ج',
-          status_kind: 'lesson_converted',
-          has_record: Boolean(absRow),
-          record_id: absRow?.id ?? null,
-          raw_status: absRow?.status ?? null,
-          lessons_count: lessonsCount,
-          lesson_numbers: lessonNumbers,
-          lesson_details: effectiveDetails,
-          counted_lessons_today: countedLessonsToday,
-          leave_type: absRow?.leave_type ?? null,
-          counted_as_absence: true,
-          contributed_to_counter: countedLessonsToday > 0,
-          generated_converted_day: true,
-          converted_days_count: convertedCountToday,
-          threshold_used: thresholdUsed,
-          contributing_lessons: contributingLessons,
-          notes: absRow?.notes ?? null,
-          holiday_info: null,
-          outside_section_membership: outsideMembership,
-        };
-        continue;
-      }
-
-      if (!absRow || absRow.status === 'present') {
+      // Always show the real day status (never substitute 'ج' in day cells).
+      // Lesson-level records are shown as '✓' (top) + abbreviated Arabic lesson breakdown (bottom).
+      if (!absRow || (absRow.status === 'present' && !isLessonRow)) {
         const isRecordedPresent =
           absRow?.status === 'present' ||
           (inMembership && recordedDatesSet.has(calDay.date));
@@ -997,6 +970,8 @@ export function getMonthlyAbsenceRegister(
           day_of_month: calDay.day_of_month,
           day_name: calDay.day_name,
           symbol: isRecordedPresent ? '✓' : '',
+          symbol_top: isRecordedPresent ? '✓' : '',
+          symbol_bottom: '',
           status_kind: isRecordedPresent ? 'present' : 'unrecorded',
           has_record: Boolean(absRow),
           record_id: absRow?.id ?? null,
@@ -1006,12 +981,12 @@ export function getMonthlyAbsenceRegister(
           lesson_details: [],
           counted_lessons_today: 0,
           leave_type: null,
-          counted_as_absence: false,
+          counted_as_absence: generatedConverted,
           contributed_to_counter: false,
-          generated_converted_day: false,
-          converted_days_count: 0,
-          threshold_used: null,
-          contributing_lessons: [],
+          generated_converted_day: generatedConverted,
+          converted_days_count: convertedCountToday,
+          threshold_used: thresholdUsed,
+          contributing_lessons: contributingLessons,
           notes: absRow?.notes ?? null,
           holiday_info: null,
           outside_section_membership: outsideMembership,
@@ -1025,6 +1000,8 @@ export function getMonthlyAbsenceRegister(
           day_of_month: calDay.day_of_month,
           day_name: calDay.day_name,
           symbol: 'غ',
+          symbol_top: '',
+          symbol_bottom: '',
           status_kind: 'full_day',
           has_record: true,
           record_id: absRow.id,
@@ -1036,10 +1013,10 @@ export function getMonthlyAbsenceRegister(
           leave_type: null,
           counted_as_absence: true,
           contributed_to_counter: false,
-          generated_converted_day: false,
-          converted_days_count: 0,
-          threshold_used: null,
-          contributing_lessons: [],
+          generated_converted_day: generatedConverted,
+          converted_days_count: convertedCountToday,
+          threshold_used: thresholdUsed,
+          contributing_lessons: contributingLessons,
           notes: absRow.notes,
           holiday_info: null,
           outside_section_membership: outsideMembership,
@@ -1051,6 +1028,8 @@ export function getMonthlyAbsenceRegister(
           day_of_month: calDay.day_of_month,
           day_name: calDay.day_name,
           symbol: isSick ? 'م' : 'ر',
+          symbol_top: '',
+          symbol_bottom: '',
           status_kind: isSick ? 'sick_leave' : 'daily_permission',
           has_record: true,
           record_id: absRow.id,
@@ -1062,28 +1041,30 @@ export function getMonthlyAbsenceRegister(
           leave_type: absRow.leave_type,
           counted_as_absence: isSick ? false : absRow.counted_as_absence === 1,
           contributed_to_counter: false,
-          generated_converted_day: false,
-          converted_days_count: 0,
-          threshold_used: null,
-          contributing_lessons: [],
+          generated_converted_day: generatedConverted,
+          converted_days_count: convertedCountToday,
+          threshold_used: thresholdUsed,
+          contributing_lessons: contributingLessons,
           notes: absRow.notes,
           holiday_info: null,
           outside_section_membership: outsideMembership,
         };
       } else {
-        // Lesson-level day: lesson_absence | lesson_escape | lesson_permission | mixed
-        const symbolParts: string[] = [];
-        if (dayAbsCount > 0) symbolParts.push(`د${toArabicIndicDigits(dayAbsCount)}`);
-        if (dayEscCount > 0) symbolParts.push(`هـ${toArabicIndicDigits(dayEscCount)}`);
-        if (dayPermCount > 0) symbolParts.push(`ح${toArabicIndicDigits(dayPermCount)}`);
+        // Present at school with lesson-level exceptions: lesson_absence | lesson_escape | lesson_permission | mixed
+        const bottomParts: string[] = [];
+        if (dayAbsCount > 0) bottomParts.push(`${toArabicIndicDigits(dayAbsCount)} د،غ`);
+        if (dayEscCount > 0) bottomParts.push(`${toArabicIndicDigits(dayEscCount)} د،هـ`);
+        if (dayPermCount > 0) bottomParts.push(`${toArabicIndicDigits(dayPermCount)} رخ`);
 
-        const symbol =
-          symbolParts.length > 0
-            ? symbolParts.join('+')
-            : `د${toArabicIndicDigits(lessonsCount)}`;
+        const symbolTop = '✓';
+        const symbolBottom =
+          bottomParts.length > 0
+            ? bottomParts.join(' + ')
+            : `${toArabicIndicDigits(lessonsCount)} د،غ`;
+        const symbol = `${symbolTop}\n${symbolBottom}`;
 
         const statusKind: MonthlyDayCellData['status_kind'] =
-          symbolParts.length > 1
+          bottomParts.length > 1
             ? 'lesson_mixed'
             : dayEscCount > 0
               ? 'lesson_escape'
@@ -1096,6 +1077,8 @@ export function getMonthlyAbsenceRegister(
           day_of_month: calDay.day_of_month,
           day_name: calDay.day_name,
           symbol,
+          symbol_top: symbolTop,
+          symbol_bottom: symbolBottom,
           status_kind: statusKind,
           has_record: true,
           record_id: absRow.id,
@@ -1105,12 +1088,12 @@ export function getMonthlyAbsenceRegister(
           lesson_details: effectiveDetails,
           counted_lessons_today: countedLessonsToday,
           leave_type: null,
-          counted_as_absence: countedLessonsToday > 0,
+          counted_as_absence: countedLessonsToday > 0 || generatedConverted,
           contributed_to_counter: countedLessonsToday > 0,
-          generated_converted_day: false,
-          converted_days_count: 0,
-          threshold_used: countedLessonsToday > 0 ? absRow.threshold_snapshot : null,
-          contributing_lessons: [],
+          generated_converted_day: generatedConverted,
+          converted_days_count: convertedCountToday,
+          threshold_used: thresholdUsed,
+          contributing_lessons: contributingLessons,
           notes: absRow.notes,
           holiday_info: null,
           outside_section_membership: outsideMembership,
@@ -1379,7 +1362,7 @@ export async function generateMonthlyRegisterExcel(
 
   const colWidths: number[] = [28];
   for (let d = 0; d < data.days_in_month; d += 1) {
-    colWidths.push(4.4);
+    colWidths.push(5.8);
   }
   colWidths.push(11, 12, 11, 11, 11, 11, 13, 42);
   colWidths.forEach((w, idx) => {
@@ -1396,7 +1379,7 @@ export async function generateMonthlyRegisterExcel(
   // Row 1: Official Header
   sheet.mergeCells(1, 1, 1, totalCols);
   const titleCell = sheet.getCell(1, 1);
-  titleCell.value = `${data.school_settings.directorate_name} — ${data.school_settings.school_name} | السجل الشهري للغيابات (${data.month_name} ${data.year})`;
+  titleCell.value = `${data.school_settings.directorate_name} | ${data.school_settings.school_name} | السجل الشهري للغيابات (${data.month_name} ${data.year})`;
   titleCell.font = { name: 'Cairo', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
   titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F766E' } };
   titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
@@ -1415,7 +1398,7 @@ export async function generateMonthlyRegisterExcel(
   sheet.mergeCells(3, 1, 3, totalCols);
   const legendCell = sheet.getCell(3, 1);
   legendCell.value =
-    'دليل الرموز:   ✓ = حاضر   |   غ = غائب يوم كامل   |   ج = يوم غياب من تراكم الدروس   |   د١.. = غياب دروس   |   هـ١.. = هروب من دروس   |   م = إجازة مرضية (لا تُحسب)   |   ر = رخصة يومية   |   ح١.. = رخصة عن دروس   |   ع = عطلة';
+    'دليل الرموز:   ✓ = حاضر   |   د،غ = غياب عن درس   |   د،هـ = هروب من درس   |   رخ = رخصة عن درس   |   غ = غائب يوم كامل   |   م = إجازة مرضية (لا تُحسب)   |   ر = رخصة يومية   |   ع = عطلة';
   legendCell.font = { name: 'Almarai', size: 10, color: { argb: 'FF334155' } };
   legendCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAF5FF' } };
   legendCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
@@ -1501,12 +1484,24 @@ export async function generateMonthlyRegisterExcel(
       const calDay = data.calendar_days[i];
       const cellData = st.days[calDay.day_of_month];
       const cell = row.getCell(2 + i);
-      cell.value = cellData.symbol;
+      const hasTwoLines = Boolean(cellData.symbol_top && cellData.symbol_bottom);
+      cell.value = hasTwoLines
+        ? `${cellData.symbol_top}\n${cellData.symbol_bottom}`
+        : cellData.symbol;
 
       const style = getExcelCellStyleForSymbol(cellData);
-      cell.font = { name: 'Cairo', size: 10, bold: style.bold, color: { argb: style.fg } };
+      cell.font = {
+        name: 'Cairo',
+        size: hasTwoLines ? 8.5 : 10,
+        bold: style.bold,
+        color: { argb: style.fg },
+      };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: style.bg } };
-      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.alignment = {
+        vertical: 'middle',
+        horizontal: 'center',
+        wrapText: hasTwoLines,
+      };
       cell.border = thinBorder;
     }
 

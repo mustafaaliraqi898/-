@@ -2,17 +2,23 @@ import type {
   AcademicYear,
   CreateHolidayInput,
   CreateStudentInput,
+  CreateStudentLegalProcedureInput,
   DashboardStats,
+  EducationalStage,
   ExcelCommitResult,
   ExcelImportRowInput,
   ExcelValidationResult,
   GradeWithSections,
   HolidayCheckResult,
   HolidayRecord,
+  LegalRegulationVersion,
+  LegalStageRegulation,
   LessonDetailInput,
   MonthCalendarDay,
   MonthlyRegisterData,
   MonthlyRegisterQuery,
+  ReportsCenterQuery,
+  ReportsCenterResponse,
   SaveHolidayResult,
   SaveMonthlyNoteInput,
   SaveSectionAttendanceInput,
@@ -22,10 +28,13 @@ import type {
   SectionItem,
   StudentAbsenceDetailResponse,
   StudentEnrollmentHistoryItem,
+  StudentLegalProcedureRecord,
   StudentListQuery,
   StudentRecord,
   TransferStudentInput,
+  UpdateLegalRegulationInput,
   UpdateStudentInput,
+  UpdateStudentLegalProcedureInput,
   UpdateWeeklyHolidaysInput,
   UpdateWeeklyHolidaysResult,
   WeeklyHolidaySettings,
@@ -115,6 +124,7 @@ export const schoolService = {
     daily_lessons_count?: number;
     daily_permission_counts_as_absence?: number;
     lesson_permission_counts_as_absence?: number;
+    school_logo_data?: string | null;
   }): Promise<SchoolSettings> {
     if (isElectronMode()) return ipcCall<SchoolSettings>('settings:update', payload);
     return httpJson<SchoolSettings>('/api/settings', {
@@ -166,6 +176,7 @@ export const schoolService = {
 
   async createGrade(payload: {
     name: string;
+    stage?: EducationalStage | null;
     initial_sections?: string[];
   }): Promise<GradeWithSections> {
     if (isElectronMode()) return ipcCall<GradeWithSections>('grades:create', payload);
@@ -175,11 +186,28 @@ export const schoolService = {
     });
   },
 
-  async updateGrade(id: number, name: string): Promise<GradeWithSections> {
-    if (isElectronMode()) return ipcCall<GradeWithSections>('grades:update', { id, name });
+  async updateGrade(
+    id: number,
+    name: string,
+    stage?: EducationalStage | null
+  ): Promise<GradeWithSections> {
+    if (isElectronMode()) return ipcCall<GradeWithSections>('grades:update', { id, name, stage });
     return httpJson<GradeWithSections>(`/api/grades/${id}`, {
       method: 'PUT',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, stage }),
+    });
+  },
+
+  async updateGradeStage(
+    id: number,
+    stage: EducationalStage | null
+  ): Promise<GradeWithSections> {
+    if (isElectronMode()) {
+      return ipcCall<GradeWithSections>('grades:update-stage', { id, stage });
+    }
+    return httpJson<GradeWithSections>(`/api/grades/${id}/stage`, {
+      method: 'PATCH',
+      body: JSON.stringify({ stage }),
     });
   },
 
@@ -574,4 +602,130 @@ export const schoolService = {
     const fallbackName = `السجل_الشهري_${query.year}_${String(query.month).padStart(2, '0')}.xlsx`;
     triggerBlobDownload(blob, fallbackName);
   },
+
+  // Legal Absence Regulations & Versioning
+  async getLegalRegulations(
+    academicYearId?: number
+  ): Promise<Record<EducationalStage, LegalStageRegulation>> {
+    if (isElectronMode()) {
+      return ipcCall<Record<EducationalStage, LegalStageRegulation>>('legal:list', {
+        academic_year_id: academicYearId,
+      });
+    }
+    const qs = academicYearId ? `?academic_year_id=${academicYearId}` : '';
+    return httpJson<Record<EducationalStage, LegalStageRegulation>>(`/api/legal-regulations${qs}`);
+  },
+
+  async updateStageLegalRegulation(
+    stage: EducationalStage,
+    payload: UpdateLegalRegulationInput
+  ): Promise<{ regulation: LegalStageRegulation; version: LegalRegulationVersion }> {
+    if (isElectronMode()) {
+      return ipcCall<{ regulation: LegalStageRegulation; version: LegalRegulationVersion }>(
+        'legal:update',
+        { stage, payload }
+      );
+    }
+    return httpJson<{ regulation: LegalStageRegulation; version: LegalRegulationVersion }>(
+      `/api/legal-regulations/${stage}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  async listLegalRegulationVersions(stage?: EducationalStage): Promise<LegalRegulationVersion[]> {
+    if (isElectronMode()) {
+      return ipcCall<LegalRegulationVersion[]>('legal:versions', { stage });
+    }
+    const url = stage
+      ? `/api/legal-regulations/${stage}/versions`
+      : '/api/legal-regulations-versions';
+    return httpJson<LegalRegulationVersion[]>(url);
+  },
+
+  // Reports Center & Student Legal Procedures
+  async getReportsCenter(query: ReportsCenterQuery): Promise<ReportsCenterResponse> {
+    if (isElectronMode()) {
+      return ipcCall<ReportsCenterResponse>('reports:center', query);
+    }
+    const qs = new URLSearchParams({
+      report_type: query.report_type,
+    });
+    if (query.academic_year_id) qs.set('academic_year_id', String(query.academic_year_id));
+    if (query.stage && query.stage !== 'all') qs.set('stage', query.stage);
+    if (query.grade_id) qs.set('grade_id', String(query.grade_id));
+    if (query.section_id) qs.set('section_id', String(query.section_id));
+    if (query.search) qs.set('search', query.search);
+    if (query.include_approaching) qs.set('include_approaching', '1');
+    return httpJson<ReportsCenterResponse>(`/api/reports/center?${qs.toString()}`);
+  },
+
+  async exportReportsExcel(query: ReportsCenterQuery): Promise<void> {
+    if (isElectronMode()) {
+      const result = await ipcCall<{ base64: string; filename: string }>(
+        'reports:export-excel',
+        query
+      );
+      const bytes = Uint8Array.from(atob(result.base64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      triggerBlobDownload(blob, result.filename);
+      return;
+    }
+
+    const qs = new URLSearchParams({
+      report_type: query.report_type,
+    });
+    if (query.academic_year_id) qs.set('academic_year_id', String(query.academic_year_id));
+    if (query.stage && query.stage !== 'all') qs.set('stage', query.stage);
+    if (query.grade_id) qs.set('grade_id', String(query.grade_id));
+    if (query.section_id) qs.set('section_id', String(query.section_id));
+    if (query.search) qs.set('search', query.search);
+    if (query.include_approaching) qs.set('include_approaching', '1');
+
+    const res = await fetch(`/api/reports/export?${qs.toString()}`);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'تعذر تصدير التقرير إلى ملف Excel.');
+    }
+    const blob = await res.blob();
+    triggerBlobDownload(blob, `تقرير_${query.report_type}.xlsx`);
+  },
+
+  async createStudentLegalProcedure(
+    payload: CreateStudentLegalProcedureInput
+  ): Promise<StudentLegalProcedureRecord> {
+    if (isElectronMode()) {
+      return ipcCall<StudentLegalProcedureRecord>('reports:create-procedure', payload);
+    }
+    return httpJson<StudentLegalProcedureRecord>('/api/reports/procedures', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updateStudentLegalProcedure(
+    id: number,
+    payload: UpdateStudentLegalProcedureInput
+  ): Promise<StudentLegalProcedureRecord> {
+    if (isElectronMode()) {
+      return ipcCall<StudentLegalProcedureRecord>('reports:update-procedure', { id, ...payload });
+    }
+    return httpJson<StudentLegalProcedureRecord>(`/api/reports/procedures/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteStudentLegalProcedure(id: number): Promise<void> {
+    if (isElectronMode()) {
+      await ipcCall('reports:delete-procedure', { id });
+      return;
+    }
+    await httpJson(`/api/reports/procedures/${id}`, { method: 'DELETE' });
+  },
 };
+

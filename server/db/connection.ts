@@ -17,6 +17,152 @@ function computeDefaultAcademicYearName(): string {
   return `${year - 1}-${year}`;
 }
 
+export function inferStageFromGradeName(
+  name: string
+): 'primary' | 'intermediate' | 'preparatory' | null {
+  const normalized = name.trim();
+  if (!normalized) return null;
+  if (/(ابتدائي|الابتدائي|الابتدائية)/i.test(normalized)) return 'primary';
+  if (/(متوسط|المتوسط|المتوسطة)/i.test(normalized)) return 'intermediate';
+  if (/(إعدادي|اعدادي|الإعدادي|الاعدادي|الإعدادية|علمي|أدبي|ادبي|تطبيقي|احيائي|أحيائي)/i.test(normalized)) {
+    return 'preparatory';
+  }
+  return null;
+}
+
+function buildDefaultStageRegulations(todayIso: string) {
+  const defaultWarningTemplate =
+    'إلى ولي أمر الطالب/ة المحترم ({{student_name}}) — الصف: {{grade_name}} / الشعبة: {{section_name}}\n' +
+    'تحية طيبة وبعد،\n' +
+    'نود إعلامكم بأن مجموع أيام الغياب المحتسبة للطالب/ة قد بلغ ({{counted_days}}) يوماً في العام الدراسي {{academic_year}}، استناداً إلى الضوابط والتعليمات المدرسية المعتمدة ({{decision_ref}}).\n' +
+    'يرجى مراجعة إدارة المدرسة ومتابعة دوام الطالب/ة بصورة منتظمة تلافياً للآثار القانونية والتربوية المترتبة على استمرار الغياب.';
+
+  const defaultSummonsTemplate =
+    'إلى ولي أمر الطالب/ة المحترم ({{student_name}}) — الصف: {{grade_name}} / الشعبة: {{section_name}}\n' +
+    'م/ كتاب استدعاء ولي أمر\n' +
+    'يرجى حضوركم إلى إدارة المدرسة في أقرب وقت ممكن للتداول بشأن حالة دوام الطالب/ة وغياباته البالغة ({{counted_days}}) يوماً، والتوقيع على التعهد والإجراءات التربوية والقانونية المقررة ({{decision_ref}}).';
+
+  return [
+    {
+      stage: 'primary' as const,
+      stage_name: 'المرحلة الابتدائية',
+      effective_absence_limit: 50,
+      absence_calculation_method: 'مجموع أيام الغياب الكامل + الأيام المحولة من الدروس المتراكمة وفق نصاب المدرسة',
+      excused_absence_mode: 'include_all',
+      unexcused_absence_handling: 'يُحتسب كل يوم غياب غير مجاز يوماً كاملاً ضمن حد الغياب المؤثر وتبليغات ولي الأمر.',
+      dispersed_lessons_rule: 'تُجمع الدروس المتفرقة وتُحوّل إلى أيام عند بلوغ نصاب الدروس المعتمد في إعدادات المدرسة.',
+      lesson_conversion_rule: 'كل بلوغ لنصاب الدروس المعتاد يُحوّل إلى يوم غياب واحد.',
+      preliminary_warning_days: 20,
+      first_warning_days: 30,
+      final_warning_days: 40,
+      final_effective_limit_days: 50,
+      thresholds_are_provisional: 1,
+      guardian_notify_frequency: 'weekly',
+      guardian_summons_frequency: 'biweekly',
+      guardian_notify_notes: 'يُفضّل التبليغ الأسبوعي في المرحلة الابتدائية بالتنسيق مع المرشد التربوي.',
+      attendance_score_deduction_enabled: 0,
+      attendance_score_deduction_per_unexcused_day: 0,
+      attendance_score_article: 'غير مفعل افتراضياً للمرحلة الابتدائية لحين توثيق المادة النظامية.',
+      conduct_failure_enabled: 0,
+      conduct_failure_threshold: 51,
+      conduct_failure_article: 'غير مفعل افتراضياً للمرحلة الابتدائية لحين توثيق المادة النظامية.',
+      truancy_handling_enabled: 1,
+      truancy_handling_notes: 'متابعة التغيب المتكرر وحالات التسرب وإشعار ولي الأمر فوراً.',
+      truancy_article: 'بحاجة إلى توثيق رقم المادة القانونية والقرار الوزاري للمرحلة الابتدائية.',
+      dispersed_lessons_counting_enabled: 1,
+      dispersed_lessons_article: 'بحاجة إلى توثيق المادة القانونية الخاصة بالدروس المتفرقة.',
+      warnings_article: 'قيم مبدئية تجريبية بانتظار اعتماد رقم القرار والمادة القانونية للمرحلة الابتدائية.',
+      decision_name: null,
+      decision_number: null,
+      decision_issue_date: null,
+      effective_from_date: todayIso,
+      legal_notes: 'ضابطة ابتدائية مبدئية غير معتمدة قانونياً بعد؛ يُرجى إدخال رقم القرار والمادة القانونية ثم تفعيل الاعتماد.',
+      is_legally_approved: 0,
+      official_letter_approved: 0,
+      warning_letter_template: defaultWarningTemplate,
+      summons_letter_template: defaultSummonsTemplate,
+    },
+    {
+      stage: 'intermediate' as const,
+      stage_name: 'المرحلة المتوسطة',
+      effective_absence_limit: 45,
+      absence_calculation_method: 'مجموع أيام الغياب الكامل + الأيام المحولة من الدروس المتراكمة وفق نصاب المدرسة',
+      excused_absence_mode: 'include_all',
+      unexcused_absence_handling: 'يُحتسب الغياب دون عذر ضمن الحد الأعلى (45 يوماً) مع خصم درجتين من السلوك/المواظبة لكل يوم غياب غير مجاز.',
+      dispersed_lessons_rule: 'تُجمع الدروس المتفرقة (غياب/هروب/رخصة محتسبة) وتُحوّل إلى يوم غياب كامل عند استكمال النصاب.',
+      lesson_conversion_rule: 'تحويل تلقائي وفق نصاب الدروس السنوي التراكمي.',
+      preliminary_warning_days: 15,
+      first_warning_days: 25,
+      final_warning_days: 35,
+      final_effective_limit_days: 45,
+      thresholds_are_provisional: 1,
+      guardian_notify_frequency: 'biweekly',
+      guardian_summons_frequency: 'biweekly',
+      guardian_notify_notes: 'تبليغ ولي الأمر كل أسبوعين وتكثيف المتابعة عند اقتراب الطالب من حد الإنذار الأول.',
+      attendance_score_deduction_enabled: 1,
+      attendance_score_deduction_per_unexcused_day: 2,
+      attendance_score_article: 'نظام المدارس الثانوية — خصم درجتين عن كل يوم غياب دون عذر (بانتظار التوثيق الرسمي لرقم التعميم).',
+      conduct_failure_enabled: 1,
+      conduct_failure_threshold: 51,
+      conduct_failure_article: 'الرسوب بسبب السلوك/المواظبة عند بلوغ الخصم 51 درجة فأكثر (بانتظار التوثيق الرسمي).',
+      truancy_handling_enabled: 1,
+      truancy_handling_notes: 'رصد حالات الهروب من الدروس والتسرب واتخاذ إجراءات استدعاء ولي الأمر.',
+      truancy_article: 'بحاجة إلى توثيق المادة القانونية المعتمدة لمعالجة التسرب.',
+      dispersed_lessons_counting_enabled: 1,
+      dispersed_lessons_article: 'بحاجة إلى توثيق المادة القانونية لاحتساب الدروس المتفرقة.',
+      warnings_article: 'عتبات تحذير تجريبية بانتظار التوثيق والاعتماد القانوني للمرحلة المتوسطة.',
+      decision_name: null,
+      decision_number: null,
+      decision_issue_date: null,
+      effective_from_date: todayIso,
+      legal_notes: 'الحد المبدئي (45 يوماً) وعتبات الإنذارات الحالية مبدئية لحين إقرارها وتوثيق رقم التعميم.',
+      is_legally_approved: 0,
+      official_letter_approved: 0,
+      warning_letter_template: defaultWarningTemplate,
+      summons_letter_template: defaultSummonsTemplate,
+    },
+    {
+      stage: 'preparatory' as const,
+      stage_name: 'المرحلة الإعدادية',
+      effective_absence_limit: 45,
+      absence_calculation_method: 'مجموع أيام الغياب الكامل + الأيام المحولة من الدروس المتراكمة وفق نصاب المدرسة',
+      excused_absence_mode: 'include_all',
+      unexcused_absence_handling: 'يُحتسب الغياب دون عذر ضمن الحد الأعلى (45 يوماً) مع خصم درجتين عن كل يوم غياب دون عذر.',
+      dispersed_lessons_rule: 'تُجمع الدروس المتفرقة وتُحوّل إلى أيام غياب كاملة عند استكمال النصاب السنوي.',
+      lesson_conversion_rule: 'تحويل تلقائي وفق نصاب الدروس المعتاد.',
+      preliminary_warning_days: 15,
+      first_warning_days: 25,
+      final_warning_days: 35,
+      final_effective_limit_days: 45,
+      thresholds_are_provisional: 1,
+      guardian_notify_frequency: 'biweekly',
+      guardian_summons_frequency: 'biweekly',
+      guardian_notify_notes: 'تبليغ ولي الأمر كل أسبوعين واستدعاء تحريري قبل بلوغ الإنذار النهائي.',
+      attendance_score_deduction_enabled: 1,
+      attendance_score_deduction_per_unexcused_day: 2,
+      attendance_score_article: 'نظام المدارس الثانوية — خصم درجتين عن كل يوم غياب دون عذر (بانتظار التوثيق الرسمي لرقم التعميم).',
+      conduct_failure_enabled: 1,
+      conduct_failure_threshold: 51,
+      conduct_failure_article: 'الرسوب بسبب السلوك/المواظبة عند بلوغ الخصم 51 درجة فأكثر (بانتظار التوثيق الرسمي).',
+      truancy_handling_enabled: 1,
+      truancy_handling_notes: 'رصد حالات الهروب من الدروس والتغيب المتكرر وإشعار ولي الأمر.',
+      truancy_article: 'بحاجة إلى توثيق المادة القانونية المعتمدة لمعالجة التسرب.',
+      dispersed_lessons_counting_enabled: 1,
+      dispersed_lessons_article: 'بحاجة إلى توثيق المادة القانونية لاحتساب الدروس المتفرقة.',
+      warnings_article: 'عتبات تحذير تجريبية بانتظار التوثيق والاعتماد القانوني للمرحلة الإعدادية.',
+      decision_name: null,
+      decision_number: null,
+      decision_issue_date: null,
+      effective_from_date: todayIso,
+      legal_notes: 'الحد المبدئي (45 يوماً) وعتبات الإنذارات الحالية مبدئية لحين إقرارها وتوثيق رقم التعميم.',
+      is_legally_approved: 0,
+      official_letter_approved: 0,
+      warning_letter_template: defaultWarningTemplate,
+      summons_letter_template: defaultSummonsTemplate,
+    },
+  ];
+}
+
 function runSafeMigrations(db: SqliteDb): void {
   // 1. Ensure school_settings has all required absence & leave/permission columns
   const settingsCols = db.prepare('PRAGMA table_info(school_settings)').all() as Array<{
@@ -51,6 +197,29 @@ function runSafeMigrations(db: SqliteDb): void {
     db.exec(
       "ALTER TABLE school_settings ADD COLUMN weekly_holiday_reason TEXT NOT NULL DEFAULT 'عطلة أسبوعية رسمية'"
     );
+  }
+  if (!settingsCols.some((c) => c.name === 'school_logo_data')) {
+    db.exec('ALTER TABLE school_settings ADD COLUMN school_logo_data TEXT');
+  }
+
+  // 1b. Ensure grades has stage column and infer stage safely for existing rows if NULL
+  const gradesCols = db.prepare('PRAGMA table_info(grades)').all() as Array<{ name: string }>;
+  if (!gradesCols.some((c) => c.name === 'stage')) {
+    db.exec(
+      "ALTER TABLE grades ADD COLUMN stage TEXT CHECK (stage IN ('primary', 'intermediate', 'preparatory'))"
+    );
+  }
+  const unmappedGrades = db
+    .prepare('SELECT id, name FROM grades WHERE stage IS NULL')
+    .all() as Array<{ id: number; name: string }>;
+  if (unmappedGrades.length > 0) {
+    const updateStageStmt = db.prepare('UPDATE grades SET stage = ? WHERE id = ?');
+    for (const g of unmappedGrades) {
+      const inferred = inferStageFromGradeName(g.name);
+      if (inferred) {
+        updateStageStmt.run(inferred, g.id);
+      }
+    }
   }
 
   // 2. Migrate absences table if it lacks Phase 2 statuses, leaves/permissions columns, or lesson_escape
@@ -332,6 +501,123 @@ export function initializeDatabase(db: SqliteDb): void {
       ];
       for (const [dow, name, isHol] of defaultDays) {
         insertWeekly.run(dow, name, isHol);
+      }
+    }
+
+    // Seed default legal_stage_regulations (primary, intermediate, preparatory) & version 1 snapshots
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const defaultRegs = buildDefaultStageRegulations(todayIso);
+
+    const existingRegCount = db
+      .prepare('SELECT COUNT(*) as count FROM legal_stage_regulations')
+      .get() as { count: number };
+
+    if (existingRegCount.count === 0) {
+      const insertReg = db.prepare(
+        `INSERT INTO legal_stage_regulations (
+          stage, stage_name, effective_absence_limit, absence_calculation_method,
+          excused_absence_mode, unexcused_absence_handling, dispersed_lessons_rule,
+          lesson_conversion_rule, preliminary_warning_days, first_warning_days,
+          final_warning_days, final_effective_limit_days, thresholds_are_provisional,
+          guardian_notify_frequency, guardian_summons_frequency, guardian_notify_notes,
+          attendance_score_deduction_enabled, attendance_score_deduction_per_unexcused_day,
+          attendance_score_article, conduct_failure_enabled, conduct_failure_threshold,
+          conduct_failure_article, truancy_handling_enabled, truancy_handling_notes,
+          truancy_article, dispersed_lessons_counting_enabled, dispersed_lessons_article,
+          warnings_article, decision_name, decision_number, decision_issue_date,
+          effective_from_date, legal_notes, is_legally_approved, official_letter_approved,
+          warning_letter_template, summons_letter_template, current_version
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1
+        )`
+      );
+
+      for (const reg of defaultRegs) {
+        insertReg.run(
+          reg.stage,
+          reg.stage_name,
+          reg.effective_absence_limit,
+          reg.absence_calculation_method,
+          reg.excused_absence_mode,
+          reg.unexcused_absence_handling,
+          reg.dispersed_lessons_rule,
+          reg.lesson_conversion_rule,
+          reg.preliminary_warning_days,
+          reg.first_warning_days,
+          reg.final_warning_days,
+          reg.final_effective_limit_days,
+          reg.thresholds_are_provisional,
+          reg.guardian_notify_frequency,
+          reg.guardian_summons_frequency,
+          reg.guardian_notify_notes,
+          reg.attendance_score_deduction_enabled,
+          reg.attendance_score_deduction_per_unexcused_day,
+          reg.attendance_score_article,
+          reg.conduct_failure_enabled,
+          reg.conduct_failure_threshold,
+          reg.conduct_failure_article,
+          reg.truancy_handling_enabled,
+          reg.truancy_handling_notes,
+          reg.truancy_article,
+          reg.dispersed_lessons_counting_enabled,
+          reg.dispersed_lessons_article,
+          reg.warnings_article,
+          reg.decision_name,
+          reg.decision_number,
+          reg.decision_issue_date,
+          reg.effective_from_date,
+          reg.legal_notes,
+          reg.is_legally_approved,
+          reg.official_letter_approved,
+          reg.warning_letter_template,
+          reg.summons_letter_template
+        );
+      }
+    }
+
+    // Ensure every stage in legal_stage_regulations has a version 1 snapshot & existing years are bound cleanly
+    const currentRegs = db
+      .prepare('SELECT * FROM legal_stage_regulations')
+      .all() as Array<Record<string, unknown>>;
+    const allYears = db.prepare('SELECT id FROM academic_years').all() as Array<{ id: number }>;
+
+    for (const reg of currentRegs) {
+      const stage = String(reg.stage);
+      let v1 = db
+        .prepare(
+          'SELECT id FROM legal_regulation_versions WHERE stage = ? ORDER BY version_number DESC LIMIT 1'
+        )
+        .get(stage) as { id: number } | undefined;
+
+      if (!v1) {
+        const info = db
+          .prepare(
+            `INSERT INTO legal_regulation_versions (
+              stage, version_number, academic_year_id, effective_from_date,
+              decision_name, decision_number, decision_issue_date, is_legally_approved,
+              change_summary, snapshot_json
+            ) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(
+            stage,
+            activeYearId,
+            String(reg.effective_from_date || todayIso),
+            reg.decision_name ?? null,
+            reg.decision_number ?? null,
+            reg.decision_issue_date ?? null,
+            Number(reg.is_legally_approved ?? 0),
+            'تهيئة الضابطة المبدئية الافتراضية للمرحلة',
+            JSON.stringify(reg)
+          );
+        v1 = { id: Number(info.lastInsertRowid) };
+      }
+
+      for (const yr of allYears) {
+        db.prepare(
+          `INSERT OR IGNORE INTO legal_year_regulation_bindings (
+            academic_year_id, stage, regulation_version_id, is_locked
+          ) VALUES (?, ?, ?, ?)`
+        ).run(yr.id, stage, v1.id, yr.id === activeYearId ? 0 : 1);
       }
     }
   });

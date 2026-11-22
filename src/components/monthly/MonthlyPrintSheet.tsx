@@ -229,7 +229,11 @@ export function buildStandalonePrintableHtml(
             .map((d) => {
               const c = st.days[d.day_of_month];
               const cssClass = getStandaloneCellCssClass(c.status_kind);
-              return `<td class="day-cell ${cssClass}">${escapeHtml(c.symbol)}</td>`;
+              const hasTwoLines = Boolean(c.symbol_top && c.symbol_bottom);
+              const inner = hasTwoLines
+                ? `<div class="cell-check">${escapeHtml(c.symbol_top)}</div><div class="cell-lessons">${escapeHtml(c.symbol_bottom)}</div>`
+                : escapeHtml(c.symbol);
+              return `<td class="day-cell ${cssClass}">${inner}</td>`;
             })
             .join('');
 
@@ -312,13 +316,12 @@ export function buildStandalonePrintableHtml(
           <div class="legend-bar">
             <span class="legend-title">دليل الرموز:</span>
             <span><strong class="legend-present">✓</strong> = حاضر</span>
+            <span><strong>د،غ</strong> = غياب عن درس</span>
+            <span><strong>د،هـ</strong> = هروب من درس</span>
+            <span><strong>رخ</strong> = رخصة عن درس</span>
             <span><strong>غ</strong> = غياب يوم كامل</span>
-            <span><strong>ج</strong> = يوم من تراكم الدروس (${escapeHtml(data.school_settings.lessons_per_absence_day)} دروس)</span>
-            <span><strong>د١..</strong> = غياب دروس</span>
-            <span><strong>هـ١..</strong> = هروب من دروس</span>
             <span><strong>م</strong> = إجازة مرضية (لا تُحسب)</span>
             <span><strong>ر</strong> = رخصة يومية</span>
-            <span><strong>ح١..</strong> = رخصة عن درس</span>
             <span><strong>ع</strong> = عطلة</span>
           </div>
 
@@ -570,6 +573,19 @@ export function buildStandalonePrintableHtml(
       }
       .day-cell {
         font-weight: 700;
+        vertical-align: middle;
+      }
+      .cell-check {
+        color: #15803d;
+        font-weight: 800;
+        font-size: 9.5px;
+        line-height: 1;
+      }
+      .cell-lessons {
+        font-size: 7.5px;
+        font-weight: 700;
+        line-height: 1.1;
+        margin-top: 1px;
       }
       .cell-present {
         background: #ecfdf5 !important;
@@ -817,25 +833,22 @@ export function MonthlyPrintSheet({
               <strong className="text-emerald-700 font-extrabold">✓</strong> = حاضر
             </span>
             <span>
+              <strong>د،غ</strong> = غياب عن درس
+            </span>
+            <span>
+              <strong>د،هـ</strong> = هروب من درس
+            </span>
+            <span>
+              <strong>رخ</strong> = رخصة عن درس
+            </span>
+            <span>
               <strong>غ</strong> = غياب يوم كامل
-            </span>
-            <span>
-              <strong>ج</strong> = يوم من تراكم الدروس ({data.school_settings.lessons_per_absence_day} دروس)
-            </span>
-            <span>
-              <strong>د١..</strong> = غياب دروس
-            </span>
-            <span>
-              <strong>هـ١..</strong> = هروب من دروس
             </span>
             <span>
               <strong>م</strong> = إجازة مرضية (لا تُحسب)
             </span>
             <span>
               <strong>ر</strong> = رخصة يومية
-            </span>
-            <span>
-              <strong>ح١..</strong> = رخصة عن درس
             </span>
             <span>
               <strong>ع</strong> = عطلة
@@ -909,14 +922,26 @@ export function MonthlyPrintSheet({
 
                   {chunk.days.map((d) => {
                     const c = st.days[d.day_of_month];
+                    const hasTwoLines = Boolean(c.symbol_top && c.symbol_bottom);
                     return (
                       <td
                         key={d.day_of_month}
-                        className={`border border-slate-300 px-0.5 py-1 text-center ${getPrintCellClasses(
+                        className={`border border-slate-300 px-0.5 py-1 text-center align-middle ${getPrintCellClasses(
                           c.status_kind
                         )}`}
                       >
-                        {c.symbol}
+                        {hasTwoLines ? (
+                          <div className="flex flex-col items-center justify-center leading-none gap-0.5">
+                            <span className="text-[10px] font-extrabold text-emerald-700 leading-none">
+                              {c.symbol_top}
+                            </span>
+                            <span className="text-[7.5px] font-bold leading-tight">
+                              {c.symbol_bottom}
+                            </span>
+                          </div>
+                        ) : (
+                          c.symbol
+                        )}
                       </td>
                     );
                   })}

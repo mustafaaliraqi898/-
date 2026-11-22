@@ -188,7 +188,9 @@ async function runMonthlyRegisterTests() {
     assert.equal(row1.direct_full_days, 1);
     assert.equal(row1.total_counted_absence_days, 1);
 
-    assert.equal(row2.days[4].symbol, 'د٢');
+    assert.equal(row2.days[4].symbol, '✓\n٢ د،غ');
+    assert.equal(row2.days[4].symbol_top, '✓');
+    assert.equal(row2.days[4].symbol_bottom, '٢ د،غ');
     assert.equal(row2.days[4].lessons_count, 2);
     assert.equal(row2.days[4].contributed_to_counter, true);
     assert.equal(row2.missed_lessons_count, 2);
@@ -347,11 +349,15 @@ async function runMonthlyRegisterTests() {
     });
     const row3 = reg.students.find((r) => r.student_id === s3.id)!;
 
-    assert.equal(row3.days[8].symbol, 'ح٢');
+    assert.equal(row3.days[8].symbol, '✓\n٢ رخ');
+    assert.equal(row3.days[8].symbol_top, '✓');
+    assert.equal(row3.days[8].symbol_bottom, '٢ رخ');
     assert.deepEqual(row3.days[8].lesson_numbers, [2, 5]);
     assert.equal(row3.days[8].contributed_to_counter, false);
 
-    assert.equal(row3.days[11].symbol, 'ح٣');
+    assert.equal(row3.days[11].symbol, '✓\n٣ رخ');
+    assert.equal(row3.days[11].symbol_top, '✓');
+    assert.equal(row3.days[11].symbol_bottom, '٣ رخ');
     assert.deepEqual(row3.days[11].lesson_numbers, [1, 3, 4]);
     assert.equal(row3.days[11].contributed_to_counter, true);
 
@@ -359,8 +365,8 @@ async function runMonthlyRegisterTests() {
     assert.equal(row3.missed_lessons_count, 3); // only counted lesson_permission
   });
 
-  // Scenario 9, 10, 11, 12: Cross-month lesson accumulation (4 in Oct + 1 in Nov = conversion in Nov!), no double counting, original rows preserved
-  await test('9-12. تراكم الدروس عبر الأشهر (4 في تشرين1 + 1 في تشرين2 = ج في تشرين2 دون حذف سجل تشرين1 أو احتساب مزدوج)', () => {
+  // Scenario 9, 10, 11, 12: Cross-month lesson accumulation (4 in Oct + 1 in Nov = conversion in Nov!), no double counting, no (ج) in day cells
+  await test('9-12. تراكم الدروس عبر الأشهر (4 في تشرين1 + 1 في تشرين2 = احتساب يوم متراكم في تشرين2 دون استبدال الخلية بـ ج)', () => {
     // Student s2 currently has 2 lessons in Oct (Oct 4). Add 2 more in Oct -> 4 total in Oct (no conversion yet!)
     saveSectionAttendance(db, {
       academic_year_id: activeYear.id,
@@ -385,8 +391,8 @@ async function runMonthlyRegisterTests() {
     assert.equal(s2Oct.missed_lessons_count, 4);
     assert.equal(s2Oct.converted_lesson_days, 0);
     assert.equal(s2Oct.total_counted_absence_days, 0);
-    assert.equal(s2Oct.days[4].symbol, 'د٢');
-    assert.equal(s2Oct.days[12].symbol, 'د٢');
+    assert.equal(s2Oct.days[4].symbol, '✓\n٢ د،غ');
+    assert.equal(s2Oct.days[12].symbol, '✓\n٢ د،غ');
 
     // Now in November 2026 (2026-11-02), record 1 lesson absence -> reaches 5 -> converts on Nov 2!
     saveSectionAttendance(db, {
@@ -410,8 +416,8 @@ async function runMonthlyRegisterTests() {
     });
     const s2OctCheck = octAfterNov.students.find((r) => r.student_id === s2.id)!;
     // Original Oct records preserved, NO conversion added to Oct
-    assert.equal(s2OctCheck.days[4].symbol, 'د٢');
-    assert.equal(s2OctCheck.days[12].symbol, 'د٢');
+    assert.equal(s2OctCheck.days[4].symbol, '✓\n٢ د،غ');
+    assert.equal(s2OctCheck.days[12].symbol, '✓\n٢ د،غ');
     assert.equal(s2OctCheck.converted_lesson_days, 0);
     assert.equal(s2OctCheck.total_counted_absence_days, 0);
 
@@ -423,13 +429,16 @@ async function runMonthlyRegisterTests() {
       section_id: secA.id,
     });
     const s2Nov = nov.students.find((r) => r.student_id === s2.id)!;
-    assert.equal(s2Nov.days[2].symbol, 'ج');
+    assert.equal(s2Nov.days[2].symbol, '✓\n١ د،غ');
+    assert.equal(s2Nov.days[2].symbol_top, '✓');
+    assert.equal(s2Nov.days[2].symbol_bottom, '١ د،غ');
     assert.equal(s2Nov.days[2].generated_converted_day, true);
     assert.equal(s2Nov.days[2].lessons_count, 1);
     assert.equal(s2Nov.converted_lesson_days, 1);
     assert.equal(s2Nov.total_counted_absence_days, 1);
     assert.equal(s2Nov.year_pending_lessons, 0);
     assert.ok(s2Nov.auto_notes.some((n) => n.includes('2026-11-02') && n.includes('5 دروس')));
+    assert.equal(nov.legend.some((item) => item.symbol === 'ج'), false);
   });
 
   // Scenario 13: Editing/Deleting old Oct record automatically cancels Nov conversion!
@@ -455,7 +464,7 @@ async function runMonthlyRegisterTests() {
       section_id: secA.id,
     });
     const s2Nov = novAfterDelete.students.find((r) => r.student_id === s2.id)!;
-    assert.equal(s2Nov.days[2].symbol, 'د١');
+    assert.equal(s2Nov.days[2].symbol, '✓\n١ د،غ');
     assert.equal(s2Nov.converted_lesson_days, 0);
     assert.equal(s2Nov.total_counted_absence_days, 0);
     assert.equal(s2Nov.year_pending_lessons, 3);
@@ -490,8 +499,8 @@ async function runMonthlyRegisterTests() {
     });
     const s3InA = octSecA.students.find((r) => r.student_id === s3.id)!;
     assert.ok(s3InA);
-    assert.equal(s3InA.days[8].symbol, 'ح٢');
-    assert.equal(s3InA.days[11].symbol, 'ح٣');
+    assert.equal(s3InA.days[8].symbol, '✓\n٢ رخ');
+    assert.equal(s3InA.days[11].symbol, '✓\n٣ رخ');
     // Oct 18 belongs to secB, NOT secA
     assert.equal(s3InA.direct_full_days, 0);
     assert.ok(s3InA.auto_notes.some((n) => n.includes('نُقل الطالب من هذه الشعبة بتاريخ 2026-10-15')));
@@ -957,6 +966,132 @@ async function runMonthlyRegisterTests() {
     assert.ok(joinedNotes.includes('ملاحظة يدوية: متابعة السلوك والانضباط فقط'));
     assert.equal(joinedNotes.includes('2027-01-03'), false);
     assert.equal(joinedNotes.includes('الدرس الأول'), false);
+  });
+
+  // Scenario 23: Combined present + mixed lesson exceptions + strict zero (ج) across UI/Excel/HTML
+  await test('23. الجمع بين «حاضر» وحالات الدروس والرموز الجديدة (✓ + د،غ / د،هـ / رخ) وخلو السجل والطباعة وExcel من (ج)', async () => {
+    updateSchoolSettings(db, {
+      school_name: 'ثانوية بغداد المركزية',
+      directorate_name: 'تربية الرصافة الأولى',
+      lessons_per_absence_day: 5,
+      daily_lessons_count: 7,
+      daily_permission_counts_as_absence: 0,
+      lesson_permission_counts_as_absence: 1,
+    });
+
+    const s5 = createStudent(db, {
+      full_name: 'مصطفى هاشم كريم',
+      grade_id: grade.id,
+      section_id: secB.id,
+      registry_number: '9950',
+    });
+
+    // Saving full_day with lesson_details must be rejected
+    assert.throws(
+      () =>
+        saveSectionAttendance(db, {
+          academic_year_id: activeYear.id,
+          grade_id: grade.id,
+          section_id: secB.id,
+          attendance_date: '2027-02-01',
+          entries: [
+            {
+              student_id: s5.id,
+              status: 'full_day',
+              lesson_details: [{ lesson_number: 1, lesson_status: 'lesson_absence' }],
+            },
+          ],
+        }),
+      /لا يمكن تسجيل حالات الدروس أو الإجازات مع حالة غائب يوم كامل/
+    );
+
+    // Record present + 2 absence + 1 escape + 2 permission (total 5 -> converts 1 day, NO 'ج' in day cell!)
+    saveSectionAttendance(db, {
+      academic_year_id: activeYear.id,
+      grade_id: grade.id,
+      section_id: secB.id,
+      attendance_date: '2027-02-01',
+      entries: [
+        {
+          student_id: s5.id,
+          status: 'present',
+          lesson_details: [
+            { lesson_number: 1, lesson_status: 'lesson_absence' },
+            { lesson_number: 2, lesson_status: 'lesson_absence' },
+            { lesson_number: 3, lesson_status: 'lesson_escape' },
+            { lesson_number: 4, lesson_status: 'lesson_permission' },
+            { lesson_number: 5, lesson_status: 'lesson_permission' },
+          ],
+        },
+        { student_id: s3.id, status: 'present' },
+      ],
+    });
+
+    // Separate day with pure full_day & sick_leave to confirm they NEVER show '✓'
+    saveSectionAttendance(db, {
+      academic_year_id: activeYear.id,
+      grade_id: grade.id,
+      section_id: secB.id,
+      attendance_date: '2027-02-02',
+      entries: [
+        { student_id: s5.id, status: 'full_day' },
+        { student_id: s3.id, status: 'full_day_leave', leave_type: 'sick_leave' },
+      ],
+    });
+
+    const febReg = getMonthlyAbsenceRegister(db, {
+      academic_year_id: activeYear.id,
+      year: 2027,
+      month: 2,
+      grade_id: grade.id,
+      section_id: secB.id,
+    });
+    const s5Row = febReg.students.find((r) => r.student_id === s5.id)!;
+    const s3Row = febReg.students.find((r) => r.student_id === s3.id)!;
+
+    assert.equal(s5Row.days[1].symbol_top, '✓');
+    assert.equal(s5Row.days[1].symbol_bottom, '٢ د،غ + ١ د،هـ + ٢ رخ');
+    assert.equal(s5Row.days[1].symbol, '✓\n٢ د،غ + ١ د،هـ + ٢ رخ');
+    assert.equal(s5Row.days[1].generated_converted_day, true);
+    assert.equal(s5Row.converted_lesson_days, 1);
+    assert.equal(s5Row.direct_full_days, 1);
+    assert.equal(s5Row.total_counted_absence_days, 2);
+
+    // Full-day & sick leave never have ✓
+    assert.equal(s5Row.days[2].symbol, 'غ');
+    assert.equal(s5Row.days[2].symbol_top, '');
+    assert.equal(s3Row.days[2].symbol, 'م');
+    assert.equal(s3Row.days[2].symbol_top, '');
+
+    // Zero 'ج' in any day cell or legend
+    assert.equal(febReg.legend.some((item) => item.symbol === 'ج'), false);
+    for (const st of febReg.students) {
+      for (const d of Object.values(st.days)) {
+        assert.notEqual(d.symbol, 'ج');
+        assert.equal(d.symbol.includes('ج'), false);
+      }
+    }
+
+    // Printable HTML & Excel checks
+    const htmlFeb = buildStandalonePrintableHtml(febReg, 'a3-landscape');
+    assert.ok(htmlFeb.includes('٢ د،غ + ١ د،هـ + ٢ رخ'));
+    assert.ok(htmlFeb.includes('<div class="cell-check">✓</div>'));
+    assert.equal(htmlFeb.includes('>ج<'), false);
+    assert.equal(htmlFeb.includes('<strong>ج</strong>'), false);
+
+    const { buffer } = await generateMonthlyRegisterExcel(db, {
+      academic_year_id: activeYear.id,
+      year: 2027,
+      month: 2,
+      grade_id: grade.id,
+      section_id: secB.id,
+    });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer as unknown as ArrayBuffer);
+    const sheet = wb.worksheets[0];
+    assert.equal(String(sheet.getCell(3, 1).value).includes('ج ='), false);
+    const s5ExcelRowIdx = 6 + febReg.students.findIndex((r) => r.student_id === s5.id);
+    assert.equal(sheet.getCell(s5ExcelRowIdx, 2).value, '✓\n٢ د،غ + ١ د،هـ + ٢ رخ');
   });
 
   db.close();

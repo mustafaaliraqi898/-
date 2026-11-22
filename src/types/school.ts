@@ -50,6 +50,8 @@ export interface AcademicYear {
   created_at: string;
 }
 
+export type EducationalStage = 'primary' | 'intermediate' | 'preparatory';
+
 export interface SchoolSettings {
   id: number;
   school_name: string;
@@ -60,6 +62,7 @@ export interface SchoolSettings {
   daily_lessons_count: number;
   daily_permission_counts_as_absence: number;
   lesson_permission_counts_as_absence: number;
+  school_logo_data?: string | null;
   updated_at: string;
 }
 
@@ -77,6 +80,7 @@ export interface SectionItem {
 export interface GradeWithSections {
   id: number;
   name: string;
+  stage: EducationalStage | null;
   sort_order: number;
   student_count: number;
   sections: SectionItem[];
@@ -493,7 +497,9 @@ export interface MonthlyDayCellData {
   date: string;
   day_of_month: number;
   day_name: string;
-  symbol: string; // '✓' | 'غ' | 'ج' | 'د١'.. | 'هـ١'.. | 'م' | 'ر' | 'ح١'.. | 'ع' | ''
+  symbol: string; // '✓' | '✓\n١ د،غ' | 'غ' | 'م' | 'ر' | 'ع' | ''
+  symbol_top?: string;
+  symbol_bottom?: string;
   status_kind: MonthlyCellStatusKind;
   has_record: boolean;
   record_id: number | null;
@@ -616,5 +622,278 @@ export interface SaveMonthlyNoteInput {
   month: number;
   note_text: string;
 }
+
+// Legal Absence Regulations & Reports Center Types
+export type ExcusedAbsenceMode = 'include_all' | 'exclude_all' | 'exclude_with_approved_rule';
+
+export type GuardianFrequency = 'weekly' | 'biweekly' | 'monthly' | 'upon_threshold';
+
+export type LegalProcedureType =
+  | 'preliminary_warning'
+  | 'first_warning'
+  | 'final_warning'
+  | 'effective_limit_notice'
+  | 'guardian_notification'
+  | 'guardian_summons';
+
+export type ReportCategoryId =
+  | 'preliminary_warnings'
+  | 'first_warnings'
+  | 'final_warnings'
+  | 'effective_limit_reached'
+  | 'guardian_notifications'
+  | 'guardian_summons';
+
+export interface LegalStageRegulation {
+  stage: EducationalStage;
+  stage_name: string;
+  effective_absence_limit: number;
+  absence_calculation_method: string;
+  excused_absence_mode: ExcusedAbsenceMode;
+  unexcused_absence_handling: string;
+  dispersed_lessons_rule: string;
+  lesson_conversion_rule: string;
+  preliminary_warning_days: number;
+  first_warning_days: number;
+  final_warning_days: number;
+  final_effective_limit_days: number;
+  thresholds_are_provisional: number; // 0 | 1
+  guardian_notify_frequency: GuardianFrequency;
+  guardian_summons_frequency: GuardianFrequency;
+  guardian_notify_notes: string | null;
+  attendance_score_deduction_enabled: number; // 0 | 1
+  attendance_score_deduction_per_unexcused_day: number;
+  attendance_score_article: string | null;
+  conduct_failure_enabled: number; // 0 | 1
+  conduct_failure_threshold: number;
+  conduct_failure_article: string | null;
+  truancy_handling_enabled: number; // 0 | 1
+  truancy_handling_notes: string | null;
+  truancy_article: string | null;
+  dispersed_lessons_counting_enabled: number; // 0 | 1
+  dispersed_lessons_article: string | null;
+  warnings_article: string | null;
+  decision_name: string | null;
+  decision_number: string | null;
+  decision_issue_date: string | null;
+  effective_from_date: string | null;
+  legal_notes: string | null;
+  is_legally_approved: number; // 0 | 1
+  official_letter_approved: number; // 0 | 1
+  warning_letter_template: string;
+  summons_letter_template: string;
+  current_version: number;
+  updated_at: string;
+  resolved_version_id?: number | null;
+  is_historical_year_snapshot?: boolean;
+}
+
+export interface LegalRegulationVersion {
+  id: number;
+  stage: EducationalStage;
+  version_number: number;
+  academic_year_id: number | null;
+  academic_year_name?: string | null;
+  effective_from_date: string;
+  decision_name: string | null;
+  decision_number: string | null;
+  decision_issue_date: string | null;
+  is_legally_approved: number;
+  change_summary: string | null;
+  snapshot: LegalStageRegulation;
+  created_at: string;
+}
+
+export interface UpdateLegalRegulationInput {
+  effective_absence_limit: number;
+  absence_calculation_method: string;
+  excused_absence_mode: ExcusedAbsenceMode;
+  unexcused_absence_handling: string;
+  dispersed_lessons_rule: string;
+  lesson_conversion_rule: string;
+  preliminary_warning_days: number;
+  first_warning_days: number;
+  final_warning_days: number;
+  final_effective_limit_days: number;
+  thresholds_are_provisional: number | boolean;
+  guardian_notify_frequency: GuardianFrequency;
+  guardian_summons_frequency: GuardianFrequency;
+  guardian_notify_notes?: string | null;
+  attendance_score_deduction_enabled: number | boolean;
+  attendance_score_deduction_per_unexcused_day: number;
+  attendance_score_article?: string | null;
+  conduct_failure_enabled: number | boolean;
+  conduct_failure_threshold: number;
+  conduct_failure_article?: string | null;
+  truancy_handling_enabled: number | boolean;
+  truancy_handling_notes?: string | null;
+  truancy_article?: string | null;
+  dispersed_lessons_counting_enabled: number | boolean;
+  dispersed_lessons_article?: string | null;
+  warnings_article?: string | null;
+  decision_name?: string | null;
+  decision_number?: string | null;
+  decision_issue_date?: string | null;
+  effective_from_date?: string | null;
+  legal_notes?: string | null;
+  is_legally_approved: number | boolean;
+  official_letter_approved: number | boolean;
+  warning_letter_template: string;
+  summons_letter_template: string;
+  change_summary?: string | null;
+  academic_year_id?: number;
+}
+
+export interface StudentLegalProcedureRecord {
+  id: number;
+  student_id: number;
+  student_name?: string;
+  student_uid?: string;
+  registry_number?: string | null;
+  academic_year_id: number;
+  academic_year_name?: string;
+  grade_id: number;
+  grade_name?: string;
+  section_id: number;
+  section_name?: string;
+  stage: EducationalStage;
+  regulation_version_id: number | null;
+  procedure_type: LegalProcedureType;
+  procedure_date: string;
+  absence_days_at_action: number;
+  unexcused_days_at_action: number;
+  threshold_at_action: number;
+  delivery_method: string | null;
+  summons_result: string | null;
+  recorded_by: string | null;
+  notes: string | null;
+  override_reason: string | null;
+  is_official_legal_issue: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateStudentLegalProcedureInput {
+  student_id: number;
+  academic_year_id?: number;
+  procedure_type: LegalProcedureType;
+  procedure_date?: string;
+  delivery_method?: string | null;
+  summons_result?: string | null;
+  recorded_by?: string | null;
+  notes?: string | null;
+  override_reason?: string | null;
+  is_official_legal_issue?: boolean;
+}
+
+export interface UpdateStudentLegalProcedureInput {
+  procedure_date?: string;
+  delivery_method?: string | null;
+  summons_result?: string | null;
+  recorded_by?: string | null;
+  notes?: string | null;
+}
+
+export interface ReportsCenterStudentRow {
+  student_id: number;
+  student_uid: string;
+  registry_number: string | null;
+  full_name: string;
+  phone: string | null;
+  grade_id: number;
+  grade_name: string;
+  section_id: number;
+  section_name: string;
+  stage: EducationalStage | null;
+  stage_name: string | null;
+  // Live SQLite absence breakdown
+  direct_unexcused_full_days: number;
+  converted_lesson_days: number;
+  counted_daily_permission_days: number;
+  uncounted_daily_permission_days: number;
+  sick_leave_days: number;
+  excused_absence_days: number;
+  unexcused_absence_days: number;
+  counted_legal_absence_days: number;
+  pending_lessons: number;
+  lesson_absence_lessons: number;
+  lesson_escape_lessons: number;
+  counted_lesson_permission_lessons: number;
+  // Stage rule metrics
+  attendance_score_deducted: number;
+  conduct_failure_triggered: boolean;
+  truancy_risk: boolean;
+  // Threshold & remaining calculations
+  report_threshold_days: number | null;
+  next_threshold_label: string;
+  next_threshold_days: number | null;
+  remaining_days_to_next_threshold: number | null;
+  days_over_limit: number;
+  reached_preliminary: boolean;
+  reached_first_warning: boolean;
+  reached_final_warning: boolean;
+  reached_effective_limit: boolean;
+  // Procedure status & history
+  procedure_status:
+    | 'unmapped_stage'
+    | 'effective_limit_reached'
+    | 'final_warning_due'
+    | 'first_warning_due'
+    | 'preliminary_due'
+    | 'approaching_threshold'
+    | 'issued'
+    | 'summoned'
+    | 'notified'
+    | 'monitoring';
+  procedure_status_label: string;
+  last_action_date: string | null;
+  last_action_type: LegalProcedureType | null;
+  last_action_label: string | null;
+  last_notification_date: string | null;
+  last_summons_date: string | null;
+  last_summons_result: string | null;
+  issued_warning_types: LegalProcedureType[];
+  notifications_count: number;
+  summons_count: number;
+  is_legally_approved_stage: boolean;
+  thresholds_are_provisional: boolean;
+  procedures: StudentLegalProcedureRecord[];
+}
+
+export interface ReportsCenterSummaryStats {
+  total_active_students: number;
+  unmapped_stage_students: number;
+  preliminary_warnings_count: number;
+  first_warnings_count: number;
+  final_warnings_count: number;
+  effective_limit_reached_count: number;
+  guardian_notifications_due_count: number;
+  guardian_notifications_logged_count: number;
+  guardian_summons_due_count: number;
+  guardian_summons_logged_count: number;
+  conduct_failure_risk_count: number;
+}
+
+export interface ReportsCenterResponse {
+  academic_year: AcademicYear;
+  school_settings: SchoolSettings;
+  report_type: ReportCategoryId;
+  stage_regulations: Record<EducationalStage, LegalStageRegulation>;
+  unmapped_grades: Array<{ id: number; name: string }>;
+  summary: ReportsCenterSummaryStats;
+  rows: ReportsCenterStudentRow[];
+  procedure_logs: StudentLegalProcedureRecord[];
+}
+
+export interface ReportsCenterQuery {
+  academic_year_id?: number;
+  report_type: ReportCategoryId;
+  stage?: EducationalStage | 'all';
+  grade_id?: number;
+  section_id?: number;
+  search?: string;
+  include_approaching?: boolean;
+}
+
 
 

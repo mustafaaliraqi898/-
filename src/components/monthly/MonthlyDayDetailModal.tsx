@@ -70,7 +70,7 @@ function getStatusDisplayInfo(cell: MonthlyDayCellData): {
       };
     case 'lesson_converted':
       return {
-        title: 'يوم غياب كامل ناتج عن تراكم الدروس (ج)',
+        title: 'يوم غياب كامل ناتج عن تراكم الدروس',
         subtitle: cell.raw_status === 'lesson_escape'
           ? 'اكتمل نصاب الغياب في هذا اليوم من تراكم الدروس (يشمل هروب من درس).'
           : cell.raw_status === 'lesson_permission'
@@ -81,22 +81,22 @@ function getStatusDisplayInfo(cell: MonthlyDayCellData): {
       };
     case 'lesson_absence':
       return {
-        title: 'غائب عن درس / عدة دروس (د)',
-        subtitle: 'حضر الطالب إلى المدرسة وغاب عن دروس محددة أُضيفت إلى العداد الموحد.',
+        title: 'حاضر للدوام · غائب عن درس (✓ + د،غ)',
+        subtitle: 'حضر الطالب إلى المدرسة وسُجل عليه غياب عن دروس محددة أُضيفت إلى العداد الموحد.',
         boxClass:
           'border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200',
       };
     case 'lesson_escape':
       return {
-        title: 'هروب من درس / عدة دروس (هـ)',
-        subtitle: 'هرب الطالب من دروس محددة وأُضيفت جميعها تلقائياً إلى العداد الموحد.',
+        title: 'حاضر للدوام · هروب من درس (✓ + د،هـ)',
+        subtitle: 'حضر الطالب إلى المدرسة وسُجل عليه هروب من دروس محددة أُضيفت جميعها تلقائياً إلى العداد الموحد.',
         boxClass:
           'border-orange-200 dark:border-orange-900/60 bg-orange-50/70 dark:bg-orange-950/30 text-orange-900 dark:text-orange-200',
       };
     case 'lesson_mixed':
       return {
-        title: `حالات دروس متعددة في اليوم (${cell.symbol})`,
-        subtitle: 'سُجلت للطالب أسباب مستقلة لدروس مختلفة في هذا اليوم دون تعارض.',
+        title: 'حاضر للدوام · حالات دروس متعددة',
+        subtitle: 'حضر الطالب إلى المدرسة وسُجلت له أسباب مستقلة لدروس مختلفة في هذا اليوم دون تعارض.',
         boxClass:
           'border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/30 text-rose-900 dark:text-rose-200',
       };
@@ -118,10 +118,10 @@ function getStatusDisplayInfo(cell: MonthlyDayCellData): {
       };
     case 'lesson_permission':
       return {
-        title: 'رخصة عن درس / دروس (ح)',
+        title: 'حاضر للدوام · رخصة عن درس (✓ + رخ)',
         subtitle: cell.contributed_to_counter
-          ? 'رخصة لدرس محدد وأُضيفت دروسها إلى العداد الموحد.'
-          : 'رخصة لدرس محدد ولم تُضف إلى العداد الموحد.',
+          ? 'حضر الطالب إلى المدرسة وسُجلت له رخصة عن درس محددة أُضيفت دروسها إلى العداد الموحد.'
+          : 'حضر الطالب إلى المدرسة وسُجلت له رخصة عن درس محددة ولم تُضف إلى العداد الموحد.',
         boxClass:
           'border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/70 dark:bg-indigo-950/30 text-indigo-900 dark:text-indigo-200',
       };
@@ -244,10 +244,21 @@ export function MonthlyDayDetailModal({
               <p className="text-sm font-bold font-display">{statusMeta.title}</p>
               <p className="text-xs opacity-90 leading-relaxed">{statusMeta.subtitle}</p>
             </div>
-            <div className="min-w-[44px] h-11 px-2 rounded-lg border border-current/25 bg-white/80 dark:bg-slate-950/60 flex items-center justify-center shrink-0">
-              <span className="text-base font-extrabold font-display tabular-nums whitespace-nowrap">
-                {cell.symbol || '—'}
-              </span>
+            <div className="min-w-[52px] min-h-[46px] px-2 py-1 rounded-lg border border-current/25 bg-white/80 dark:bg-slate-950/60 flex flex-col items-center justify-center shrink-0">
+              {cell.symbol_top && cell.symbol_bottom ? (
+                <>
+                  <span className="text-sm font-extrabold text-emerald-700 dark:text-emerald-300 leading-none">
+                    {cell.symbol_top}
+                  </span>
+                  <span className="text-[11px] font-bold font-display tabular-nums leading-tight mt-0.5 whitespace-nowrap">
+                    {cell.symbol_bottom}
+                  </span>
+                </>
+              ) : (
+                <span className="text-base font-extrabold font-display tabular-nums whitespace-nowrap">
+                  {cell.symbol || '—'}
+                </span>
+              )}
             </div>
           </div>
 
@@ -316,6 +327,15 @@ export function MonthlyDayDetailModal({
                 </div>
               </div>
 
+              {cell.symbol_top === '✓' && cell.symbol_bottom && (
+                <div className="p-3 flex items-center justify-between gap-3 bg-emerald-50/40 dark:bg-emerald-950/15">
+                  <span className="text-slate-600 dark:text-slate-300">حالة الدوام اليومي</span>
+                  <span className="font-bold text-emerald-700 dark:text-emerald-300">
+                    حاضر للدوام (مع تسجيل استثناءات دروس)
+                  </span>
+                </div>
+              )}
+
               {(cell.lessons_count > 0 || cell.lesson_numbers.length > 0 || cell.lesson_details.length > 0) && (
                 <div className="p-3 space-y-2">
                   <div className="flex items-center justify-between gap-2">
@@ -345,8 +365,8 @@ export function MonthlyDayDetailModal({
                               {getLessonName(d.lesson_number)} · {meta.label}
                               {d.lesson_status === 'lesson_permission'
                                 ? d.counted_as_absence === 1
-                                  ? ' (محتسبة)'
-                                  : ' (معفاة)'
+                                  ? ' (محتسبة في العداد)'
+                                  : ' (غير محتسبة غياباً)'
                                 : ''}
                             </span>
                           );

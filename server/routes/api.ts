@@ -22,6 +22,7 @@ import {
   deleteSection,
   listGradesWithSections,
   updateGrade,
+  updateGradeStage,
   updateSection,
 } from '../services/gradeService';
 import {
@@ -35,11 +36,25 @@ import {
   updateWeeklyHolidays,
 } from '../services/holidayService';
 import {
+  getStageRegulationForYear,
+  listAllStageRegulations,
+  listRegulationVersions,
+  updateStageRegulation,
+  validateStage,
+} from '../services/legalRegulationsService';
+import {
   deleteMonthlyStudentNote,
   generateMonthlyRegisterExcel,
   getMonthlyAbsenceRegister,
   saveMonthlyStudentNote,
 } from '../services/monthlyRegisterService';
+import {
+  createStudentLegalProcedure,
+  deleteStudentLegalProcedure,
+  generateReportsExcel,
+  getReportsCenterData,
+  updateStudentLegalProcedure,
+} from '../services/reportsCenterService';
 import {
   createAcademicYear,
   getSchoolSettings,
@@ -107,6 +122,8 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
         req.body?.lesson_permission_counts_as_absence !== undefined
           ? req.body.lesson_permission_counts_as_absence
           : undefined,
+      school_logo_data:
+        req.body?.school_logo_data !== undefined ? req.body.school_logo_data : undefined,
     });
     res.json(updated);
   });
@@ -152,6 +169,7 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
       : [];
     const created = createGrade(db, {
       name: String(req.body?.name ?? ''),
+      stage: req.body?.stage !== undefined ? req.body.stage : undefined,
       initial_sections: initialSections,
     });
     res.status(201).json(created);
@@ -160,7 +178,17 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
   router.put('/grades/:id', (req, res) => {
     const db = dbProvider();
     const id = parsePositiveInt(req.params.id, 'الصف');
-    const updated = updateGrade(db, id, { name: String(req.body?.name ?? '') });
+    const updated = updateGrade(db, id, {
+      name: String(req.body?.name ?? ''),
+      stage: req.body?.stage !== undefined ? req.body.stage : undefined,
+    });
+    res.json(updated);
+  });
+
+  router.patch('/grades/:id/stage', (req, res) => {
+    const db = dbProvider();
+    const id = parsePositiveInt(req.params.id, 'الصف');
+    const updated = updateGradeStage(db, id, req.body?.stage ?? null);
     res.json(updated);
   });
 
@@ -598,6 +626,143 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
     } catch (err) {
       next(err);
     }
+  });
+
+  // Legal Absence Regulations & Versioning
+  router.get('/legal-regulations', (req, res) => {
+    const db = dbProvider();
+    const yearId = parseOptionalInt(req.query.academic_year_id);
+    res.json(listAllStageRegulations(db, yearId));
+  });
+
+  router.get('/legal-regulations-versions', (req, res) => {
+    const db = dbProvider();
+    const stageParam = typeof req.query.stage === 'string' ? validateStage(req.query.stage) : undefined;
+    res.json(listRegulationVersions(db, stageParam));
+  });
+
+  router.get('/legal-regulations/:stage', (req, res) => {
+    const db = dbProvider();
+    const stage = validateStage(String(req.params.stage ?? ''));
+    const yearId = parseOptionalInt(req.query.academic_year_id);
+    res.json(getStageRegulationForYear(db, stage, yearId));
+  });
+
+  router.get('/legal-regulations/:stage/versions', (req, res) => {
+    const db = dbProvider();
+    const stage = validateStage(String(req.params.stage ?? ''));
+    res.json(listRegulationVersions(db, stage));
+  });
+
+  router.put('/legal-regulations/:stage', (req, res) => {
+    const db = dbProvider();
+    const stage = validateStage(String(req.params.stage ?? ''));
+    const result = updateStageRegulation(db, stage, req.body ?? {});
+    res.json(result);
+  });
+
+  // Reports Center & Student Legal Procedures
+  router.get('/reports/center', (req, res) => {
+    const db = dbProvider();
+    const academicYearId = parseOptionalInt(req.query.academic_year_id);
+    const reportType = String(req.query.report_type ?? 'preliminary_warnings') as Parameters<
+      typeof getReportsCenterData
+    >[1]['report_type'];
+    const stage =
+      typeof req.query.stage === 'string' && req.query.stage !== 'all'
+        ? validateStage(req.query.stage)
+        : 'all';
+    const gradeId = parseOptionalInt(req.query.grade_id);
+    const sectionId = parseOptionalInt(req.query.section_id);
+    const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+    const includeApproaching = req.query.include_approaching === 'true' || req.query.include_approaching === '1';
+
+    res.json(
+      getReportsCenterData(db, {
+        academic_year_id: academicYearId,
+        report_type: reportType,
+        stage,
+        grade_id: gradeId,
+        section_id: sectionId,
+        search,
+        include_approaching: includeApproaching,
+      })
+    );
+  });
+
+  router.get('/reports/export', async (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const academicYearId = parseOptionalInt(req.query.academic_year_id);
+      const reportType = String(req.query.report_type ?? 'preliminary_warnings') as Parameters<
+        typeof getReportsCenterData
+      >[1]['report_type'];
+      const stage =
+        typeof req.query.stage === 'string' && req.query.stage !== 'all'
+          ? validateStage(req.query.stage)
+          : 'all';
+      const gradeId = parseOptionalInt(req.query.grade_id);
+      const sectionId = parseOptionalInt(req.query.section_id);
+      const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+      const includeApproaching = req.query.include_approaching === 'true' || req.query.include_approaching === '1';
+
+      const { buffer, filename } = await generateReportsExcel(db, {
+        academic_year_id: academicYearId,
+        report_type: reportType,
+        stage,
+        grade_id: gradeId,
+        section_id: sectionId,
+        search,
+        include_approaching: includeApproaching,
+      });
+
+      const encodedName = encodeURIComponent(filename);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
+      res.send(buffer);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/reports/procedures', (req, res) => {
+    const db = dbProvider();
+    const created = createStudentLegalProcedure(db, {
+      student_id: parsePositiveInt(String(req.body?.student_id ?? ''), 'الطالب'),
+      academic_year_id: parseOptionalInt(req.body?.academic_year_id),
+      procedure_type: req.body?.procedure_type,
+      procedure_date: req.body?.procedure_date,
+      delivery_method: req.body?.delivery_method ?? null,
+      summons_result: req.body?.summons_result ?? null,
+      recorded_by: req.body?.recorded_by ?? null,
+      notes: req.body?.notes ?? null,
+      override_reason: req.body?.override_reason ?? null,
+      is_official_legal_issue: Boolean(req.body?.is_official_legal_issue),
+    });
+    res.status(201).json(created);
+  });
+
+  router.put('/reports/procedures/:id', (req, res) => {
+    const db = dbProvider();
+    const id = parsePositiveInt(req.params.id, 'الإجراء الإداري');
+    const updated = updateStudentLegalProcedure(db, id, {
+      procedure_date: req.body?.procedure_date,
+      delivery_method: req.body?.delivery_method,
+      summons_result: req.body?.summons_result,
+      recorded_by: req.body?.recorded_by,
+      notes: req.body?.notes,
+    });
+    res.json(updated);
+  });
+
+  router.delete('/reports/procedures/:id', (req, res) => {
+    const db = dbProvider();
+    const id = parsePositiveInt(req.params.id, 'الإجراء الإداري');
+    deleteStudentLegalProcedure(db, id);
+    res.json({ deleted: true });
   });
 
   // Error handler

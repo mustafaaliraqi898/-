@@ -103,17 +103,15 @@ function getLegendSwatchClasses(symbol: string): string {
       return 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-extrabold';
     case 'غ':
       return 'bg-red-100 dark:bg-red-950/60 border-red-300 dark:border-red-800 text-red-900 dark:text-red-200';
-    case 'ج':
-      return 'bg-purple-100 dark:bg-purple-950/60 border-purple-300 dark:border-purple-800 text-purple-900 dark:text-purple-200';
-    case 'د':
+    case 'د،غ':
       return 'bg-amber-100 dark:bg-amber-950/55 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200';
-    case 'هـ':
+    case 'د،هـ':
       return 'bg-orange-100 dark:bg-orange-950/55 border-orange-300 dark:border-orange-800 text-orange-900 dark:text-orange-200';
     case 'م':
       return 'bg-teal-100 dark:bg-teal-950/55 border-teal-300 dark:border-teal-800 text-teal-900 dark:text-teal-200';
     case 'ر':
       return 'bg-sky-100 dark:bg-sky-950/55 border-sky-300 dark:border-sky-800 text-sky-900 dark:text-sky-200';
-    case 'ح':
+    case 'رخ':
       return 'bg-indigo-100 dark:bg-indigo-950/55 border-indigo-300 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200';
     case 'ع':
       return 'bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200';
@@ -719,8 +717,8 @@ export function MonthlyRegisterView({
               دليل الرموز المعتمدة في السجل الشهري
             </h3>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              ملاحظة: الرقم بجانب (د) أو (هـ) أو (ح) يمثل عدد الدروس، وعند النقر على أي خلية تُعرض التفاصيل
-              الكاملة وأرقام الدروس أو سبب العطلة.
+              يظهر رمز (✓) في أعلى الخلية للدلالة على الحضور للدوام مع اختصار حالات الدروس تحته
+              (د،غ / د،هـ / رخ). انقر على أي خلية لعرض التفاصيل الكاملة وأرقام الدروس أو سبب العطلة.
             </p>
           </div>
 
@@ -731,7 +729,7 @@ export function MonthlyRegisterView({
                 className="flex items-start gap-2.5 p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40"
               >
                 <span
-                  className={`w-8 h-8 rounded-md border flex items-center justify-center text-sm font-extrabold shrink-0 font-display ${getLegendSwatchClasses(
+                  className={`min-w-[38px] px-1 h-8 rounded-md border flex items-center justify-center text-xs font-extrabold shrink-0 font-display whitespace-nowrap ${getLegendSwatchClasses(
                     item.symbol
                   )}`}
                 >
@@ -826,7 +824,7 @@ export function MonthlyRegisterView({
                       title={`${calDay.day_name} — ${calDay.date}${
                         calDay.reason ? ` (${calDay.reason})` : ''
                       }`}
-                      className={`border-b border-l border-slate-700 px-1 py-2 text-center min-w-[36px] ${
+                      className={`border-b border-l border-slate-700 px-1 py-2 text-center min-w-[40px] ${
                         calDay.is_holiday
                           ? 'bg-slate-600 dark:bg-slate-800 text-slate-100'
                           : 'bg-slate-800 dark:bg-slate-950'
@@ -911,6 +909,7 @@ export function MonthlyRegisterView({
                       {/* Day Cells 1..days_in_month */}
                       {registerData.calendar_days.map((calDay) => {
                         const cell = st.days[calDay.day_of_month];
+                        const hasStackedLessonSymbol = Boolean(cell.symbol_top && cell.symbol_bottom);
                         return (
                           <td
                             key={calDay.day_of_month}
@@ -919,8 +918,10 @@ export function MonthlyRegisterView({
                             <button
                               type="button"
                               onClick={() => setSelectedCellInfo({ student: st, cell })}
-                              title={`${st.full_name} • ${calDay.day_name} ${calDay.date}`}
-                              className={`w-full h-12 min-w-[36px] flex items-center justify-center text-xs transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-600 ${getCellStyleClasses(
+                              title={`${st.full_name} • ${calDay.day_name} ${calDay.date}${
+                                cell.symbol_bottom ? ` • ${cell.symbol_bottom}` : ''
+                              }`}
+                              className={`w-full h-12 min-w-[40px] flex items-center justify-center text-xs transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-600 ${getCellStyleClasses(
                                 cell.status_kind
                               )} ${
                                 cell.outside_section_membership &&
@@ -929,7 +930,21 @@ export function MonthlyRegisterView({
                                   : ''
                               }`}
                             >
-                              {cell.symbol}
+                              {hasStackedLessonSymbol ? (
+                                <div className="w-full h-12 flex flex-col items-center justify-center gap-0.5 px-0.5 overflow-hidden leading-none">
+                                  <span className="text-[11px] font-extrabold text-emerald-700 dark:text-emerald-300 leading-none">
+                                    {cell.symbol_top}
+                                  </span>
+                                  <span
+                                    dir="rtl"
+                                    className="text-[8.5px] font-bold leading-[1.08] text-center break-words line-clamp-2 max-w-[58px]"
+                                  >
+                                    {cell.symbol_bottom}
+                                  </span>
+                                </div>
+                              ) : (
+                                cell.symbol
+                              )}
                             </button>
                           </td>
                         );

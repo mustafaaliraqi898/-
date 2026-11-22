@@ -360,7 +360,9 @@ async function runLessonsEscapeCounterTests() {
     });
     const rowS3 = regOct.students.find((r) => r.student_id === s3.id)!;
     assert.equal(rowS3.days[13].status_kind, 'lesson_mixed');
-    assert.equal(rowS3.days[13].symbol, 'د١+هـ١+ح١');
+    assert.equal(rowS3.days[13].symbol_top, '✓');
+    assert.equal(rowS3.days[13].symbol_bottom, '١ د،غ + ١ د،هـ + ١ رخ');
+    assert.equal(rowS3.days[13].symbol, '✓\n١ د،غ + ١ د،هـ + ١ رخ');
     assert.equal(rowS3.days[13].counted_lessons_today, 3);
     assert.equal(rowS3.lesson_absence_lessons, 1);
     assert.equal(rowS3.lesson_escape_lessons, 1);
@@ -468,9 +470,10 @@ async function runLessonsEscapeCounterTests() {
     });
     const octS1 = regOct.students.find((r) => r.student_id === s1.id)!;
     assert.equal(octS1.converted_lesson_days, 1);
-    assert.equal(octS1.days[7].symbol, 'ج');
-    assert.equal(octS1.days[4].symbol, 'د٢');
-    assert.equal(octS1.days[6].symbol, 'ح٢');
+    assert.equal(octS1.days[7].symbol, '✓\n٢ د،هـ');
+    assert.equal(octS1.days[7].generated_converted_day, true);
+    assert.equal(octS1.days[4].symbol, '✓\n٢ د،غ');
+    assert.equal(octS1.days[6].symbol, '✓\n٢ رخ');
 
     const regNov = getMonthlyAbsenceRegister(db, {
       academic_year_id: activeYear.id,
@@ -481,8 +484,9 @@ async function runLessonsEscapeCounterTests() {
     });
     const novS1 = regNov.students.find((r) => r.student_id === s1.id)!;
     assert.equal(novS1.converted_lesson_days, 1);
-    assert.equal(novS1.days[2].symbol, 'د٢');
-    assert.equal(novS1.days[4].symbol, 'ج');
+    assert.equal(novS1.days[2].symbol, '✓\n٢ د،غ');
+    assert.equal(novS1.days[4].symbol, '✓\n٢ د،هـ');
+    assert.equal(novS1.days[4].generated_converted_day, true);
     assert.equal(novS1.year_pending_lessons, 0);
     // Contributing lessons on Nov 4 must include Oct 7 (lesson 7 escape) + Nov 2 (lessons 1,2 absence) + Nov 4 (lessons 3,4 escape)!
     assert.equal(novS1.days[4].contributing_lessons.length, 5);
@@ -695,7 +699,7 @@ async function runLessonsEscapeCounterTests() {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer as unknown as ArrayBuffer);
     const sheet = wb.worksheets[0];
-    assert.ok(String(sheet.getCell(3, 1).value).includes('هـ١.. = هروب من دروس'));
+    assert.ok(String(sheet.getCell(3, 1).value).includes('د،هـ = هروب من درس'));
 
     const reg = getMonthlyAbsenceRegister(db, {
       academic_year_id: activeYear.id,
@@ -705,7 +709,7 @@ async function runLessonsEscapeCounterTests() {
       section_id: secA.id,
     });
     const html = buildStandalonePrintableHtml(reg, 'a3-landscape');
-    assert.ok(html.includes('هـ١..'));
+    assert.ok(html.includes('د،هـ'));
     assert.ok(html.includes('cell-lesson-mixed'));
 
     // Reopen primary DB + HTTP API test
@@ -757,6 +761,64 @@ async function runLessonsEscapeCounterTests() {
     } finally {
       server.close();
     }
+  });
+
+  // Scenario 12: Direct 'present' status combined with lesson_details persists, reconciles counter, and renders in monthly sheet
+  await test('12. تسجيل status=present مع lesson_details مباشرة يحفظ الدروس ويحتسب العداد ويعرض الرمز المركب', () => {
+    updateSchoolSettings(db, {
+      school_name: 'ثانوية الرافدين',
+      directorate_name: 'تربية الكرخ الأولى',
+      lessons_per_absence_day: 5,
+      daily_lessons_count: 7,
+      daily_permission_counts_as_absence: 0,
+      lesson_permission_counts_as_absence: 0,
+    });
+
+    const s4 = createStudent(db, {
+      full_name: 'كرار محمد عباس',
+      grade_id: grade.id,
+      section_id: secA.id,
+      registry_number: '1104',
+    });
+
+    // Present + 1 lesson absence + 1 lesson escape + 1 uncounted lesson permission
+    saveSectionAttendance(db, {
+      academic_year_id: activeYear.id,
+      grade_id: grade.id,
+      section_id: secA.id,
+      attendance_date: '2026-12-01',
+      entries: [
+        {
+          student_id: s4.id,
+          status: 'present',
+          lesson_details: [
+            { lesson_number: 1, lesson_status: 'lesson_absence' },
+            { lesson_number: 2, lesson_status: 'lesson_escape' },
+            { lesson_number: 3, lesson_status: 'lesson_permission' },
+          ],
+        },
+        { student_id: s1.id, status: 'present' },
+      ],
+    });
+
+    const d4 = getStudentAbsenceDetails(db, s4.id, activeYear.id);
+    assert.equal(d4.records.length, 1);
+    assert.equal(d4.records[0].status, 'present');
+    assert.equal(d4.records[0].lesson_details.length, 3);
+    assert.equal(d4.lesson_absence_lessons, 1);
+    assert.equal(d4.lesson_escape_lessons, 1);
+    assert.equal(d4.pending_lessons, 2); // uncounted permission excluded
+
+    const regDec = getMonthlyAbsenceRegister(db, {
+      academic_year_id: activeYear.id,
+      year: 2026,
+      month: 12,
+      grade_id: grade.id,
+      section_id: secA.id,
+    });
+    const rowS4 = regDec.students.find((r) => r.student_id === s4.id)!;
+    assert.equal(rowS4.days[1].symbol, '✓\n١ د،غ + ١ د،هـ + ١ رخ');
+    assert.equal(rowS4.days[1].counted_lessons_today, 2);
   });
 
   db.close();

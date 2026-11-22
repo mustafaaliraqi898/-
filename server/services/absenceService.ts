@@ -148,23 +148,51 @@ function normalizeAbsenceEntry(
   const currentThreshold = Math.max(1, settings.lessons_per_absence_day || 5);
   const lessonRuleSnapshot = settings.lesson_permission_counts_as_absence ? 1 : 0;
 
-  if (status === 'present' || status === 'full_day') {
+  if (status === 'full_day') {
     if (rawLeaveType !== null || rawLessonNumbers.length > 0 || rawLessonDetails.length > 0) {
-      throw new ServiceError('بيانات الإجازة أو الدروس تتعارض مع الحالة المختارة.', 400);
+      throw new ServiceError('لا يمكن تسجيل حالات الدروس أو الإجازات مع حالة غائب يوم كامل.', 400);
     }
     return {
       student_id: studentId,
-      status,
+      status: 'full_day',
       lessons_count: 0,
       leave_type: null,
       permission_type: null,
       lesson_numbers: [],
       lesson_numbers_json: null,
       lesson_details: [],
-      counted_as_absence: status === 'full_day' ? 1 : 0,
+      counted_as_absence: 1,
       permission_rule_snapshot: null,
       notes: normalizeNullableString(entry.notes),
     };
+  }
+
+  if (status === 'present') {
+    if (rawLeaveType !== null) {
+      throw new ServiceError('لا يمكن تسجيل إجازة يومية مع حالة الحضور.', 400);
+    }
+    if (rawLessonDetails.length === 0 && rawLessonNumbers.length === 0) {
+      return {
+        student_id: studentId,
+        status: 'present',
+        lessons_count: 0,
+        leave_type: null,
+        permission_type: null,
+        lesson_numbers: [],
+        lesson_numbers_json: null,
+        lesson_details: [],
+        counted_as_absence: 0,
+        permission_rule_snapshot: null,
+        notes: normalizeNullableString(entry.notes),
+      };
+    }
+    if (rawLessonDetails.length === 0 && rawLessonNumbers.length > 0) {
+      throw new ServiceError(
+        'عند تسجيل حالات دروس مع الحضور، يجب تحديد نوع حالة كل درس في lesson_details.',
+        400
+      );
+    }
+    // Falls through to shared per-lesson validation & normalization while keeping status = 'present'
   }
 
   if (status === 'full_day_leave') {
@@ -210,7 +238,7 @@ function normalizeAbsenceEntry(
     };
   }
 
-  // Lesson-level statuses: lesson_absence | lesson_permission | lesson_escape
+  // Lesson-level statuses OR 'present' combined with lesson_details
   if (rawLeaveType !== null) {
     throw new ServiceError('لا يمكن تحديد نوع إجازة يومية مع حالات الدروس.', 400);
   }
@@ -253,7 +281,8 @@ function normalizeAbsenceEntry(
 
     normalizedDetails.sort((a, b) => a.lesson_number - b.lesson_number);
     const lessonNumbers = normalizedDetails.map((d) => d.lesson_number);
-    const primaryStatus = resolvePrimaryLessonStatus(status, normalizedDetails);
+    const storedStatus: AbsenceStatus =
+      status === 'present' ? 'present' : resolvePrimaryLessonStatus(status, normalizedDetails);
     const hasPermissionDetail = normalizedDetails.some(
       (d) => d.lesson_status === 'lesson_permission'
     );
@@ -261,7 +290,7 @@ function normalizeAbsenceEntry(
 
     return {
       student_id: studentId,
-      status: primaryStatus,
+      status: storedStatus,
       lessons_count: normalizedDetails.length,
       leave_type: null,
       permission_type: hasPermissionDetail ? 'lesson_permission' : null,
@@ -512,7 +541,10 @@ function reconcileStudentLessonCounter(
               counted_as_absence, threshold_snapshot
        FROM absences
        WHERE student_id = ? AND academic_year_id = ?
-         AND status IN ('lesson_absence', 'lesson_permission', 'lesson_escape')
+         AND (
+           status IN ('lesson_absence', 'lesson_permission', 'lesson_escape')
+           OR EXISTS (SELECT 1 FROM absence_lesson_details ald WHERE ald.absence_id = absences.id)
+         )
        ORDER BY absence_date ASC, id ASC`
     )
     .all(studentId, academicYearId) as Array<{
@@ -520,7 +552,7 @@ function reconcileStudentLessonCounter(
     grade_id: number;
     section_id: number;
     absence_date: string;
-    status: LessonStatusType;
+    status: AbsenceStatus;
     lessons_count: number;
     counted_as_absence: number;
     threshold_snapshot: number;
@@ -569,7 +601,7 @@ function reconcileStudentLessonCounter(
         row.status === 'lesson_absence' ||
         row.status === 'lesson_escape' ||
         (row.status === 'lesson_permission' && row.counted_as_absence === 1);
-      if (isCounted && row.lessons_count > 0) {
+      if (isCounted && row.lessons_count > 0 && isLessonStatus(row.status)) {
         const threshold = Math.max(1, row.threshold_snapshot);
         for (let i = 0; i < row.lessons_count; i += 1) {
           countedUnits.push({
@@ -865,11 +897,12 @@ export function getSectionAttendanceSheet(
       storedDetails
     );
 
-    const lessonsCount = isLessonStatus(savedStatus)
-      ? resolved.lesson_details.length > 0
-        ? resolved.lesson_details.length
-        : (r.saved_lessons_count ?? 0)
-      : 0;
+    const lessonsCount =
+      isLessonStatus(savedStatus) || resolved.lesson_details.length > 0
+        ? resolved.lesson_details.length > 0
+          ? resolved.lesson_details.length
+          : (r.saved_lessons_count ?? 0)
+        : 0;
 
     return {
       student_id: r.student_id,
@@ -1024,8 +1057,18 @@ export function saveSectionAttendance(
     const getDbNow = db.prepare("SELECT datetime('now') as now_ts");
 
     for (const item of normalizedEntries) {
-      if (item.status === 'present') presentCount += 1;
-      else if (item.status === 'full_day') fullDayCount += 1;
+      if (item.status === 'present') {
+        presentCount += 1;
+        if (item.lesson_details.some((d) => d.lesson_status === 'lesson_absence')) {
+          lessonAbsenceCount += 1;
+        }
+        if (item.lesson_details.some((d) => d.lesson_status === 'lesson_permission')) {
+          lessonPermissionCount += 1;
+        }
+        if (item.lesson_details.some((d) => d.lesson_status === 'lesson_escape')) {
+          lessonEscapeCount += 1;
+        }
+      } else if (item.status === 'full_day') fullDayCount += 1;
       else if (item.status === 'lesson_absence') lessonAbsenceCount += 1;
       else if (item.status === 'full_day_leave') fullDayLeaveCount += 1;
       else if (item.status === 'lesson_permission') lessonPermissionCount += 1;
@@ -1098,7 +1141,12 @@ export function saveSectionAttendance(
           continue;
         }
 
-        const thresholdSnapshotToSave = isLessonCounterStatus(existing.status)
+        const hadLessonState =
+          isLessonCounterStatus(existing.status) || existingDetails.length > 0;
+        const hasLessonStateNow =
+          isLessonCounterStatus(item.status) || item.lesson_details.length > 0;
+
+        const thresholdSnapshotToSave = hadLessonState
           ? existing.threshold_snapshot
           : currentThreshold;
 
@@ -1164,7 +1212,7 @@ export function saveSectionAttendance(
 
         syncAbsenceLessonDetails(db, existing.id, item.student_id, attendanceDate, detailsToSave);
 
-        if (isLessonCounterStatus(existing.status) || isLessonCounterStatus(item.status)) {
+        if (hadLessonState || hasLessonStateNow) {
           const deltaConverted = reconcileStudentLessonCounter(db, item.student_id, year.id);
           totalNewlyConvertedDays += deltaConverted;
         }
@@ -1205,7 +1253,9 @@ export function saveSectionAttendance(
         const newAbsenceId = Number(info.lastInsertRowid);
         syncAbsenceLessonDetails(db, newAbsenceId, item.student_id, attendanceDate, item.lesson_details);
 
-        if (isLessonCounterStatus(item.status) && item.counted_as_absence === 1) {
+        const hasLessonStateNow =
+          isLessonCounterStatus(item.status) || item.lesson_details.length > 0;
+        if (hasLessonStateNow && item.counted_as_absence === 1) {
           const deltaConverted = reconcileStudentLessonCounter(db, item.student_id, year.id);
           totalNewlyConvertedDays += deltaConverted;
         }
@@ -1359,7 +1409,9 @@ export function createSingleAbsenceRecord(
       normalized.lesson_details
     );
 
-    if (isLessonCounterStatus(normalized.status) && normalized.counted_as_absence === 1) {
+    const hasLessonStateNow =
+      isLessonCounterStatus(normalized.status) || normalized.lesson_details.length > 0;
+    if (hasLessonStateNow && normalized.counted_as_absence === 1) {
       reconcileStudentLessonCounter(db, normalized.student_id, year.id);
     }
     return createdId;
@@ -1493,7 +1545,10 @@ export function addStudentLessonRecords(
   ].sort((a, b) => a.lesson_number - b.lesson_number);
 
   const mergedNumbers = mergedDetails.map((d) => d.lesson_number);
-  const primaryStatus = resolvePrimaryLessonStatus(existing.status, mergedDetails);
+  const primaryStatus: AbsenceStatus =
+    existing.status === 'present'
+      ? 'present'
+      : resolvePrimaryLessonStatus(existing.status, mergedDetails);
   const hasPerm = mergedDetails.some((d) => d.lesson_status === 'lesson_permission');
   const anyCounted = mergedDetails.some((d) => d.counted_as_absence === 1);
   const mergedNotes = normalizeNullableString(
@@ -1565,9 +1620,13 @@ export function deleteAbsenceRecord(db: SqliteDb, recordId: number): void {
     throw new ServiceError('سجل الغياب المطلوب حذفه غير موجود.', 404, 'ABSENCE_NOT_FOUND');
   }
 
+  const hadLessonDetails = Boolean(
+    db.prepare('SELECT 1 FROM absence_lesson_details WHERE absence_id = ? LIMIT 1').get(recordId)
+  );
+
   db.transaction(() => {
     db.prepare('DELETE FROM absences WHERE id = ?').run(recordId);
-    if (isLessonCounterStatus(existing.status)) {
+    if (isLessonCounterStatus(existing.status) || hadLessonDetails) {
       reconcileStudentLessonCounter(db, existing.student_id, existing.academic_year_id);
     }
 

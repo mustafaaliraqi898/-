@@ -24,6 +24,7 @@ import {
   deleteSection,
   listGradesWithSections,
   updateGrade,
+  updateGradeStage,
   updateSection,
 } from '../server/services/gradeService';
 import {
@@ -37,11 +38,23 @@ import {
   updateWeeklyHolidays,
 } from '../server/services/holidayService';
 import {
+  listAllStageRegulations,
+  listRegulationVersions,
+  updateStageRegulation,
+} from '../server/services/legalRegulationsService';
+import {
   deleteMonthlyStudentNote,
   generateMonthlyRegisterExcel,
   getMonthlyAbsenceRegister,
   saveMonthlyStudentNote,
 } from '../server/services/monthlyRegisterService';
+import {
+  createStudentLegalProcedure,
+  deleteStudentLegalProcedure,
+  generateReportsExcel,
+  getReportsCenterData,
+  updateStudentLegalProcedure,
+} from '../server/services/reportsCenterService';
 import {
   createAcademicYear,
   getSchoolSettings,
@@ -112,14 +125,18 @@ function registerIpcHandlers() {
   );
   ipcMain.handle(
     'grades:create',
-    wrap((payload: { name: string; initial_sections?: string[] }) =>
-      createGrade(getDb(), payload)
-    )
+    wrap((payload: Parameters<typeof createGrade>[1]) => createGrade(getDb(), payload))
   );
   ipcMain.handle(
     'grades:update',
-    wrap((payload: { id: number; name: string }) =>
-      updateGrade(getDb(), payload.id, { name: payload.name })
+    wrap((payload: { id: number; name: string; stage?: Parameters<typeof updateGradeStage>[2] }) =>
+      updateGrade(getDb(), payload.id, { name: payload.name, stage: payload.stage })
+    )
+  );
+  ipcMain.handle(
+    'grades:update-stage',
+    wrap((payload: { id: number; stage: Parameters<typeof updateGradeStage>[2] }) =>
+      updateGradeStage(getDb(), payload.id, payload.stage)
     )
   );
   ipcMain.handle(
@@ -325,6 +342,62 @@ function registerIpcHandlers() {
     wrap(async (payload: Parameters<typeof generateMonthlyRegisterExcel>[1]) => {
       const { buffer, filename } = await generateMonthlyRegisterExcel(getDb(), payload);
       return { base64: buffer.toString('base64'), filename };
+    })
+  );
+
+  ipcMain.handle(
+    'legal:list',
+    wrap((payload?: { academic_year_id?: number }) =>
+      listAllStageRegulations(getDb(), payload?.academic_year_id)
+    )
+  );
+  ipcMain.handle(
+    'legal:update',
+    wrap(
+      (payload: {
+        stage: string;
+        payload: Parameters<typeof updateStageRegulation>[2];
+      }) => updateStageRegulation(getDb(), payload.stage, payload.payload)
+    )
+  );
+  ipcMain.handle(
+    'legal:versions',
+    wrap((payload?: { stage?: 'primary' | 'intermediate' | 'preparatory' }) =>
+      listRegulationVersions(getDb(), payload?.stage)
+    )
+  );
+
+  ipcMain.handle(
+    'reports:center',
+    wrap((payload: Parameters<typeof getReportsCenterData>[1]) =>
+      getReportsCenterData(getDb(), payload)
+    )
+  );
+  ipcMain.handle(
+    'reports:export-excel',
+    wrap(async (payload: Parameters<typeof generateReportsExcel>[1]) => {
+      const { buffer, filename } = await generateReportsExcel(getDb(), payload);
+      return { base64: buffer.toString('base64'), filename };
+    })
+  );
+  ipcMain.handle(
+    'reports:create-procedure',
+    wrap((payload: Parameters<typeof createStudentLegalProcedure>[1]) =>
+      createStudentLegalProcedure(getDb(), payload)
+    )
+  );
+  ipcMain.handle(
+    'reports:update-procedure',
+    wrap(
+      (payload: { id: number } & Parameters<typeof updateStudentLegalProcedure>[2]) =>
+        updateStudentLegalProcedure(getDb(), payload.id, payload)
+    )
+  );
+  ipcMain.handle(
+    'reports:delete-procedure',
+    wrap((payload: { id: number }) => {
+      deleteStudentLegalProcedure(getDb(), payload.id);
+      return { deleted: true };
     })
   );
 }

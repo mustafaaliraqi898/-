@@ -11,8 +11,8 @@ import { GradesView } from './components/grades/GradesView';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { MonthlyRegisterView } from './components/monthly/MonthlyRegisterView';
-import { UpcomingSectionView } from './components/placeholders/UpcomingSectionView';
-import { SettingsView } from './components/settings/SettingsView';
+import { ReportsCenterView } from './components/reports/ReportsCenterView';
+import { SettingsView, type SettingsTabId } from './components/settings/SettingsView';
 import { StudentsView } from './components/students/StudentsView';
 import { schoolService } from './services/schoolService';
 import type {
@@ -29,6 +29,7 @@ const THEME_STORAGE_KEY = 'iraqi_school_absence_theme';
 
 export default function App() {
   const [activeSection, setActiveSection] = useState<NavSectionId>('dashboard');
+  const [settingsTab, setSettingsTab] = useState<SettingsTabId>('general');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -273,13 +274,31 @@ export default function App() {
           )}
 
           {activeSection === 'reports' && (
-            <UpcomingSectionView section="reports" onNavigate={setActiveSection} />
+            <ReportsCenterView
+              grades={grades}
+              academicYears={academicYears}
+              selectedYearId={selectedYearId}
+              onSelectYear={(yearId) => {
+                setSelectedYearId(yearId);
+                setFilterGradeId(null);
+                setFilterSectionId(null);
+              }}
+              onRefreshCore={refreshAll}
+              onOpenLegalSettings={() => {
+                setSettingsTab('legal');
+                setActiveSection('settings');
+              }}
+              onNotify={notify}
+            />
           )}
 
           {activeSection === 'settings' && (
             <SettingsView
               settings={settings}
               academicYears={academicYears}
+              grades={grades}
+              selectedYearId={selectedYearId}
+              initialTab={settingsTab}
               onRefresh={refreshAll}
               onNotify={notify}
             />

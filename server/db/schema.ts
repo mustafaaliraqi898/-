@@ -16,12 +16,14 @@ CREATE TABLE IF NOT EXISTS school_settings (
   daily_permission_counts_as_absence INTEGER NOT NULL DEFAULT 0 CHECK (daily_permission_counts_as_absence IN (0, 1)),
   lesson_permission_counts_as_absence INTEGER NOT NULL DEFAULT 0 CHECK (lesson_permission_counts_as_absence IN (0, 1)),
   weekly_holiday_reason TEXT NOT NULL DEFAULT 'عطلة أسبوعية رسمية',
+  school_logo_data TEXT,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS grades (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
+  stage TEXT CHECK (stage IN ('primary', 'intermediate', 'preparatory')),
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -159,6 +161,96 @@ CREATE TABLE IF NOT EXISTS monthly_student_notes (
   UNIQUE(academic_year_id, student_id, year, month)
 );
 
+CREATE TABLE IF NOT EXISTS legal_stage_regulations (
+  stage TEXT PRIMARY KEY CHECK (stage IN ('primary', 'intermediate', 'preparatory')),
+  stage_name TEXT NOT NULL,
+  effective_absence_limit INTEGER NOT NULL CHECK (effective_absence_limit >= 1),
+  absence_calculation_method TEXT NOT NULL,
+  excused_absence_mode TEXT NOT NULL DEFAULT 'include_all' CHECK (excused_absence_mode IN ('include_all', 'exclude_all', 'exclude_with_approved_rule')),
+  unexcused_absence_handling TEXT NOT NULL,
+  dispersed_lessons_rule TEXT NOT NULL,
+  lesson_conversion_rule TEXT NOT NULL,
+  preliminary_warning_days INTEGER NOT NULL CHECK (preliminary_warning_days >= 1),
+  first_warning_days INTEGER NOT NULL CHECK (first_warning_days >= 1),
+  final_warning_days INTEGER NOT NULL CHECK (final_warning_days >= 1),
+  final_effective_limit_days INTEGER NOT NULL CHECK (final_effective_limit_days >= 1),
+  thresholds_are_provisional INTEGER NOT NULL DEFAULT 1 CHECK (thresholds_are_provisional IN (0, 1)),
+  guardian_notify_frequency TEXT NOT NULL CHECK (guardian_notify_frequency IN ('weekly', 'biweekly', 'monthly', 'upon_threshold')),
+  guardian_summons_frequency TEXT NOT NULL CHECK (guardian_summons_frequency IN ('weekly', 'biweekly', 'monthly', 'upon_threshold')),
+  guardian_notify_notes TEXT,
+  attendance_score_deduction_enabled INTEGER NOT NULL DEFAULT 0 CHECK (attendance_score_deduction_enabled IN (0, 1)),
+  attendance_score_deduction_per_unexcused_day REAL NOT NULL DEFAULT 0 CHECK (attendance_score_deduction_per_unexcused_day >= 0),
+  attendance_score_article TEXT,
+  conduct_failure_enabled INTEGER NOT NULL DEFAULT 0 CHECK (conduct_failure_enabled IN (0, 1)),
+  conduct_failure_threshold INTEGER NOT NULL DEFAULT 51 CHECK (conduct_failure_threshold >= 1),
+  conduct_failure_article TEXT,
+  truancy_handling_enabled INTEGER NOT NULL DEFAULT 1 CHECK (truancy_handling_enabled IN (0, 1)),
+  truancy_handling_notes TEXT,
+  truancy_article TEXT,
+  dispersed_lessons_counting_enabled INTEGER NOT NULL DEFAULT 1 CHECK (dispersed_lessons_counting_enabled IN (0, 1)),
+  dispersed_lessons_article TEXT,
+  warnings_article TEXT,
+  decision_name TEXT,
+  decision_number TEXT,
+  decision_issue_date TEXT,
+  effective_from_date TEXT,
+  legal_notes TEXT,
+  is_legally_approved INTEGER NOT NULL DEFAULT 0 CHECK (is_legally_approved IN (0, 1)),
+  official_letter_approved INTEGER NOT NULL DEFAULT 0 CHECK (official_letter_approved IN (0, 1)),
+  warning_letter_template TEXT NOT NULL,
+  summons_letter_template TEXT NOT NULL,
+  current_version INTEGER NOT NULL DEFAULT 1 CHECK (current_version >= 1),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS legal_regulation_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  stage TEXT NOT NULL CHECK (stage IN ('primary', 'intermediate', 'preparatory')),
+  version_number INTEGER NOT NULL CHECK (version_number >= 1),
+  academic_year_id INTEGER REFERENCES academic_years(id) ON DELETE SET NULL,
+  effective_from_date TEXT NOT NULL,
+  decision_name TEXT,
+  decision_number TEXT,
+  decision_issue_date TEXT,
+  is_legally_approved INTEGER NOT NULL DEFAULT 0 CHECK (is_legally_approved IN (0, 1)),
+  change_summary TEXT,
+  snapshot_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(stage, version_number)
+);
+
+CREATE TABLE IF NOT EXISTS legal_year_regulation_bindings (
+  academic_year_id INTEGER NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
+  stage TEXT NOT NULL CHECK (stage IN ('primary', 'intermediate', 'preparatory')),
+  regulation_version_id INTEGER NOT NULL REFERENCES legal_regulation_versions(id) ON DELETE RESTRICT,
+  is_locked INTEGER NOT NULL DEFAULT 0 CHECK (is_locked IN (0, 1)),
+  bound_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (academic_year_id, stage)
+);
+
+CREATE TABLE IF NOT EXISTS student_legal_procedures (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE RESTRICT,
+  academic_year_id INTEGER NOT NULL REFERENCES academic_years(id) ON DELETE RESTRICT,
+  grade_id INTEGER NOT NULL REFERENCES grades(id) ON DELETE RESTRICT,
+  section_id INTEGER NOT NULL REFERENCES sections(id) ON DELETE RESTRICT,
+  stage TEXT NOT NULL CHECK (stage IN ('primary', 'intermediate', 'preparatory')),
+  regulation_version_id INTEGER REFERENCES legal_regulation_versions(id) ON DELETE SET NULL,
+  procedure_type TEXT NOT NULL CHECK (procedure_type IN ('preliminary_warning', 'first_warning', 'final_warning', 'effective_limit_notice', 'guardian_notification', 'guardian_summons')),
+  procedure_date TEXT NOT NULL,
+  absence_days_at_action INTEGER NOT NULL DEFAULT 0,
+  unexcused_days_at_action INTEGER NOT NULL DEFAULT 0,
+  threshold_at_action INTEGER NOT NULL DEFAULT 0,
+  delivery_method TEXT,
+  summons_result TEXT,
+  recorded_by TEXT,
+  notes TEXT,
+  override_reason TEXT,
+  is_official_legal_issue INTEGER NOT NULL DEFAULT 0 CHECK (is_official_legal_issue IN (0, 1)),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_sections_grade_id ON sections(grade_id);
 CREATE INDEX IF NOT EXISTS idx_students_full_name ON students(full_name);
 CREATE INDEX IF NOT EXISTS idx_students_registry_number ON students(registry_number);
@@ -173,4 +265,7 @@ CREATE INDEX IF NOT EXISTS idx_converted_days_student_year ON lesson_converted_d
 CREATE INDEX IF NOT EXISTS idx_holidays_date_range ON holidays(start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_holidays_year ON holidays(academic_year_id, start_date);
 CREATE INDEX IF NOT EXISTS idx_monthly_notes_lookup ON monthly_student_notes(academic_year_id, year, month, student_id);
+CREATE INDEX IF NOT EXISTS idx_legal_versions_stage ON legal_regulation_versions(stage, version_number DESC);
+CREATE INDEX IF NOT EXISTS idx_legal_procedures_student_year ON student_legal_procedures(student_id, academic_year_id, procedure_type);
+CREATE INDEX IF NOT EXISTS idx_legal_procedures_year_stage_date ON student_legal_procedures(academic_year_id, stage, procedure_date DESC);
 `;

@@ -1,6 +1,6 @@
 import type { AcademicYear, SchoolSettings } from '../../src/types/school';
 import type { SqliteDb } from '../db/connection';
-import { ServiceError, normalizeWhitespace } from '../utils/validation';
+import { ServiceError, normalizeNullableString, normalizeWhitespace } from '../utils/validation';
 
 export function getSchoolSettings(db: SqliteDb): SchoolSettings {
   const row = db
@@ -8,7 +8,7 @@ export function getSchoolSettings(db: SqliteDb): SchoolSettings {
       `SELECT s.id, s.school_name, s.directorate_name, s.academic_year_id,
               s.lessons_per_absence_day, s.daily_lessons_count,
               s.daily_permission_counts_as_absence, s.lesson_permission_counts_as_absence,
-              s.updated_at,
+              s.school_logo_data, s.updated_at,
               ay.name as academic_year_name
        FROM school_settings s
        LEFT JOIN academic_years ay ON ay.id = s.academic_year_id
@@ -31,6 +31,7 @@ export function updateSchoolSettings(
     daily_lessons_count?: number;
     daily_permission_counts_as_absence?: number | boolean;
     lesson_permission_counts_as_absence?: number | boolean;
+    school_logo_data?: string | null;
   }
 ): SchoolSettings {
   const schoolName = normalizeWhitespace(input.school_name);
@@ -48,6 +49,7 @@ export function updateSchoolSettings(
   let dailyLessonsCount = current.daily_lessons_count;
   let dailyPermCounts = current.daily_permission_counts_as_absence;
   let lessonPermCounts = current.lesson_permission_counts_as_absence;
+  let schoolLogoData = current.school_logo_data ?? null;
 
   if (input.lessons_per_absence_day !== undefined) {
     const parsed = Number(input.lessons_per_absence_day);
@@ -83,8 +85,14 @@ export function updateSchoolSettings(
     lessonPermCounts = raw === 1 || raw === true ? 1 : 0;
   }
 
-  // Note: Changing lessons_per_absence_day or leave/permission rules applies to new/edited
-  // records only and never retroactively recalculates historical records.
+  if (input.school_logo_data !== undefined) {
+    const normalizedLogo = normalizeNullableString(input.school_logo_data);
+    if (normalizedLogo && normalizedLogo.length > 2_500_000) {
+      throw new ServiceError('حجم شعار المدرسة كبير جداً. يُرجى استخدام صورة أصغر من 2 ميغابايت.');
+    }
+    schoolLogoData = normalizedLogo;
+  }
+
   db.prepare(
     `UPDATE school_settings
      SET school_name = ?,
@@ -93,6 +101,7 @@ export function updateSchoolSettings(
          daily_lessons_count = ?,
          daily_permission_counts_as_absence = ?,
          lesson_permission_counts_as_absence = ?,
+         school_logo_data = ?,
          updated_at = datetime('now')
      WHERE id = 1`
   ).run(
@@ -101,7 +110,8 @@ export function updateSchoolSettings(
     lessonsPerDay,
     dailyLessonsCount,
     dailyPermCounts,
-    lessonPermCounts
+    lessonPermCounts,
+    schoolLogoData
   );
 
   return getSchoolSettings(db);
@@ -162,6 +172,26 @@ export function createAcademicYear(
       db.prepare(
         `UPDATE school_settings SET academic_year_id = ?, updated_at = datetime('now') WHERE id = 1`
       ).run(newId);
+      db.prepare(
+        'UPDATE legal_year_regulation_bindings SET is_locked = 1 WHERE academic_year_id != ?'
+      ).run(newId);
+    }
+
+    // Bind new academic year to latest legal regulation versions per stage
+    const stages = ['primary', 'intermediate', 'preparatory'] as const;
+    for (const stage of stages) {
+      const latestVer = db
+        .prepare(
+          'SELECT id FROM legal_regulation_versions WHERE stage = ? ORDER BY version_number DESC LIMIT 1'
+        )
+        .get(stage) as { id: number } | undefined;
+      if (latestVer) {
+        db.prepare(
+          `INSERT OR IGNORE INTO legal_year_regulation_bindings (
+             academic_year_id, stage, regulation_version_id, is_locked
+           ) VALUES (?, ?, ?, 0)`
+        ).run(newId, stage, latestVer.id);
+      }
     }
 
     return db

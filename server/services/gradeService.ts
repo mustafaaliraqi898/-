@@ -1,7 +1,24 @@
-import type { GradeWithSections, SectionItem } from '../../src/types/school';
-import type { SqliteDb } from '../db/connection';
+import type { EducationalStage, GradeWithSections, SectionItem } from '../../src/types/school';
+import { inferStageFromGradeName, type SqliteDb } from '../db/connection';
 import { ServiceError, normalizeWhitespace } from '../utils/validation';
 import { getActiveAcademicYear } from './settingsService';
+
+const VALID_STAGES = new Set<EducationalStage>(['primary', 'intermediate', 'preparatory']);
+
+function normalizeStageInput(
+  rawStage: unknown,
+  fallbackName?: string
+): EducationalStage | null {
+  if (rawStage === null || rawStage === '') return null;
+  if (rawStage === undefined) {
+    return fallbackName ? inferStageFromGradeName(fallbackName) : null;
+  }
+  const s = String(rawStage).trim() as EducationalStage;
+  if (!VALID_STAGES.has(s)) {
+    throw new ServiceError('المرحلة الدراسية المحددة غير صالحة.', 400);
+  }
+  return s;
+}
 
 export function listGradesWithSections(
   db: SqliteDb,
@@ -11,7 +28,7 @@ export function listGradesWithSections(
 
   const grades = db
     .prepare(
-      `SELECT g.id, g.name, g.sort_order, g.created_at, g.updated_at,
+      `SELECT g.id, g.name, g.stage, g.sort_order, g.created_at, g.updated_at,
               COUNT(DISTINCT CASE WHEN se.is_current = 1 AND se.academic_year_id = ? AND st.status = 'active' THEN se.student_id END) as student_count
        FROM grades g
        LEFT JOIN student_enrollments se ON se.grade_id = g.id
@@ -22,6 +39,7 @@ export function listGradesWithSections(
     .all(yearId) as Array<{
     id: number;
     name: string;
+    stage: EducationalStage | null;
     sort_order: number;
     student_count: number;
     created_at: string;
@@ -56,12 +74,14 @@ export function listGradesWithSections(
 
 export function createGrade(
   db: SqliteDb,
-  input: { name: string; initial_sections?: string[] }
+  input: { name: string; stage?: EducationalStage | null; initial_sections?: string[] }
 ): GradeWithSections {
   const name = normalizeWhitespace(input.name);
   if (!name) {
     throw new ServiceError('اسم الصف الدراسي حقل إجباري.');
   }
+
+  const stage = normalizeStageInput(input.stage, name);
 
   const duplicate = db.prepare('SELECT id FROM grades WHERE name = ?').get(name) as
     | { id: number }
@@ -81,8 +101,8 @@ export function createGrade(
 
   const gradeId = db.transaction(() => {
     const info = db
-      .prepare('INSERT INTO grades (name, sort_order) VALUES (?, ?)')
-      .run(name, maxOrder.max_order + 1);
+      .prepare('INSERT INTO grades (name, stage, sort_order) VALUES (?, ?, ?)')
+      .run(name, stage, maxOrder.max_order + 1);
     const createdGradeId = Number(info.lastInsertRowid);
 
     const insertSection = db.prepare('INSERT INTO sections (grade_id, name) VALUES (?, ?)');
@@ -103,15 +123,15 @@ export function createGrade(
 export function updateGrade(
   db: SqliteDb,
   gradeId: number,
-  input: { name: string }
+  input: { name: string; stage?: EducationalStage | null }
 ): GradeWithSections {
   const name = normalizeWhitespace(input.name);
   if (!name) {
     throw new ServiceError('اسم الصف الدراسي حقل إجباري.');
   }
 
-  const existing = db.prepare('SELECT id FROM grades WHERE id = ?').get(gradeId) as
-    | { id: number }
+  const existing = db.prepare('SELECT id, stage FROM grades WHERE id = ?').get(gradeId) as
+    | { id: number; stage: EducationalStage | null }
     | undefined;
   if (!existing) {
     throw new ServiceError('الصف الدراسي غير موجود.', 404, 'GRADE_NOT_FOUND');
@@ -124,14 +144,43 @@ export function updateGrade(
     throw new ServiceError(`يوجد صف آخر بنفس الاسم "${name}".`, 409, 'DUPLICATE_GRADE');
   }
 
-  db.prepare(`UPDATE grades SET name = ?, updated_at = datetime('now') WHERE id = ?`).run(
+  const nextStage =
+    input.stage !== undefined
+      ? normalizeStageInput(input.stage)
+      : existing.stage ?? inferStageFromGradeName(name);
+
+  db.prepare(`UPDATE grades SET name = ?, stage = ?, updated_at = datetime('now') WHERE id = ?`).run(
     name,
+    nextStage,
     gradeId
   );
 
   const updated = listGradesWithSections(db).find((g) => g.id === gradeId);
   if (!updated) {
     throw new ServiceError('تعذر العثور على الصف بعد التعديل.', 404);
+  }
+  return updated;
+}
+
+export function updateGradeStage(
+  db: SqliteDb,
+  gradeId: number,
+  stage: EducationalStage | null
+): GradeWithSections {
+  const existing = db.prepare('SELECT id, name FROM grades WHERE id = ?').get(gradeId) as
+    | { id: number; name: string }
+    | undefined;
+  if (!existing) {
+    throw new ServiceError('الصف الدراسي غير موجود.', 404, 'GRADE_NOT_FOUND');
+  }
+  const normalizedStage = normalizeStageInput(stage);
+  db.prepare(`UPDATE grades SET stage = ?, updated_at = datetime('now') WHERE id = ?`).run(
+    normalizedStage,
+    gradeId
+  );
+  const updated = listGradesWithSections(db).find((g) => g.id === gradeId);
+  if (!updated) {
+    throw new ServiceError('تعذر العثور على الصف بعد تحديث المرحلة.', 404);
   }
   return updated;
 }
