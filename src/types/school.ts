@@ -1004,3 +1004,47 @@ export interface AbsenceReportsQuery {
   section_id?: number;
   search?: string;
 }
+
+// Dynamic Absence Stages & Official Letters Types
+export interface AbsenceStage {
+  id: number;
+  academic_year_id: number;
+  name: string;
+  days_threshold: number;
+  letter_template: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IssuedOfficialLetter {
+  id: number;
+  academic_year_id: number;
+  stage_id: number | null;
+  stage_name: string;
+  days_threshold: number;
+  document_number: string;
+  letter_date: string;
+  rendered_content: string;
+  students_json: string;
+  created_at: string;
+}
+
+export interface DynamicStageStudentRow extends AbsenceReportStudentRow {
+  stage_id: number | null;
+  stage_name: string | null;
+}
+
+export interface DynamicStageReportResponse {
+  academic_year: AcademicYear;
+  school_settings: SchoolSettings;
+  stages: AbsenceStage[];
+  current_stage: AbsenceStage | null;
+  summary: {
+    total_active_students: number;
+    within_limit_count: number;
+    stage_counts: Record<number, number>;
+  };
+  rows: DynamicStageStudentRow[];
+}
+

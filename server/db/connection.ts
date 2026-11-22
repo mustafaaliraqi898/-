@@ -433,6 +433,9 @@ function runSafeMigrations(db: SqliteDb): void {
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_absence_lesson_details_student_date ON absence_lesson_details(student_id, absence_date);'
   );
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_converted_days_year_student ON lesson_converted_days(academic_year_id, student_id);'
+  );
 }
 
 export function initializeDatabase(db: SqliteDb): void {

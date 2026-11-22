@@ -52,6 +52,53 @@ function resolveThresholdForReport(
   }
 }
 
+function matchesReportType(
+  countedDays: number,
+  reportType: AbsenceReportTypeId,
+  thresholds: AbsenceThresholdsSettings
+): boolean {
+  switch (reportType) {
+    case 'warning':
+      return (
+        countedDays >= thresholds.warning_days &&
+        countedDays < thresholds.preliminary_warning_days
+      );
+    case 'preliminary_warning':
+      return (
+        countedDays >= thresholds.preliminary_warning_days &&
+        countedDays < thresholds.final_warning_days
+      );
+    case 'final_warning':
+      return countedDays >= thresholds.final_warning_days;
+    case 'exceeded_limit':
+      return countedDays >= thresholds.effective_absence_limit;
+  }
+}
+
+function formatReportThresholdRange(
+  reportType: AbsenceReportTypeId,
+  thresholds: AbsenceThresholdsSettings
+): string {
+  switch (reportType) {
+    case 'warning': {
+      const upper = thresholds.preliminary_warning_days - 1;
+      return upper > thresholds.warning_days
+        ? `من ${thresholds.warning_days} إلى ${upper} يوم`
+        : `${thresholds.warning_days} يوم`;
+    }
+    case 'preliminary_warning': {
+      const upper = thresholds.final_warning_days - 1;
+      return upper > thresholds.preliminary_warning_days
+        ? `من ${thresholds.preliminary_warning_days} إلى ${upper} يوم`
+        : `${thresholds.preliminary_warning_days} يوم`;
+    }
+    case 'final_warning':
+      return `${thresholds.final_warning_days} يوم فأكثر`;
+    case 'exceeded_limit':
+      return `${thresholds.effective_absence_limit} يوم فأكثر`;
+  }
+}
+
 function classifyStudentAlert(
   countedDays: number,
   thresholds: AbsenceThresholdsSettings
@@ -86,6 +133,8 @@ function classifyStudentAlert(
   };
 }
 
+const ARABIC_COLLATOR = new Intl.Collator('ar');
+
 export function getSimplifiedAbsenceReports(
   db: SqliteDb,
   query: AbsenceReportsQuery
@@ -105,7 +154,9 @@ export function getSimplifiedAbsenceReports(
   }
 
   const schoolSettings = getSchoolSettings(db);
-  const thresholds = getSimplifiedAbsenceThresholds(db, academicYear.id);
+  const resolvedActiveYearId =
+    schoolSettings.academic_year_id ?? (academicYear.is_active === 1 ? academicYear.id : null);
+  const thresholds = getSimplifiedAbsenceThresholds(db, academicYear.id, resolvedActiveYearId);
   const reportThresholdDays = resolveThresholdForReport(query.report_type, thresholds);
 
   const enrollments = db
@@ -117,8 +168,7 @@ export function getSimplifiedAbsenceReports(
        JOIN students st ON st.id = se.student_id
        JOIN grades g ON g.id = se.grade_id
        JOIN sections sec ON sec.id = se.section_id
-       WHERE se.academic_year_id = ? AND se.is_current = 1 AND st.status = 'active'
-       ORDER BY g.sort_order ASC, sec.name ASC, st.full_name ASC`
+       WHERE se.academic_year_id = ? AND se.is_current = 1 AND st.status = 'active'`
     )
     .all(academicYear.id) as Array<{
     student_id: number;
@@ -134,16 +184,13 @@ export function getSimplifiedAbsenceReports(
   // Direct single-source-of-truth read from absenceService.ts
   const totalsMap = getAcademicYearAbsenceTotalsMap(db, academicYear.id);
 
-  const summary: AbsenceReportsSummary = {
-    total_active_students: enrollments.length,
-    within_limit_count: 0,
-    warning_count: 0,
-    preliminary_warning_count: 0,
-    final_warning_count: 0,
-    exceeded_limit_count: 0,
-  };
+  const seenStudentIds = new Set<number>();
+  const allRows: AbsenceReportStudentRow[] = [];
 
-  const allRows: AbsenceReportStudentRow[] = enrollments.map((st) => {
+  for (const st of enrollments) {
+    if (seenStudentIds.has(st.student_id)) continue;
+    seenStudentIds.add(st.student_id);
+
     const totals = totalsMap.get(st.student_id);
     const directFullDays = totals?.direct_full_days ?? 0;
     const countedDailyPermissionDays = totals?.counted_daily_permission_days ?? 0;
@@ -151,25 +198,9 @@ export function getSimplifiedAbsenceReports(
     const countedAbsenceDays = totals?.total_full_days ?? 0;
     const pendingLessons = totals?.pending_lessons ?? 0;
 
-    if (countedAbsenceDays < thresholds.warning_days) {
-      summary.within_limit_count += 1;
-    }
-    if (countedAbsenceDays >= thresholds.warning_days) {
-      summary.warning_count += 1;
-    }
-    if (countedAbsenceDays >= thresholds.preliminary_warning_days) {
-      summary.preliminary_warning_count += 1;
-    }
-    if (countedAbsenceDays >= thresholds.final_warning_days) {
-      summary.final_warning_count += 1;
-    }
-    if (countedAbsenceDays >= thresholds.effective_absence_limit) {
-      summary.exceeded_limit_count += 1;
-    }
-
     const { alert_level, alert_label } = classifyStudentAlert(countedAbsenceDays, thresholds);
 
-    return {
+    allRows.push({
       student_id: st.student_id,
       student_uid: st.student_uid,
       registry_number: st.registry_number,
@@ -195,27 +226,59 @@ export function getSimplifiedAbsenceReports(
         0,
         countedAbsenceDays - thresholds.effective_absence_limit
       ),
-    };
-  });
+    });
+  }
 
   const searchTerm = (query.search ?? '').trim().toLowerCase();
 
-  const filteredRows = allRows.filter((row) => {
+  const scopedRows = allRows.filter((row) => {
     if (query.grade_id && row.grade_id !== query.grade_id) return false;
     if (query.section_id && row.section_id !== query.section_id) return false;
     if (searchTerm) {
       const hay = `${row.full_name} ${row.registry_number ?? ''} ${row.student_uid}`.toLowerCase();
       if (!hay.includes(searchTerm)) return false;
     }
-
-    return row.counted_absence_days >= reportThresholdDays;
+    return true;
   });
+
+  const summary: AbsenceReportsSummary = {
+    total_active_students: scopedRows.length,
+    within_limit_count: 0,
+    warning_count: 0,
+    preliminary_warning_count: 0,
+    final_warning_count: 0,
+    exceeded_limit_count: 0,
+  };
+
+  const filteredRows: AbsenceReportStudentRow[] = [];
+
+  for (const row of scopedRows) {
+    const days = row.counted_absence_days;
+
+    if (days < thresholds.warning_days) {
+      summary.within_limit_count += 1;
+    } else if (days < thresholds.preliminary_warning_days) {
+      summary.warning_count += 1;
+    } else if (days < thresholds.final_warning_days) {
+      summary.preliminary_warning_count += 1;
+    } else {
+      summary.final_warning_count += 1;
+    }
+
+    if (days >= thresholds.effective_absence_limit) {
+      summary.exceeded_limit_count += 1;
+    }
+
+    if (matchesReportType(days, query.report_type, thresholds)) {
+      filteredRows.push(row);
+    }
+  }
 
   filteredRows.sort((a, b) => {
     if (b.counted_absence_days !== a.counted_absence_days) {
       return b.counted_absence_days - a.counted_absence_days;
     }
-    return a.full_name.localeCompare(b.full_name, 'ar');
+    return ARABIC_COLLATOR.compare(a.full_name, b.full_name);
   });
 
   return {
@@ -238,7 +301,10 @@ export async function generateSimplifiedReportsExcel(
   workbook.created = new Date();
 
   const sheetTitle = REPORT_TYPE_TITLES[reportData.report_type];
-  const thresholdDays = resolveThresholdForReport(reportData.report_type, reportData.thresholds);
+  const thresholdRangeLabel = formatReportThresholdRange(
+    reportData.report_type,
+    reportData.thresholds
+  );
   const sheet = workbook.addWorksheet('التقرير', {
     views: [{ rightToLeft: true }],
   });
@@ -251,7 +317,7 @@ export async function generateSimplifiedReportsExcel(
 
   sheet.mergeCells('A2:G2');
   const subCell = sheet.getCell('A2');
-  subCell.value = `${sheetTitle} (العتبة المعتمدة: ${thresholdDays} يوم فأكثر) — العام الدراسي ${reportData.academic_year.name}`;
+  subCell.value = `${sheetTitle} (النطاق المعتمد: ${thresholdRangeLabel}) — العام الدراسي ${reportData.academic_year.name}`;
   subCell.font = { bold: true, size: 12 };
   subCell.alignment = { horizontal: 'center', vertical: 'middle' };
 

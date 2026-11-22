@@ -8,6 +8,15 @@ import {
   getStudentAbsenceDetails,
   saveSectionAttendance,
 } from '../services/absenceService';
+import {
+  listAbsenceStages,
+  createAbsenceStage,
+  updateAbsenceStage,
+  deleteAbsenceStage,
+  getDynamicStageReport,
+  issueOfficialLetter,
+  listIssuedLetters,
+} from '../services/absenceStagesService';
 import { getDashboardStats } from '../services/dashboardService';
 import {
   commitExcelStudents,
@@ -51,6 +60,7 @@ import {
 } from '../services/reportsCenterService';
 import {
   createAcademicYear,
+  getActiveAcademicYear,
   getSchoolSettings,
   listAcademicYears,
   setActiveAcademicYear,
@@ -656,6 +666,101 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
       academic_year_id: parseOptionalInt(req.body?.academic_year_id),
     });
     res.json(updated);
+  });
+
+  // Dynamic Absence Stages & Official Letters API
+  router.get('/absence-stages', (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const yearId = parseOptionalInt(req.query.academic_year_id) ?? getActiveAcademicYear(db).id;
+      res.json(listAbsenceStages(db, yearId));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/absence-stages', (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const stage = createAbsenceStage(db, {
+        academic_year_id: parseOptionalInt(req.body?.academic_year_id),
+        name: String(req.body?.name ?? ''),
+        days_threshold: Number(req.body?.days_threshold ?? 0),
+        letter_template: String(req.body?.letter_template ?? ''),
+      });
+      res.json(stage);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.put('/absence-stages/:id', (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const stageId = Number(req.params.id);
+      const stage = updateAbsenceStage(db, stageId, {
+        name: String(req.body?.name ?? ''),
+        days_threshold: Number(req.body?.days_threshold ?? 0),
+        letter_template: String(req.body?.letter_template ?? ''),
+      });
+      res.json(stage);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.delete('/absence-stages/:id', (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const stageId = Number(req.params.id);
+      res.json(deleteAbsenceStage(db, stageId));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/absence-stages/report', (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const report = getDynamicStageReport(db, {
+        academic_year_id: parseOptionalInt(req.query.academic_year_id),
+        stage_id: parseOptionalInt(req.query.stage_id),
+        grade_id: parseOptionalInt(req.query.grade_id),
+        section_id: parseOptionalInt(req.query.section_id),
+        search: typeof req.query.search === 'string' ? req.query.search : undefined,
+      });
+      res.json(report);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/absence-stages/issue-letter', (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const letter = issueOfficialLetter(db, {
+        academic_year_id: Number(req.body?.academic_year_id),
+        stage_id: Number(req.body?.stage_id),
+        document_number: String(req.body?.document_number ?? ''),
+        letter_date: String(req.body?.letter_date ?? ''),
+        grade_id: parseOptionalInt(req.body?.grade_id),
+        section_id: parseOptionalInt(req.body?.section_id),
+        search: typeof req.body?.search === 'string' ? req.body?.search : undefined,
+      });
+      res.json(letter);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/absence-stages/issued-letters', (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const academicYearId = Number(req.query.academic_year_id);
+      res.json(listIssuedLetters(db, academicYearId));
+    } catch (err) {
+      next(err);
+    }
   });
 
   // Simplified 4 Absence Warning & Limit Reports (Single Source of Truth from Absences)

@@ -1,335 +1,340 @@
-import { AlertTriangle, CheckCircle2, Lock, Save, Scale } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import React, { useEffect, useState } from 'react';
+import {
+  ShieldAlert,
+  Plus,
+  Trash2,
+  Edit2,
+  Save,
+  X,
+  CheckCircle2,
+  AlertTriangle,
+  FileText,
+  HelpCircle,
+  Layers,
+} from 'lucide-react';
 import { schoolService } from '../../services/schoolService';
-import type {
-  AbsenceThresholdsSettings,
-  AcademicYear,
-  GradeWithSections,
-} from '../../types/school';
+import type { AbsenceStage, AcademicYear } from '../../types/school';
 
 interface LegalRegulationsViewProps {
-  grades?: GradeWithSections[];
-  academicYears: AcademicYear[];
-  selectedYearId: number | null;
-  onRefresh: () => Promise<void>;
-  onNotify: (type: 'success' | 'error' | 'info', message: string) => void;
-}
-
-interface ThresholdFormState {
-  warning_days: string;
-  preliminary_warning_days: string;
-  final_warning_days: string;
-  effective_absence_limit: string;
+  activeAcademicYear?: AcademicYear | null;
+  academicYears?: AcademicYear[];
+  selectedYearId?: number | null;
+  grades?: any[];
+  onRefresh?: () => Promise<void>;
+  onNotify?: (type: 'error' | 'info' | 'success', message: string) => void;
+  isHistoricalReadOnly?: boolean;
 }
 
 export function LegalRegulationsView({
-  academicYears,
-  selectedYearId,
-  onRefresh,
-  onNotify,
+  activeAcademicYear,
+  isHistoricalReadOnly = false,
 }: LegalRegulationsViewProps) {
-  const [thresholds, setThresholds] = useState<AbsenceThresholdsSettings | null>(null);
-  const [form, setForm] = useState<ThresholdFormState>({
-    warning_days: '15',
-    preliminary_warning_days: '25',
-    final_warning_days: '35',
-    effective_absence_limit: '45',
-  });
+  const [stages, setStages] = useState<AbsenceStage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingStage, setEditingStage] = useState<AbsenceStage | null>(null);
+  const [formName, setFormName] = useState('');
+  const [formDays, setFormDays] = useState('3');
+  const [formTemplate, setFormTemplate] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const activeYear = useMemo(
-    () => academicYears.find((y) => y.is_active === 1) ?? null,
-    [academicYears]
-  );
-  const targetYearId = selectedYearId ?? activeYear?.id ?? undefined;
-  const viewingYear = useMemo(
-    () => academicYears.find((y) => y.id === targetYearId) ?? activeYear,
-    [academicYears, targetYearId, activeYear]
-  );
-
-  const isHistoricalReadOnly = Boolean(
-    activeYear && viewingYear && viewingYear.id !== activeYear.id
-  );
-
-  const loadThresholds = useCallback(async () => {
-    setLoading(true);
+  const loadStages = async () => {
     try {
-      const res = await schoolService.getAbsenceThresholds(targetYearId);
-      setThresholds(res);
-      setForm({
-        warning_days: String(res.warning_days),
-        preliminary_warning_days: String(res.preliminary_warning_days),
-        final_warning_days: String(res.final_warning_days),
-        effective_absence_limit: String(res.effective_absence_limit),
-      });
-    } catch (err) {
-      onNotify(
-        'error',
-        err instanceof Error ? err.message : 'تعذر تحميل إعدادات حدود الغياب والإنذارات.'
-      );
+      setLoading(true);
+      setError(null);
+      const data = await schoolService.listAbsenceStages(activeAcademicYear?.id);
+      setStages(data);
+    } catch (err: any) {
+      setError(err.message || 'تعذر جلب مراحل الغياب.');
     } finally {
       setLoading(false);
     }
-  }, [targetYearId, onNotify]);
+  };
 
   useEffect(() => {
-    void loadThresholds();
-  }, [loadThresholds]);
+    loadStages();
+  }, [activeAcademicYear?.id]);
 
-  const validationError = useMemo(() => {
-    const w = Number(form.warning_days);
-    const p = Number(form.preliminary_warning_days);
-    const f = Number(form.final_warning_days);
-    const e = Number(form.effective_absence_limit);
+  const handleOpenAdd = () => {
+    setEditingStage(null);
+    setFormName('');
+    setFormDays('3');
+    setFormTemplate(
+      `إلى ولي الأمر الكريم،\nنظراً لبلوغ الطالب/ة عتبة الغياب ({absence_days} يوم) ضمن مرحلة ({stage_name}) للعام الدراسي ({academic_year}) في مدرسة ({school_name})، نرجو مراجعة الإدارة.\nرقم الكتاب: {document_number}\nالتاريخ: {date}`
+    );
+    setModalOpen(true);
+  };
 
-    if (
-      !Number.isInteger(w) ||
-      !Number.isInteger(p) ||
-      !Number.isInteger(f) ||
-      !Number.isInteger(e) ||
-      w < 1 ||
-      p < 1 ||
-      f < 1 ||
-      e < 1 ||
-      w > 365 ||
-      p > 365 ||
-      f > 365 ||
-      e > 365
-    ) {
-      return 'يجب أن تكون جميع القيم أعداداً صحيحة موجبة بين 1 و 365 يوماً.';
-    }
+  const handleOpenEdit = (stage: AbsenceStage) => {
+    setEditingStage(stage);
+    setFormName(stage.name);
+    setFormDays(String(stage.days_threshold));
+    setFormTemplate(stage.letter_template);
+    setModalOpen(true);
+  };
 
-    if (!(w < p && p < f && f < e)) {
-      return 'تسلسل العتبات غير صحيح: يجب أن يكون (عتبة التحذير < عتبة الإنذار الأولي < عتبة الإنذار النهائي < حد الغياب المؤثر).';
-    }
-
-    return null;
-  }, [form]);
-
-  async function handleSubmit(e: FormEvent) {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isHistoricalReadOnly) return;
-
-    if (validationError) {
-      onNotify('error', validationError);
+    if (!activeAcademicYear) {
+      setError('يرجى تحديد السنة الدراسية النشطة أولاً.');
       return;
     }
-
-    setSaving(true);
+    const days = parseInt(formDays, 10);
+    if (!formName.trim() || isNaN(days) || days < 1) {
+      setError('يرجى إدخال اسم صحيح للمرحلة وعدد أيام غياب صالح (أكبر من صفر).');
+      return;
+    }
     try {
-      const updated = await schoolService.updateAbsenceThresholds({
-        warning_days: Number(form.warning_days),
-        preliminary_warning_days: Number(form.preliminary_warning_days),
-        final_warning_days: Number(form.final_warning_days),
-        effective_absence_limit: Number(form.effective_absence_limit),
-        academic_year_id: targetYearId,
-      });
-      setThresholds(updated);
-      setForm({
-        warning_days: String(updated.warning_days),
-        preliminary_warning_days: String(updated.preliminary_warning_days),
-        final_warning_days: String(updated.final_warning_days),
-        effective_absence_limit: String(updated.effective_absence_limit),
-      });
-      onNotify('success', 'تم حفظ حد الغياب المؤثر وعتبات التحذيرات والإنذارات بنجاح.');
-      await onRefresh();
-    } catch (err) {
-      onNotify(
-        'error',
-        err instanceof Error ? err.message : 'تعذر حفظ حدود الغياب والإنذارات.'
-      );
+      setSaving(true);
+      setError(null);
+      if (editingStage) {
+        await schoolService.updateAbsenceStage(editingStage.id, {
+          name: formName.trim(),
+          days_threshold: days,
+          letter_template: formTemplate,
+        });
+        setSuccessMessage('تم تحديث مرحلة الغياب وقالب الكتاب بنجاح.');
+      } else {
+        await schoolService.createAbsenceStage({
+          academic_year_id: activeAcademicYear.id,
+          name: formName.trim(),
+          days_threshold: days,
+          letter_template: formTemplate,
+        });
+        setSuccessMessage('تم إنشاء مرحلة الغياب الجديدة بنجاح.');
+      }
+      setModalOpen(false);
+      await loadStages();
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err: any) {
+      setError(err.message || 'تعذر حفظ مرحلة الغياب.');
     } finally {
       setSaving(false);
     }
-  }
+  };
 
-  if (loading && !thresholds) {
-    return (
-      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-sm text-slate-500 dark:text-slate-400">
-        جاري تحميل حدود الغياب والإنذارات...
-      </div>
-    );
-  }
+  const handleDelete = async (id: number, name: string) => {
+    if (!window.confirm(`هل أنت متأكد من حذف مرحلة الغياب "${name}"؟ سيتم إعادة تصنيف الطلاب تلقائياً وفقاً للمراحل المتبقية.`)) {
+      return;
+    }
+    try {
+      setError(null);
+      await schoolService.deleteAbsenceStage(id);
+      setSuccessMessage('تم حذف المرحلة وإعادة تصنيف الطلاب بنجاح.');
+      await loadStages();
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err: any) {
+      setError(err.message || 'تعذر حذف المرحلة.');
+    }
+  };
 
   return (
-    <div className="space-y-4">
-      {isHistoricalReadOnly && (
-        <div
-          role="status"
-          className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/60 p-4 flex items-start gap-3 text-xs text-slate-800 dark:text-slate-200 leading-relaxed"
-        >
-          <Lock className="w-4 h-4 text-slate-600 dark:text-slate-300 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <p className="font-bold">
-              عرض حدود الغياب للسنة الدراسية ({viewingYear?.name}) — للقراءة فقط
-            </p>
-            <p>
-              لتعديل حد الغياب المؤثر وعتبات التحذير والإنذارات، اختر السنة الدراسية الفعالة من
-              الشريط العلوي.
-            </p>
+    <div className="space-y-6 max-w-6xl mx-auto pb-12">
+      {/* Header Banner */}
+      <div className="rounded-2xl border border-teal-200 dark:border-teal-800/60 bg-gradient-to-br from-teal-50/80 via-white to-teal-50/30 dark:from-teal-950/30 dark:via-slate-900 dark:to-teal-950/10 p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="w-11 h-11 rounded-xl bg-teal-700 text-white flex items-center justify-center shrink-0 shadow-md">
+              <ShieldAlert className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-lg font-extrabold text-slate-900 dark:text-slate-100 font-display">
+                الضوابط القانونية للغياب والإنذارات (مراحل الغياب الديناميكية)
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                إدارة مراحل الغياب وعتبات الأيام وقوالب الكتب الرسمية للعام الدراسي ({activeAcademicYear?.name || 'الحالي'}).
+                يتم تصنيف الطلاب تلقائياً وغير تراكمياً وفقاً لأعلى مرحلة يبلغها الطالب.
+              </p>
+            </div>
           </div>
+          {!isHistoricalReadOnly && (
+            <button
+              type="button"
+              onClick={handleOpenAdd}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs sm:text-sm font-bold shadow-sm transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إضافة مرحلة غياب جديدة</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-4 flex items-center gap-3 text-xs sm:text-sm text-red-900 dark:text-red-200">
+          <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
-      <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
-        <div className="px-4 sm:px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5">
-            <Scale className="w-4 h-4 text-teal-700 dark:text-teal-400 shrink-0" />
-            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 font-display">
-              حد الغياب المؤثر وعتبات التحذيرات والإنذارات — المرحلة الإعدادية
+      {successMessage && (
+        <div className="rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 p-4 flex items-center gap-3 text-xs sm:text-sm text-emerald-900 dark:text-emerald-200">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <span>{successMessage}</span>
+        </div>
+      )}
+
+      {/* Stages List */}
+      <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Layers className="w-5 h-5 text-teal-700 dark:text-teal-400" />
+            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+              مراحل الغياب المعرفة ({stages.length})
             </h3>
           </div>
-          {viewingYear && (
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums">
-              السنة الدراسية: {viewingYear.name}
-            </span>
-          )}
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            مرتب تصاعدياً حسب عتبة الأيام
+          </span>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-5">
-          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-            حدد عدد أيام الغياب المحتسبة (كما تُحسب في قسم الغيابات) التي تُبنى عليها تقارير
-            التحذير والإنذار الأولي والإنذار النهائي وتجاوز حد الغياب المؤثر.
-          </p>
-
-          <fieldset disabled={isHistoricalReadOnly || saving} className="space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/40 dark:bg-amber-950/15 p-3.5">
-                <label
-                  htmlFor="threshold-warning-days"
-                  className="block text-xs font-bold text-slate-800 dark:text-slate-100 mb-1.5"
-                >
-                  عتبة التحذير (يوم) <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="threshold-warning-days"
-                  type="number"
-                  min={1}
-                  max={365}
-                  required
-                  value={form.warning_days}
-                  onChange={(e) => setForm({ ...form, warning_days: e.target.value })}
-                  className="w-full px-3 py-2 text-sm font-bold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-600/30"
-                />
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
-                  يظهر الطالب في تقرير عتبة التحذير عند بلوغ هذا العدد.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-orange-200 dark:border-orange-800/60 bg-orange-50/40 dark:bg-orange-950/15 p-3.5">
-                <label
-                  htmlFor="threshold-preliminary-days"
-                  className="block text-xs font-bold text-slate-800 dark:text-slate-100 mb-1.5"
-                >
-                  عتبة الإنذار الأولي (يوم) <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="threshold-preliminary-days"
-                  type="number"
-                  min={1}
-                  max={365}
-                  required
-                  value={form.preliminary_warning_days}
-                  onChange={(e) =>
-                    setForm({ ...form, preliminary_warning_days: e.target.value })
-                  }
-                  className="w-full px-3 py-2 text-sm font-bold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-600/30"
-                />
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
-                  يظهر الطالب في تقرير الإنذار الأولي عند بلوغ هذا العدد.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-rose-200 dark:border-rose-800/60 bg-rose-50/40 dark:bg-rose-950/15 p-3.5">
-                <label
-                  htmlFor="threshold-final-days"
-                  className="block text-xs font-bold text-slate-800 dark:text-slate-100 mb-1.5"
-                >
-                  عتبة الإنذار النهائي (يوم) <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="threshold-final-days"
-                  type="number"
-                  min={1}
-                  max={365}
-                  required
-                  value={form.final_warning_days}
-                  onChange={(e) => setForm({ ...form, final_warning_days: e.target.value })}
-                  className="w-full px-3 py-2 text-sm font-bold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-600/30"
-                />
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
-                  يظهر الطالب في تقرير الإنذار النهائي عند بلوغ هذا العدد.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-red-200 dark:border-red-800/60 bg-red-50/40 dark:bg-red-950/15 p-3.5">
-                <label
-                  htmlFor="threshold-effective-limit"
-                  className="block text-xs font-bold text-slate-800 dark:text-slate-100 mb-1.5"
-                >
-                  حد الغياب المؤثر (يوم) <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="threshold-effective-limit"
-                  type="number"
-                  min={1}
-                  max={365}
-                  required
-                  value={form.effective_absence_limit}
-                  onChange={(e) =>
-                    setForm({ ...form, effective_absence_limit: e.target.value })
-                  }
-                  className="w-full px-3 py-2 text-sm font-bold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-600/30"
-                />
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
-                  يظهر الطالب في تقرير المتجاوزين لحد الغياب المؤثر عند بلوغ هذا العدد.
-                </p>
-              </div>
-            </div>
-
-            {validationError ? (
-              <div
-                role="alert"
-                className="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 flex items-start gap-2 text-xs text-red-800 dark:text-red-200 font-semibold"
-              >
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
-                <span>{validationError}</span>
-              </div>
-            ) : (
-              <div className="rounded-lg border border-emerald-200 dark:border-emerald-800/70 bg-emerald-50/60 dark:bg-emerald-950/20 p-3 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-900 dark:text-emerald-200 tabular-nums">
-                <span className="inline-flex items-center gap-1.5 font-semibold">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
-                  التدرج المعتمد:
-                </span>
-                <span className="font-bold">
-                  تحذير ({form.warning_days} يوم) ← إنذار أولي ({form.preliminary_warning_days}{' '}
-                  يوم) ← إنذار نهائي ({form.final_warning_days} يوم) ← حد الغياب المؤثر (
-                  {form.effective_absence_limit} يوم)
-                </span>
-              </div>
-            )}
-          </fieldset>
-
-          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              يعتمد مركز التقارير مباشرة على أيام الغياب المحتسبة في قسم الغيابات ويقارنها بهذه
-              القيم تلقائياً.
+        {loading ? (
+          <div className="p-8 text-center text-xs text-slate-500">جاري التحميل...</div>
+        ) : stages.length === 0 ? (
+          <div className="p-12 text-center">
+            <FileText className="w-10 h-10 text-slate-400 mx-auto mb-3 opacity-60" />
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+              لا توجد مراحل غياب معرّفة لهذه السنة الدراسية.
             </p>
-
-            {!isHistoricalReadOnly && (
-              <button
-                type="submit"
-                disabled={saving || Boolean(validationError)}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-sm font-semibold transition-colors disabled:opacity-50"
-              >
-                <Save className="w-4 h-4" />
-                <span>{saving ? 'جاري الحفظ...' : 'حفظ الحدود والعتبات'}</span>
-              </button>
-            )}
+            <p className="text-xs text-slate-500 mt-1">
+              أضف مرحلة غياب جديدة (مثل: تحذير، إنذار أول، إنذار نهائي، تجاوز الحد) لبدء تقارير الغياب.
+            </p>
           </div>
-        </form>
+        ) : (
+          <div className="divide-y divide-slate-200 dark:divide-slate-800">
+            {stages.map((stage, idx) => (
+              <div key={stage.id} className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <span className="w-7 h-7 rounded-lg bg-teal-100 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 text-xs font-extrabold flex items-center justify-center">
+                      {idx + 1}
+                    </span>
+                    <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+                      {stage.name}
+                    </h4>
+                    <span className="px-2.5 py-0.5 rounded-full bg-red-100 dark:bg-red-950/60 text-red-800 dark:text-red-300 text-xs font-extrabold tabular-nums">
+                      عند بلوغ {stage.days_threshold} يوم غياب
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 max-w-2xl bg-slate-50 dark:bg-slate-950/50 p-2.5 rounded-lg border border-slate-200/70 dark:border-slate-800/70">
+                    <span className="font-bold text-slate-700 dark:text-slate-300 ml-1">قالب الكتاب:</span>
+                    {stage.letter_template}
+                  </p>
+                </div>
+                {!isHistoricalReadOnly && (
+                  <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEdit(stage)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>تعديل</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(stage.id, stage.name)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-800 text-xs font-semibold text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>حذف</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </section>
+
+      {/* Modal Add / Edit Stage */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-[1px] flex items-center justify-center p-3 sm:p-5" role="dialog" aria-modal="true">
+          <div className="w-full max-w-2xl max-h-[92vh] rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
+                {editingStage ? 'تعديل مرحلة الغياب' : 'إضافة مرحلة غياب جديدة'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-5 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    اسم المرحلة أو الإنذار <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    placeholder="مثال: إنذار أول، إنذار نهائي، فصل مؤقت..."
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    عتبة أيام الغياب (يوم) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    required
+                    value={formDays}
+                    onChange={(e) => setFormDays(e.target.value)}
+                    className="w-full px-3 py-2 text-sm font-bold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                    قالب الكتاب الرسمي المرفق
+                  </label>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    يمكنك استخدام المتغيرات: {'{full_name}, {absence_days}, {academic_year}, {school_name}, {date}, {document_number}, {stage_name}'}
+                  </span>
+                </div>
+                <textarea
+                  rows={6}
+                  value={formTemplate}
+                  onChange={(e) => setFormTemplate(e.target.value)}
+                  className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30 leading-relaxed"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold shadow-sm disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{saving ? 'جاري الحفظ...' : 'حفظ المرحلة'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

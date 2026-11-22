@@ -284,59 +284,59 @@ async function runTests() {
       assert.equal(expectedTotals.get(studentFinal.id), 7);
       assert.equal(expectedTotals.get(studentExceeded.id), 10);
 
-      // Report 1: Warning (>= 3) -> 4 students (excludes studentWithin=2)
+      // Report 1: Warning (3 <= days < 5) -> 1 student only (studentWarning=3)
       const rWarn = getSimplifiedAbsenceReports(db, {
         academic_year_id: activeYear.id,
         report_type: 'warning',
       });
       assert.equal(rWarn.summary.total_active_students, 5);
       assert.equal(rWarn.summary.within_limit_count, 1);
-      assert.equal(rWarn.summary.warning_count, 4);
-      assert.equal(rWarn.summary.preliminary_warning_count, 3);
+      assert.equal(rWarn.summary.warning_count, 1);
+      assert.equal(rWarn.summary.preliminary_warning_count, 1);
       assert.equal(rWarn.summary.final_warning_count, 2);
       assert.equal(rWarn.summary.exceeded_limit_count, 1);
-      assert.equal(rWarn.rows.length, 4);
-      assert.ok(!rWarn.rows.some((r) => r.student_id === studentWithin.id));
+      assert.equal(rWarn.rows.length, 1);
+      assert.equal(rWarn.rows[0].student_id, studentWarning.id);
+      assert.equal(rWarn.rows[0].alert_label, 'تحذير');
 
-      for (const row of rWarn.rows) {
-        assert.equal(
-          row.counted_absence_days,
-          expectedTotals.get(row.student_id),
-          `counted_absence_days must exactly match absenceService total_full_days for ${row.full_name}`
-        );
-      }
-
-      assert.equal(
-        rWarn.rows.find((r) => r.student_id === studentWarning.id)?.alert_label,
-        'تحذير'
-      );
-      assert.equal(
-        rWarn.rows.find((r) => r.student_id === studentPrelim.id)?.alert_label,
-        'إنذار أولي'
-      );
-      assert.equal(
-        rWarn.rows.find((r) => r.student_id === studentFinal.id)?.alert_label,
-        'إنذار نهائي'
-      );
-      assert.equal(
-        rWarn.rows.find((r) => r.student_id === studentExceeded.id)?.alert_label,
-        'متجاوز لحد الغياب المؤثر'
-      );
-
-      // Report 2: Preliminary Warning (>= 5) -> 3 students
+      // Report 2: Preliminary Warning (5 <= days < 7) -> 1 student only (studentPrelim=5)
       const rPrelim = getSimplifiedAbsenceReports(db, {
         academic_year_id: activeYear.id,
         report_type: 'preliminary_warning',
       });
-      assert.equal(rPrelim.rows.length, 3);
-      assert.ok(!rPrelim.rows.some((r) => r.student_id === studentWarning.id));
+      assert.equal(rPrelim.rows.length, 1);
+      assert.equal(rPrelim.rows[0].student_id, studentPrelim.id);
+      assert.equal(rPrelim.rows[0].alert_label, 'إنذار أولي');
 
-      // Report 3: Final Warning (>= 7) -> 2 students
+      // Report 3: Final Warning (>= 7) -> 2 students (studentFinal=7, studentExceeded=10)
       const rFinal = getSimplifiedAbsenceReports(db, {
         academic_year_id: activeYear.id,
         report_type: 'final_warning',
       });
       assert.equal(rFinal.rows.length, 2);
+      assert.ok(rFinal.rows.some((r) => r.student_id === studentFinal.id && r.alert_label === 'إنذار نهائي'));
+      assert.ok(rFinal.rows.some((r) => r.student_id === studentExceeded.id));
+
+      for (const rep of [rWarn, rPrelim, rFinal]) {
+        for (const row of rep.rows) {
+          assert.equal(
+            row.counted_absence_days,
+            expectedTotals.get(row.student_id),
+            `counted_absence_days must exactly match absenceService total_full_days for ${row.full_name}`
+          );
+        }
+      }
+
+      // Ensure no student appears in more than one of the 3 warning/alert lists
+      const warnIds = new Set(rWarn.rows.map((r) => r.student_id));
+      const prelimIds = new Set(rPrelim.rows.map((r) => r.student_id));
+      const finalIds = new Set(rFinal.rows.map((r) => r.student_id));
+      for (const id of warnIds) {
+        assert.ok(!prelimIds.has(id) && !finalIds.has(id));
+      }
+      for (const id of prelimIds) {
+        assert.ok(!finalIds.has(id));
+      }
 
       // Report 4: Exceeded Limit (>= 10) -> 1 student (studentExceeded)
       const rExceeded = await apiJson<{ rows: Array<{ student_id: number; counted_absence_days: number; alert_label: string }> }>(
@@ -350,7 +350,7 @@ async function runTests() {
     });
 
     await test('4. Modifying/deleting an absence in absenceService reflects automatically in reports', () => {
-      // Delete 1 full_day record of studentExceeded (10 -> 9, drops out of exceeded_limit, enters final_warning)
+      // Delete 1 full_day record of studentExceeded (10 -> 9, drops out of exceeded_limit, stays in final_warning)
       const rowToDelete = db
         .prepare(
           `SELECT id FROM absences
@@ -365,6 +365,7 @@ async function runTests() {
         report_type: 'exceeded_limit',
       });
       assert.equal(rExceededAfter.rows.length, 0);
+      assert.equal(rExceededAfter.summary.exceeded_limit_count, 0);
 
       const rFinalAfter = getSimplifiedAbsenceReports(db, {
         academic_year_id: activeYear.id,
@@ -389,7 +390,14 @@ async function runTests() {
       assert.ok(html.includes('باقر حسن علي'));
       assert.ok(html.includes('الرابع العلمي'));
       assert.ok(html.includes('3 يوم'));
-      assert.ok(html.includes('إنذار نهائي'));
+      assert.ok(html.includes('تحذير'));
+
+      const finalReport = getSimplifiedAbsenceReports(db, {
+        academic_year_id: activeYear.id,
+        report_type: 'final_warning',
+      });
+      const finalHtml = buildSimplifiedReportStandaloneHtml(finalReport);
+      assert.ok(finalHtml.includes('إنذار نهائي'));
 
       const { buffer, filename } = await generateSimplifiedReportsExcel(db, {
         academic_year_id: activeYear.id,

@@ -12,19 +12,27 @@ export const ABSENCE_REPORT_TITLES: Record<AbsenceReportTypeId, string> = {
   exceeded_limit: 'تقرير الطلاب المتجاوزين لحد الغياب المؤثر',
 };
 
-function resolveThresholdDays(
+function formatThresholdRangeLabel(
   reportType: AbsenceReportTypeId,
   thresholds: AbsenceThresholdsSettings
-): number {
+): string {
   switch (reportType) {
-    case 'warning':
-      return thresholds.warning_days;
-    case 'preliminary_warning':
-      return thresholds.preliminary_warning_days;
+    case 'warning': {
+      const upper = thresholds.preliminary_warning_days - 1;
+      return upper > thresholds.warning_days
+        ? `من ${thresholds.warning_days} إلى ${upper} يوم`
+        : `${thresholds.warning_days} يوم`;
+    }
+    case 'preliminary_warning': {
+      const upper = thresholds.final_warning_days - 1;
+      return upper > thresholds.preliminary_warning_days
+        ? `من ${thresholds.preliminary_warning_days} إلى ${upper} يوم`
+        : `${thresholds.preliminary_warning_days} يوم`;
+    }
     case 'final_warning':
-      return thresholds.final_warning_days;
+      return `${thresholds.final_warning_days} يوم فأكثر`;
     case 'exceeded_limit':
-      return thresholds.effective_absence_limit;
+      return `${thresholds.effective_absence_limit} يوم فأكثر`;
   }
 }
 
@@ -51,7 +59,7 @@ export function buildSimplifiedReportStandaloneHtml(
 ): string {
   const school = data.school_settings;
   const documentTitle = ABSENCE_REPORT_TITLES[data.report_type];
-  const thresholdDays = resolveThresholdDays(data.report_type, data.thresholds);
+  const thresholdRangeLabel = formatThresholdRangeLabel(data.report_type, data.thresholds);
   const todayIso = new Date().toISOString().slice(0, 10);
   const effectiveLogo = resolvedLogoSrc !== undefined ? resolvedLogoSrc : school.school_logo_data;
 
@@ -203,7 +211,7 @@ export function buildSimplifiedReportStandaloneHtml(
   </header>
 
   <div class="meta-bar">
-    <div><strong>العتبة المعتمدة:</strong> ${thresholdDays} يوم غياب محتسب فأكثر</div>
+    <div><strong>النطاق المعتمد:</strong> ${escapeHtml(thresholdRangeLabel)}</div>
     <div><strong>حد الغياب المؤثر:</strong> ${data.thresholds.effective_absence_limit} يوم</div>
     <div><strong>عدد الطلاب المشمولين:</strong> ${data.rows.length} طالب</div>
     <div><strong>تاريخ الإصدار:</strong> ${escapeHtml(todayIso)}</div>
@@ -267,7 +275,7 @@ export function LegalPrintSheet({ data, filterSummary, mode }: LegalPrintSheetPr
 
   const school = data.school_settings;
   const documentTitle = ABSENCE_REPORT_TITLES[data.report_type];
-  const thresholdDays = resolveThresholdDays(data.report_type, data.thresholds);
+  const thresholdRangeLabel = formatThresholdRangeLabel(data.report_type, data.thresholds);
   const todayIso = new Date().toISOString().slice(0, 10);
 
   return (
@@ -316,7 +324,7 @@ export function LegalPrintSheet({ data, filterSummary, mode }: LegalPrintSheetPr
       {/* Report Metadata Bar */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-50 border border-slate-300 rounded mb-4 text-[11.5px] tabular-nums">
         <span>
-          <strong>العتبة المعتمدة:</strong> {thresholdDays} يوم غياب محتسب فأكثر
+          <strong>النطاق المعتمد:</strong> {thresholdRangeLabel}
         </span>
         <span>
           <strong>حد الغياب المؤثر:</strong> {data.thresholds.effective_absence_limit} يوم

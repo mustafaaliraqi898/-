@@ -718,7 +718,24 @@ export function getAcademicYearAbsenceTotalsMap(
 ): Map<number, StudentAcademicYearAbsenceTotals> {
   const summaryRows = db
     .prepare(
-      `SELECT
+      `WITH lesson_detail_agg AS (
+         SELECT
+           d.absence_id,
+           COUNT(*) as detail_count,
+           SUM(CASE WHEN d.lesson_status = 'lesson_permission' THEN 1 ELSE 0 END) as perm_detail_count,
+           SUM(CASE WHEN d.lesson_status = 'lesson_absence' THEN 1 ELSE 0 END) as absence_detail_count,
+           SUM(CASE WHEN d.lesson_status = 'lesson_escape' THEN 1 ELSE 0 END) as escape_detail_count,
+           SUM(CASE WHEN d.lesson_status = 'lesson_permission' AND d.counted_as_absence = 1 THEN 1 ELSE 0 END) as counted_perm_detail_count,
+           SUM(CASE
+             WHEN d.lesson_status IN ('lesson_absence', 'lesson_escape')
+               OR (d.lesson_status = 'lesson_permission' AND d.counted_as_absence = 1)
+             THEN 1 ELSE 0 END) as counted_total_detail_count
+         FROM absence_lesson_details d
+         JOIN absences a_yr ON a_yr.id = d.absence_id
+         WHERE a_yr.academic_year_id = ?
+         GROUP BY d.absence_id
+       )
+       SELECT
          a.student_id,
          SUM(CASE WHEN a.status = 'full_day' THEN 1 ELSE 0 END) as direct_full_days,
          SUM(CASE WHEN a.status = 'full_day_leave' AND a.leave_type = 'daily_permission' AND a.counted_as_absence = 1 THEN 1 ELSE 0 END) as counted_daily_permission_days,
@@ -726,33 +743,30 @@ export function getAcademicYearAbsenceTotalsMap(
          SUM(CASE WHEN a.status = 'full_day_leave' AND a.leave_type = 'daily_permission' THEN 1 ELSE 0 END) as daily_permission_days,
          SUM(CASE
            WHEN a.status = 'lesson_permission'
-             OR EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_permission')
+             OR COALESCE(lda.perm_detail_count, 0) > 0
            THEN 1 ELSE 0 END) as lesson_permission_records,
          COALESCE(SUM(CASE
-           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
-             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_absence')
+           WHEN COALESCE(lda.detail_count, 0) > 0 THEN lda.absence_detail_count
            WHEN a.status = 'lesson_absence' THEN a.lessons_count
            ELSE 0 END), 0) as lesson_absence_lessons,
          COALESCE(SUM(CASE
-           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
-             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_escape')
+           WHEN COALESCE(lda.detail_count, 0) > 0 THEN lda.escape_detail_count
            WHEN a.status = 'lesson_escape' THEN a.lessons_count
            ELSE 0 END), 0) as lesson_escape_lessons,
          COALESCE(SUM(CASE
-           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
-             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND d.lesson_status = 'lesson_permission' AND d.counted_as_absence = 1)
+           WHEN COALESCE(lda.detail_count, 0) > 0 THEN lda.counted_perm_detail_count
            WHEN a.status = 'lesson_permission' AND a.counted_as_absence = 1 THEN a.lessons_count
            ELSE 0 END), 0) as counted_lesson_permission_lessons,
          COALESCE(SUM(CASE
-           WHEN EXISTS (SELECT 1 FROM absence_lesson_details d WHERE d.absence_id = a.id)
-             THEN (SELECT COUNT(*) FROM absence_lesson_details d WHERE d.absence_id = a.id AND (d.lesson_status IN ('lesson_absence', 'lesson_escape') OR (d.lesson_status = 'lesson_permission' AND d.counted_as_absence = 1)))
+           WHEN COALESCE(lda.detail_count, 0) > 0 THEN lda.counted_total_detail_count
            WHEN a.status IN ('lesson_absence', 'lesson_escape') OR (a.status = 'lesson_permission' AND a.counted_as_absence = 1) THEN a.lessons_count
            ELSE 0 END), 0) as total_lessons_missed
        FROM absences a
+       LEFT JOIN lesson_detail_agg lda ON lda.absence_id = a.id
        WHERE a.academic_year_id = ?
        GROUP BY a.student_id`
     )
-    .all(academicYearId) as Array<{
+    .all(academicYearId, academicYearId) as Array<{
     student_id: number;
     direct_full_days: number;
     counted_daily_permission_days: number;

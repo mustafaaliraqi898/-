@@ -1,11 +1,13 @@
 import type {
   AbsenceReportsQuery,
   AbsenceReportsResponse,
+  AbsenceStage,
   AbsenceThresholdsSettings,
   AcademicYear,
   CreateHolidayInput,
   CreateStudentInput,
   DashboardStats,
+  DynamicStageReportResponse,
   EducationalStage,
   ExcelCommitResult,
   ExcelImportRowInput,
@@ -14,6 +16,7 @@ import type {
   HolidayCheckResult,
   HolidayRecord,
   ImageCategory,
+  IssuedOfficialLetter,
   LessonDetailInput,
   MediaAssetInfo,
   MonthCalendarDay,
@@ -684,7 +687,10 @@ export const schoolService = {
   },
 
   // Simplified 4 Absence Warning & Limit Reports
-  async getAbsenceReports(query: AbsenceReportsQuery): Promise<AbsenceReportsResponse> {
+  async getAbsenceReports(
+    query: AbsenceReportsQuery,
+    options?: { signal?: AbortSignal }
+  ): Promise<AbsenceReportsResponse> {
     if (isElectronMode()) {
       return ipcCall<AbsenceReportsResponse>('reports:absences', query);
     }
@@ -695,7 +701,9 @@ export const schoolService = {
     if (query.grade_id) qs.set('grade_id', String(query.grade_id));
     if (query.section_id) qs.set('section_id', String(query.section_id));
     if (query.search) qs.set('search', query.search);
-    return httpJson<AbsenceReportsResponse>(`/api/reports/absences?${qs.toString()}`);
+    return httpJson<AbsenceReportsResponse>(`/api/reports/absences?${qs.toString()}`, {
+      signal: options?.signal,
+    });
   },
 
   async exportAbsenceReportsExcel(query: AbsenceReportsQuery): Promise<void> {
@@ -727,6 +735,96 @@ export const schoolService = {
     }
     const blob = await res.blob();
     triggerBlobDownload(blob, `تقرير_${query.report_type}.xlsx`);
+  },
+
+  async listAbsenceStages(academicYearId?: number): Promise<AbsenceStage[]> {
+    if (isElectronMode()) {
+      return ipcCall<AbsenceStage[]>('absence-stages:list', { academic_year_id: academicYearId });
+    }
+    const qs = academicYearId ? `?academic_year_id=${academicYearId}` : '';
+    return httpJson<AbsenceStage[]>(`/api/absence-stages${qs}`);
+  },
+
+  async createAbsenceStage(input: {
+    academic_year_id: number;
+    name: string;
+    days_threshold: number;
+    letter_template?: string;
+    sort_order?: number;
+  }): Promise<AbsenceStage> {
+    if (isElectronMode()) {
+      return ipcCall<AbsenceStage>('absence-stages:create', input);
+    }
+    return httpJson<AbsenceStage>('/api/absence-stages', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  async updateAbsenceStage(
+    id: number,
+    input: { name: string; days_threshold: number; letter_template?: string }
+  ): Promise<AbsenceStage> {
+    if (isElectronMode()) {
+      return ipcCall<AbsenceStage>('absence-stages:update', { id, ...input });
+    }
+    return httpJson<AbsenceStage>(`/api/absence-stages/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    });
+  },
+
+  async deleteAbsenceStage(id: number): Promise<{ deleted: true }> {
+    if (isElectronMode()) {
+      return ipcCall<{ deleted: true }>('absence-stages:delete', { id });
+    }
+    return httpJson<{ deleted: true }>(`/api/absence-stages/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async getDynamicStageReport(query: {
+    academic_year_id?: number;
+    stage_id?: number;
+    grade_id?: number;
+    section_id?: number;
+    search?: string;
+  }): Promise<DynamicStageReportResponse> {
+    if (isElectronMode()) {
+      return ipcCall<DynamicStageReportResponse>('absence-stages:report', query);
+    }
+    const qs = new URLSearchParams();
+    if (query.academic_year_id) qs.set('academic_year_id', String(query.academic_year_id));
+    if (query.stage_id) qs.set('stage_id', String(query.stage_id));
+    if (query.grade_id) qs.set('grade_id', String(query.grade_id));
+    if (query.section_id) qs.set('section_id', String(query.section_id));
+    if (query.search) qs.set('search', query.search);
+    return httpJson<DynamicStageReportResponse>(`/api/absence-stages/report?${qs.toString()}`);
+  },
+
+  async issueOfficialLetter(input: {
+    academic_year_id: number;
+    stage_id: number;
+    document_number: string;
+    letter_date: string;
+    grade_id?: number;
+    section_id?: number;
+    search?: string;
+  }): Promise<IssuedOfficialLetter> {
+    if (isElectronMode()) {
+      return ipcCall<IssuedOfficialLetter>('absence-stages:issue-letter', input);
+    }
+    return httpJson<IssuedOfficialLetter>('/api/absence-stages/issue-letter', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  async listIssuedLetters(academicYearId: number): Promise<IssuedOfficialLetter[]> {
+    if (isElectronMode()) {
+      return ipcCall<IssuedOfficialLetter[]>('absence-stages:issued-letters', { academic_year_id: academicYearId });
+    }
+    return httpJson<IssuedOfficialLetter[]>(`/api/absence-stages/issued-letters?academic_year_id=${academicYearId}`);
   },
 };
 

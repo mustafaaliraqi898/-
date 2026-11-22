@@ -2,6 +2,7 @@
 import { app, BrowserWindow, ipcMain, protocol } from 'electron';
 import path from 'path';
 import { closeDb, createDatabaseConnection, setDbInstance, getDb } from '../server/db/connection';
+import { getActiveAcademicYear } from '../server/services/settingsService';
 import {
   addStudentLessonRecords,
   createSingleAbsenceRecord,
@@ -10,6 +11,15 @@ import {
   getStudentAbsenceDetails,
   saveSectionAttendance,
 } from '../server/services/absenceService';
+import {
+  listAbsenceStages,
+  createAbsenceStage,
+  updateAbsenceStage,
+  deleteAbsenceStage,
+  getDynamicStageReport,
+  issueOfficialLetter,
+  listIssuedLetters,
+} from '../server/services/absenceStagesService';
 import { getDashboardStats } from '../server/services/dashboardService';
 import {
   commitExcelStudents,
@@ -375,6 +385,46 @@ function registerIpcHandlers() {
     'thresholds:update',
     wrap((payload: Parameters<typeof updateSimplifiedAbsenceThresholds>[1]) =>
       updateSimplifiedAbsenceThresholds(getDb(), payload)
+    )
+  );
+  ipcMain.handle(
+    'absence-stages:list',
+    wrap((payload?: { academic_year_id?: number }) =>
+      listAbsenceStages(getDb(), payload?.academic_year_id ?? getActiveAcademicYear(getDb()).id)
+    )
+  );
+  ipcMain.handle(
+    'absence-stages:create',
+    wrap((payload: Parameters<typeof createAbsenceStage>[1]) =>
+      createAbsenceStage(getDb(), payload)
+    )
+  );
+  ipcMain.handle(
+    'absence-stages:update',
+    wrap((payload: { id: number; name: string; days_threshold: number; letter_template?: string }) =>
+      updateAbsenceStage(getDb(), payload.id, payload)
+    )
+  );
+  ipcMain.handle(
+    'absence-stages:delete',
+    wrap((payload: { id: number }) => deleteAbsenceStage(getDb(), payload.id))
+  );
+  ipcMain.handle(
+    'absence-stages:report',
+    wrap((payload: Parameters<typeof getDynamicStageReport>[1]) =>
+      getDynamicStageReport(getDb(), payload)
+    )
+  );
+  ipcMain.handle(
+    'absence-stages:issue-letter',
+    wrap((payload: Parameters<typeof issueOfficialLetter>[1]) =>
+      issueOfficialLetter(getDb(), payload)
+    )
+  );
+  ipcMain.handle(
+    'absence-stages:issued-letters',
+    wrap((payload: { academic_year_id: number }) =>
+      listIssuedLetters(getDb(), payload.academic_year_id)
     )
   );
 

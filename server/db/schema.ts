@@ -286,6 +286,7 @@ CREATE INDEX IF NOT EXISTS idx_absences_year_grade_section ON absences(academic_
 CREATE INDEX IF NOT EXISTS idx_absences_student_year_status ON absences(student_id, academic_year_id, status);
 CREATE INDEX IF NOT EXISTS idx_absence_lesson_details_absence_id ON absence_lesson_details(absence_id);
 CREATE INDEX IF NOT EXISTS idx_converted_days_student_year ON lesson_converted_days(student_id, academic_year_id);
+CREATE INDEX IF NOT EXISTS idx_converted_days_year_student ON lesson_converted_days(academic_year_id, student_id);
 CREATE INDEX IF NOT EXISTS idx_holidays_date_range ON holidays(start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_holidays_year ON holidays(academic_year_id, start_date);
 CREATE INDEX IF NOT EXISTS idx_monthly_notes_lookup ON monthly_student_notes(academic_year_id, year, month, student_id);
@@ -294,4 +295,33 @@ CREATE INDEX IF NOT EXISTS idx_legal_procedures_student_year ON student_legal_pr
 CREATE INDEX IF NOT EXISTS idx_legal_procedures_year_stage_date ON student_legal_procedures(academic_year_id, stage, procedure_date DESC);
 CREATE INDEX IF NOT EXISTS idx_media_assets_optimized_sha256 ON media_assets(optimized_sha256);
 CREATE INDEX IF NOT EXISTS idx_media_assets_category ON media_assets(category);
+
+CREATE TABLE IF NOT EXISTS absence_stages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  academic_year_id INTEGER NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  days_threshold INTEGER NOT NULL CHECK (days_threshold >= 1),
+  letter_template TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(academic_year_id, days_threshold),
+  UNIQUE(academic_year_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS issued_official_letters (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  academic_year_id INTEGER NOT NULL REFERENCES academic_years(id) ON DELETE RESTRICT,
+  stage_id INTEGER REFERENCES absence_stages(id) ON DELETE SET NULL,
+  stage_name TEXT NOT NULL,
+  days_threshold INTEGER NOT NULL,
+  document_number TEXT NOT NULL,
+  letter_date TEXT NOT NULL,
+  rendered_content TEXT NOT NULL,
+  students_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_absence_stages_year ON absence_stages(academic_year_id, days_threshold);
+CREATE INDEX IF NOT EXISTS idx_issued_letters_year ON issued_official_letters(academic_year_id);
 `;

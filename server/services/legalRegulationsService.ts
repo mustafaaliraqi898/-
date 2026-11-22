@@ -35,12 +35,13 @@ function mapRowToThresholds(row: Record<string, unknown>): AbsenceThresholdsSett
 
 export function getSimplifiedAbsenceThresholds(
   db: SqliteDb,
-  academicYearId?: number
+  academicYearId?: number,
+  knownActiveYearId?: number | null
 ): AbsenceThresholdsSettings {
-  const activeYear = getActiveAcademicYear(db);
-  const targetYearId = academicYearId ?? activeYear.id;
+  const activeYearId = knownActiveYearId ?? getActiveAcademicYear(db).id;
+  const targetYearId = academicYearId ?? activeYearId;
 
-  if (targetYearId !== activeYear.id) {
+  if (targetYearId !== activeYearId) {
     const binding = db
       .prepare(
         `SELECT b.is_locked, v.snapshot_json
