@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   FileText,
-  HelpCircle,
   Layers,
 } from 'lucide-react';
 import { schoolService } from '../../services/schoolService';
@@ -27,8 +26,13 @@ interface LegalRegulationsViewProps {
 
 export function LegalRegulationsView({
   activeAcademicYear,
+  academicYears = [],
+  selectedYearId,
   isHistoricalReadOnly = false,
 }: LegalRegulationsViewProps) {
+  const targetYearId = selectedYearId ?? activeAcademicYear?.id ?? academicYears[0]?.id;
+  const targetYear = academicYears.find((y) => y.id === targetYearId) ?? activeAcademicYear;
+
   const [stages, setStages] = useState<AbsenceStage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,10 +46,15 @@ export function LegalRegulationsView({
   const [saving, setSaving] = useState(false);
 
   const loadStages = async () => {
+    if (!targetYearId) {
+      setStages([]);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
-      const data = await schoolService.listAbsenceStages(activeAcademicYear?.id);
+      const data = await schoolService.listAbsenceStages(targetYearId);
       setStages(data);
     } catch (err: any) {
       setError(err.message || 'تعذر جلب مراحل الغياب.');
@@ -56,9 +65,13 @@ export function LegalRegulationsView({
 
   useEffect(() => {
     loadStages();
-  }, [activeAcademicYear?.id]);
+  }, [targetYearId]);
 
   const handleOpenAdd = () => {
+    if (!targetYearId) {
+      setError('يرجى تحديد السنة الدراسية أولاً.');
+      return;
+    }
     setEditingStage(null);
     setFormName('');
     setFormDays('3');
@@ -78,8 +91,8 @@ export function LegalRegulationsView({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeAcademicYear) {
-      setError('يرجى تحديد السنة الدراسية النشطة أولاً.');
+    if (!targetYearId) {
+      setError('يرجى تحديد السنة الدراسية أولاً قبل الحفظ.');
       return;
     }
     const days = parseInt(formDays, 10);
@@ -99,7 +112,7 @@ export function LegalRegulationsView({
         setSuccessMessage('تم تحديث مرحلة الغياب وقالب الكتاب بنجاح.');
       } else {
         await schoolService.createAbsenceStage({
-          academic_year_id: activeAcademicYear.id,
+          academic_year_id: targetYearId,
           name: formName.trim(),
           days_threshold: days,
           letter_template: formTemplate,
@@ -131,6 +144,15 @@ export function LegalRegulationsView({
     }
   };
 
+  if (!targetYearId) {
+    return (
+      <div className="p-8 text-center rounded-2xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200">
+        <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-amber-600" />
+        <p className="font-bold text-base">يرجى تحديد السنة الدراسية لعرض وإدارة ضوابط ومراحل الغياب.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
       {/* Header Banner */}
@@ -145,8 +167,7 @@ export function LegalRegulationsView({
                 الضوابط القانونية للغياب والإنذارات (مراحل الغياب الديناميكية)
               </h2>
               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-                إدارة مراحل الغياب وعتبات الأيام وقوالب الكتب الرسمية للعام الدراسي ({activeAcademicYear?.name || 'الحالي'}).
-                يتم تصنيف الطلاب تلقائياً وغير تراكمياً وفقاً لأعلى مرحلة يبلغها الطالب.
+                إدارة مراحل الغياب وعتبات الأيام وقوالب الكتب الرسمية للسنة الدراسية المحددة ({targetYear?.name || targetYearId}).
               </p>
             </div>
           </div>

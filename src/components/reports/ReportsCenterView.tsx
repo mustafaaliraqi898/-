@@ -1,28 +1,21 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   FileText,
   Printer,
   Search,
-  Filter,
   RefreshCw,
   AlertCircle,
   CheckCircle2,
-  ExternalLink,
-  Download,
   X,
   FileCheck,
-  Building2,
-  Calendar,
   Layers,
   Send,
   History,
 } from 'lucide-react';
-import { createPortal } from 'react-dom';
 import { schoolService } from '../../services/schoolService';
 import type {
   AcademicYear,
   DynamicStageReportResponse,
-  AbsenceStage,
   GradeWithSections,
   IssuedOfficialLetter,
 } from '../../types/school';
@@ -41,10 +34,14 @@ interface ReportsCenterViewProps {
 
 export function ReportsCenterView({
   activeAcademicYear,
+  academicYears = [],
+  selectedYearId,
   grades,
 }: ReportsCenterViewProps) {
+  const yearId = selectedYearId ?? activeAcademicYear?.id ?? academicYears[0]?.id;
+
   const [reportData, setReportData] = useState<DynamicStageReportResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [selectedStageId, setSelectedStageId] = useState<number | undefined>(undefined);
@@ -62,38 +59,48 @@ export function ReportsCenterView({
   // Issued Letters History Modal
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [issuedLetters, setIssuedLetters] = useState<IssuedOfficialLetter[]>([]);
-  const [selectedLetter, setSelectedLetter] = useState<IssuedOfficialLetter | null>(null);
 
   // Print Preview
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
-  const [printLetterPreview, setPrintLetterPreview] = useState<IssuedOfficialLetter | null>(null);
+  const [selectedLetter, setSelectedLetter] = useState<IssuedOfficialLetter | null>(null);
 
-  const fetchReport = async (stageId?: number) => {
-    if (!activeAcademicYear) return;
+  const requestSeqRef = useRef(0);
+
+  const fetchReport = async (stageIdOverride?: number) => {
+    if (!yearId) return;
+    const reqSeq = ++requestSeqRef.current;
     try {
       setLoading(true);
       setError(null);
+      const targetStageId = stageIdOverride !== undefined ? stageIdOverride : selectedStageId;
       const res = await schoolService.getDynamicStageReport({
-        academic_year_id: activeAcademicYear.id,
-        stage_id: stageId ?? selectedStageId,
+        academic_year_id: yearId,
+        stage_id: targetStageId,
         grade_id: selectedGradeId,
         section_id: selectedSectionId,
         search: searchQuery.trim() || undefined,
       });
+
+      // Ignore outdated responses (race condition prevention)
+      if (reqSeq !== requestSeqRef.current) return;
+
       setReportData(res);
-      if (!selectedStageId && res.current_stage) {
+      if (selectedStageId === undefined && res.current_stage) {
         setSelectedStageId(res.current_stage.id);
       }
     } catch (err: any) {
+      if (reqSeq !== requestSeqRef.current) return;
       setError(err.message || 'تعذر جلب تقرير الغياب الديناميكي.');
     } finally {
-      setLoading(false);
+      if (reqSeq === requestSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     fetchReport();
-  }, [activeAcademicYear?.id, selectedStageId, selectedGradeId, selectedSectionId]);
+  }, [yearId, selectedStageId, selectedGradeId, selectedSectionId]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,7 +109,7 @@ export function ReportsCenterView({
 
   const handleIssueLetterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeAcademicYear || !reportData || !reportData.current_stage) {
+    if (!yearId || !reportData || !reportData.current_stage) {
       setError('يرجى اختيار المرحلة الدراسية والسنة النشطة أولاً.');
       return;
     }
@@ -114,7 +121,7 @@ export function ReportsCenterView({
       setIssuing(true);
       setError(null);
       const letter = await schoolService.issueOfficialLetter({
-        academic_year_id: activeAcademicYear.id,
+        academic_year_id: yearId,
         stage_id: reportData.current_stage.id,
         document_number: docNumber.trim(),
         letter_date: letterDate,
@@ -134,9 +141,9 @@ export function ReportsCenterView({
   };
 
   const loadHistory = async () => {
-    if (!activeAcademicYear) return;
+    if (!yearId) return;
     try {
-      const letters = await schoolService.listIssuedLetters(activeAcademicYear.id);
+      const letters = await schoolService.listIssuedLetters(yearId);
       setIssuedLetters(letters);
       setHistoryModalOpen(true);
     } catch (err: any) {
@@ -296,7 +303,10 @@ export function ReportsCenterView({
       </section>
 
       {/* Main Table */}
-      <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+      <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden relative">
+        {loading && (
+          <div className="absolute top-0 inset-x-0 h-1 bg-teal-600 animate-pulse z-10" />
+        )}
         <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 bg-slate-50/50 dark:bg-slate-900">
           <div>
             <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
@@ -311,8 +321,8 @@ export function ReportsCenterView({
           </span>
         </div>
 
-        {loading ? (
-          <div className="p-12 text-center text-xs text-slate-500">جاري احتساب البيانات وجلب الطلاب...</div>
+        {!reportData && loading ? (
+          <div className="p-16 text-center text-xs text-slate-500">جاري احتساب البيانات وجلب الطلاب...</div>
         ) : !reportData || reportData.rows.length === 0 ? (
           <div className="p-16 text-center">
             <FileText className="w-10 h-10 text-slate-400 mx-auto mb-3 opacity-60" />
@@ -378,7 +388,7 @@ export function ReportsCenterView({
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={IssueOfficialLetterSubmitHandler} className="p-5 space-y-4">
+            <form onSubmit={handleIssueLetterSubmit} className="p-5 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
@@ -596,8 +606,4 @@ export function ReportsCenterView({
       )}
     </div>
   );
-}
-
-function IssueOfficialLetterSubmitHandler(e: React.FormEvent) {
-  // helper form wrapper
 }
