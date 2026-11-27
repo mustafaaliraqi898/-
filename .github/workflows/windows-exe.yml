@@ -6,6 +6,7 @@ on:
     branches:
       - build/windows-exe-electron
       - integration/desktop-print-fix
+      - fix/monthly-print-fit-a4-landscape
     paths:
       - "package.json"
       - "vite.config.ts"
