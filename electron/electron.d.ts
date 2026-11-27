@@ -34,6 +34,7 @@ declare module 'electron' {
     setMenuBarVisibility(visible: boolean): void;
     isDestroyed(): boolean;
     destroy(): void;
+    on(event: string, listener: (event: { preventDefault(): void }, ...args: unknown[]) => void): this;
     static getAllWindows(): BrowserWindow[];
   }
 
@@ -93,5 +94,17 @@ declare module 'electron' {
         properties?: Array<'openFile' | 'openDirectory' | 'createDirectory'>;
       }
     ): Promise<{ canceled: boolean; filePaths: string[] }>;
+    showMessageBox(
+      browserWindow: BrowserWindow,
+      options: {
+        type?: 'none' | 'info' | 'error' | 'question' | 'warning';
+        title?: string;
+        message: string;
+        detail?: string;
+        buttons: string[];
+        defaultId?: number;
+        cancelId?: number;
+      }
+    ): Promise<{ response: number; checkboxChecked: boolean }>;
   };
 }

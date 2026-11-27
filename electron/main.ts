@@ -80,6 +80,7 @@ import {
   createVerifiedBackupBuffer,
   getBackupOverview,
   getBackupRecordFile,
+  getBackupSettings,
   restoreDatabaseBackupBuffer,
   runAutoBackupIfDue,
   updateBackupSettings,
@@ -698,6 +699,64 @@ async function renderHtmlToPdfElectron(html: string): Promise<Buffer> {
   }
 }
 
+let isQuitting = false;
+let backupInProgressOnClose = false;
+
+async function performCloseBackupAndQuit(win: BrowserWindow) {
+  if (isQuitting) return;
+  try {
+    const db = getDb();
+    const settings = getBackupSettings(db);
+    if (settings.backup_on_close === 1 && !backupInProgressOnClose) {
+      backupInProgressOnClose = true;
+      try {
+        await createManagedBackup(db, 'auto', { customFilename: `close_backup_${formatCloseTimestamp()}.db` });
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : 'فشل إنشاء النسخة الاحتياطية عند الإغلاق.';
+        const choice = await dialog.showMessageBox(win, {
+          type: 'warning',
+          title: 'تعذر إنشاء النسخة الاحتياطية عند الإغلاق',
+          message: `${errorMsg}\n\nهل تريد إعادة المحاولة أم إغلاق البرنامج دون نسخة احتياطية؟`,
+          buttons: ['إعادة المحاولة', 'إغلاق البرنامج دون نسخة', 'إلغاء الإغلاق'],
+          defaultId: 0,
+          cancelId: 2,
+        });
+
+        if (choice.response === 0) {
+          backupInProgressOnClose = false;
+          return performCloseBackupAndQuit(win);
+        } else if (choice.response === 1) {
+          // Proceed to quit without backup
+        } else {
+          // Cancel quit
+          backupInProgressOnClose = false;
+          return;
+        }
+      } finally {
+        backupInProgressOnClose = false;
+      }
+    }
+  } catch {
+    // If settings check fails, proceed with quit safely
+  }
+
+  isQuitting = true;
+  try {
+    closeDb();
+  } catch {
+    // ignore
+  }
+  app.quit();
+}
+
+function formatCloseTimestamp(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(
+    d.getHours()
+  )}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+}
+
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -715,6 +774,12 @@ function createMainWindow() {
   });
 
   mainWindow.setMenuBarVisibility(false);
+
+  mainWindow.on('close', (e) => {
+    if (isQuitting) return;
+    e.preventDefault();
+    void performCloseBackupAndQuit(mainWindow!);
+  });
 
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   if (devUrl) {
@@ -766,8 +831,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  closeDb();
-  if (process.platform !== 'darwin') {
+  if (process.platform !== 'darwin' && isQuitting) {
     app.quit();
   }
 });

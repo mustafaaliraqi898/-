@@ -53,8 +53,9 @@ export function BackupSettingsTab({ onRefresh, onNotify }: BackupSettingsTabProp
   const [loading, setLoading] = useState(true);
 
   const [autoEnabled, setAutoEnabled] = useState(false);
+  const [backupOnClose, setBackupOnClose] = useState(true);
   const [frequency, setFrequency] = useState<BackupFrequency>('daily');
-  const [retentionCount, setRetentionCount] = useState('7');
+  const [retentionCount, setRetentionCount] = useState('10');
   const [backupDir, setBackupDir] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -75,6 +76,7 @@ export function BackupSettingsTab({ onRefresh, onNotify }: BackupSettingsTabProp
       const data = await schoolService.getBackupOverview();
       setOverview(data);
       setAutoEnabled(data.settings.auto_enabled === 1);
+      setBackupOnClose(data.settings.backup_on_close !== 0);
       setFrequency(data.settings.frequency);
       setRetentionCount(String(data.settings.retention_count));
       setBackupDir(data.settings.backup_dir ?? '');
@@ -148,12 +150,13 @@ export function BackupSettingsTab({ onRefresh, onNotify }: BackupSettingsTabProp
     try {
       const updated = await schoolService.updateBackupSettings({
         auto_enabled: autoEnabled,
+        backup_on_close: backupOnClose,
         frequency,
         retention_count: parsedRetention,
         backup_dir: backupDir.trim() || null,
       });
       setOverview((prev) => (prev ? { ...prev, settings: updated } : prev));
-      onNotify('success', 'تم حفظ إعدادات النسخ الاحتياطي التلقائي بنجاح.');
+      onNotify('success', 'تم حفظ إعدادات النسخ الاحتياطي وسياسة الإغلاق بنجاح.');
     } catch (err) {
       onNotify(
         'error',
@@ -370,6 +373,23 @@ export function BackupSettingsTab({ onRefresh, onNotify }: BackupSettingsTabProp
                 type="checkbox"
                 checked={autoEnabled}
                 onChange={(e) => setAutoEnabled(e.target.checked)}
+                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 shrink-0"
+              />
+            </label>
+
+            <label className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 cursor-pointer">
+              <div>
+                <span className="block text-sm font-bold text-slate-900 dark:text-slate-100">
+                  إنشاء نسخة احتياطية عند إغلاق البرنامج
+                </span>
+                <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  التحقق من سلامة البيانات وحفظ نسخة احتياطية آمنة تلقائياً عند الضغط على إغلاق البرنامج.
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={backupOnClose}
+                onChange={(e) => setBackupOnClose(e.target.checked)}
                 className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 shrink-0"
               />
             </label>

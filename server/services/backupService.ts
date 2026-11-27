@@ -48,7 +48,7 @@ export function resolveDefaultBackupDir(db: SqliteDb): string {
   return path.resolve(process.cwd(), 'data', 'backups');
 }
 
-function ensureWritableDirectory(dirPath: string): string {
+export function ensureWritableDirectory(dirPath: string): string {
   const resolved = path.resolve(dirPath);
   try {
     if (!fs.existsSync(resolved)) {
@@ -71,10 +71,30 @@ function ensureWritableDirectory(dirPath: string): string {
   }
 }
 
+export function validateBackupDirectory(dirPath: string): {
+  valid: boolean;
+  resolvedPath: string;
+  error?: string;
+} {
+  try {
+    const resolved = ensureWritableDirectory(dirPath);
+    return { valid: true, resolvedPath: resolved };
+  } catch (err) {
+    return {
+      valid: false,
+      resolvedPath: path.resolve(dirPath),
+      error:
+        err instanceof Error
+          ? err.message
+          : 'المجلد المحدد غير صالح أو لا تتوفر فيه صلاحيات الكتابة.',
+    };
+  }
+}
+
 export function getBackupSettings(db: SqliteDb): BackupSettings {
   const row = db
     .prepare(
-      `SELECT id, auto_enabled, frequency, retention_count, backup_dir,
+      `SELECT id, auto_enabled, backup_on_close, frequency, retention_count, backup_dir,
               last_backup_at, last_backup_status, last_backup_message, updated_at
        FROM backup_settings
        WHERE id = 1`
@@ -83,6 +103,7 @@ export function getBackupSettings(db: SqliteDb): BackupSettings {
     | {
         id: number;
         auto_enabled: number;
+        backup_on_close: number | undefined;
         frequency: BackupFrequency;
         retention_count: number;
         backup_dir: string | null;
@@ -98,8 +119,9 @@ export function getBackupSettings(db: SqliteDb): BackupSettings {
     return {
       id: 1,
       auto_enabled: 0,
+      backup_on_close: 1,
       frequency: 'daily',
-      retention_count: 7,
+      retention_count: 10,
       backup_dir: null,
       resolved_backup_dir: fallbackDir,
       last_backup_at: null,
@@ -115,6 +137,12 @@ export function getBackupSettings(db: SqliteDb): BackupSettings {
 
   return {
     ...row,
+    backup_on_close:
+      row.backup_on_close !== undefined ? (row.backup_on_close === 1 ? 1 : 0) : 1,
+    retention_count:
+      typeof row.retention_count === 'number' && row.retention_count >= 1
+        ? row.retention_count
+        : 10,
     frequency: row.frequency === 'weekly' ? 'weekly' : 'daily',
     resolved_backup_dir: resolvedBackupDir,
   };
@@ -244,19 +272,19 @@ export function exportDatabaseBackupBuffer(db: SqliteDb): Buffer {
   return db.serialize();
 }
 
-function pruneOldAutoBackups(db: SqliteDb, retentionCount: number): number {
-  const autoRows = db
+function pruneOldBackups(db: SqliteDb, retentionCount: number): number {
+  const rows = db
     .prepare(
-      `SELECT id, file_path
+      `SELECT id, file_path, backup_type
        FROM backup_records
-       WHERE backup_type = 'auto'
+       WHERE backup_type IN ('auto', 'manual')
        ORDER BY id DESC`
     )
-    .all() as Array<{ id: number; file_path: string }>;
+    .all() as Array<{ id: number; file_path: string; backup_type: string }>;
 
-  if (autoRows.length <= retentionCount) return 0;
+  if (rows.length <= retentionCount) return 0;
 
-  const toPrune = autoRows.slice(retentionCount);
+  const toPrune = rows.slice(retentionCount);
   const deleteStmt = db.prepare('DELETE FROM backup_records WHERE id = ?');
   let pruned = 0;
 
@@ -329,8 +357,8 @@ export async function createManagedBackup(
         .run(safeFilename, targetPath, backupType, sizeBytes);
       insertedId = Number(info.lastInsertRowid);
 
-      if (backupType === 'auto') {
-        prunedCount = pruneOldAutoBackups(db, settings.retention_count);
+      if (backupType === 'auto' || backupType === 'manual') {
+        prunedCount = pruneOldBackups(db, settings.retention_count);
       }
 
       if (backupType === 'auto' || backupType === 'manual') {
@@ -440,9 +468,22 @@ export function updateBackupSettings(
   input: UpdateBackupSettingsInput
 ): BackupSettings {
   const previous = getBackupSettings(db);
-  const autoEnabled = input.auto_enabled === 1 || input.auto_enabled === true ? 1 : 0;
-  const frequency: BackupFrequency = input.frequency === 'weekly' ? 'weekly' : 'daily';
-  const retention = Number(input.retention_count);
+  const autoEnabled =
+    input.auto_enabled !== undefined
+      ? input.auto_enabled === 1 || input.auto_enabled === true
+        ? 1
+        : 0
+      : previous.auto_enabled;
+  const backupOnClose =
+    input.backup_on_close !== undefined
+      ? input.backup_on_close === 1 || input.backup_on_close === true
+        ? 1
+        : 0
+      : previous.backup_on_close;
+  const frequency: BackupFrequency =
+    input.frequency === 'weekly' ? 'weekly' : input.frequency === 'daily' ? 'daily' : previous.frequency;
+  const retention =
+    input.retention_count !== undefined ? Number(input.retention_count) : previous.retention_count;
 
   if (!Number.isInteger(retention) || retention < 1 || retention > 90) {
     throw new ServiceError(
@@ -452,37 +493,45 @@ export function updateBackupSettings(
     );
   }
 
-  let cleanBackupDir = normalizeNullableString(input.backup_dir);
-  if (cleanBackupDir) {
-    cleanBackupDir = ensureWritableDirectory(cleanBackupDir);
+  let cleanBackupDir = previous.backup_dir;
+  if (input.backup_dir !== undefined) {
+    const rawDir = normalizeNullableString(input.backup_dir);
+    if (rawDir) {
+      cleanBackupDir = ensureWritableDirectory(rawDir);
+    } else {
+      cleanBackupDir = null;
+    }
   }
 
   db.transaction(() => {
     db.prepare(
       `UPDATE backup_settings
        SET auto_enabled = ?,
+           backup_on_close = ?,
            frequency = ?,
            retention_count = ?,
            backup_dir = ?,
            updated_at = datetime('now')
        WHERE id = 1`
-    ).run(autoEnabled, frequency, retention, cleanBackupDir);
+    ).run(autoEnabled, backupOnClose, frequency, retention, cleanBackupDir);
 
     const updated = getBackupSettings(db);
     recordAuditLog(db, {
       operation_type: 'update',
       section: 'settings',
-      description: 'تحديث إعدادات النسخ الاحتياطي التلقائي وسياسة الاحتفاظ',
+      description: 'تحديث إعدادات النسخ الاحتياطي وسياسة الحفظ والإغلاق',
       target_id: 1,
       target_label: 'إعدادات النسخ الاحتياطي',
       old_value: {
         auto_enabled: Boolean(previous.auto_enabled),
+        backup_on_close: Boolean(previous.backup_on_close),
         frequency: previous.frequency,
         retention_count: previous.retention_count,
         backup_dir: previous.backup_dir,
       },
       new_value: {
         auto_enabled: Boolean(updated.auto_enabled),
+        backup_on_close: Boolean(updated.backup_on_close),
         frequency: updated.frequency,
         retention_count: updated.retention_count,
         backup_dir: updated.backup_dir,

@@ -1007,15 +1007,20 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
     res.json(getBackupOverview(db));
   });
 
-  router.put('/backup/settings', (req, res) => {
-    const db = dbProvider();
-    const updated = updateBackupSettings(db, {
-      auto_enabled: req.body?.auto_enabled,
-      frequency: req.body?.frequency === 'weekly' ? 'weekly' : 'daily',
-      retention_count: Number(req.body?.retention_count ?? 7),
-      backup_dir: req.body?.backup_dir !== undefined ? req.body.backup_dir : null,
-    });
-    res.json(updated);
+  router.put('/backup/settings', (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const updated = updateBackupSettings(db, {
+        auto_enabled: req.body?.auto_enabled,
+        backup_on_close: req.body?.backup_on_close,
+        frequency: req.body?.frequency,
+        retention_count: req.body?.retention_count !== undefined ? Number(req.body.retention_count) : undefined,
+        backup_dir: req.body?.backup_dir,
+      });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
   });
 
   router.post('/backup/create', async (_req, res, next) => {

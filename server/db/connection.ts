@@ -490,6 +490,19 @@ function runSafeMigrations(db: SqliteDb): void {
     unifyTx();
   }
 
+  // 7. Ensure backup_settings has backup_on_close column & update legacy retention default
+  const backupSettingsCols = db.prepare('PRAGMA table_info(backup_settings)').all() as Array<{ name: string }>;
+  if (backupSettingsCols.length > 0) {
+    if (!backupSettingsCols.some((c) => c.name === 'backup_on_close')) {
+      db.exec('ALTER TABLE backup_settings ADD COLUMN backup_on_close INTEGER NOT NULL DEFAULT 1');
+    }
+    try {
+      db.prepare('UPDATE backup_settings SET retention_count = 10 WHERE id = 1 AND retention_count = 7').run();
+    } catch {
+      // ignore
+    }
+  }
+
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_absences_year_status_counted ON absences(academic_year_id, status, counted_as_absence);'
   );
@@ -577,8 +590,8 @@ export function initializeDatabase(db: SqliteDb): void {
 
     if (!existingBackupSettings) {
       db.prepare(
-        `INSERT INTO backup_settings (id, auto_enabled, frequency, retention_count, backup_dir)
-         VALUES (1, 0, 'daily', 7, NULL)`
+        `INSERT INTO backup_settings (id, auto_enabled, backup_on_close, frequency, retention_count, backup_dir)
+         VALUES (1, 0, 1, 'daily', 10, NULL)`
       ).run();
     }
 

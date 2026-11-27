@@ -350,8 +350,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_section ON audit_logs(section);
 CREATE TABLE IF NOT EXISTS backup_settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   auto_enabled INTEGER NOT NULL DEFAULT 0 CHECK (auto_enabled IN (0, 1)),
+  backup_on_close INTEGER NOT NULL DEFAULT 1 CHECK (backup_on_close IN (0, 1)),
   frequency TEXT NOT NULL DEFAULT 'daily' CHECK (frequency IN ('daily', 'weekly')),
-  retention_count INTEGER NOT NULL DEFAULT 7 CHECK (retention_count >= 1 AND retention_count <= 90),
+  retention_count INTEGER NOT NULL DEFAULT 10 CHECK (retention_count >= 1 AND retention_count <= 90),
   backup_dir TEXT,
   last_backup_at TEXT,
   last_backup_status TEXT,

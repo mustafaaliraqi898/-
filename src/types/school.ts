@@ -1114,6 +1114,7 @@ export type BackupRecordType = 'manual' | 'auto' | 'pre_restore';
 export interface BackupSettings {
   id: number;
   auto_enabled: number;
+  backup_on_close: number;
   frequency: BackupFrequency;
   retention_count: number;
   backup_dir: string | null;
@@ -1143,9 +1144,10 @@ export interface BackupOverviewResponse {
 }
 
 export interface UpdateBackupSettingsInput {
-  auto_enabled: boolean | number;
-  frequency: BackupFrequency;
-  retention_count: number;
+  auto_enabled?: boolean | number;
+  backup_on_close?: boolean | number;
+  frequency?: BackupFrequency;
+  retention_count?: number;
   backup_dir?: string | null;
 }
 
