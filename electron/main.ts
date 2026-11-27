@@ -764,6 +764,7 @@ function createMainWindow() {
     minWidth: 1100,
     minHeight: 720,
     title: 'نظام إدارة الغيابات المدرسية الإلكتروني',
+    icon: path.join(app.getAppPath(), 'build', 'icon.png'),
     backgroundColor: '#f8fafc',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
