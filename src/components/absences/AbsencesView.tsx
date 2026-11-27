@@ -702,7 +702,7 @@ export function AbsencesView({
       </div>
 
       {/* Filter Selection Bar */}
-      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs p-3.5 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div>
           <label
             htmlFor="abs-year-select"
@@ -714,7 +714,7 @@ export function AbsencesView({
             id="abs-year-select"
             value={selectedYearId ?? ''}
             onChange={(e) => onSelectYear(Number(e.target.value))}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30 tabular-nums"
+            className="w-full px-3 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30 tabular-nums"
           >
             {academicYears.map((yr) => (
               <option key={yr.id} value={yr.id}>
@@ -736,7 +736,7 @@ export function AbsencesView({
             id="abs-grade-select"
             value={gradeId}
             onChange={(e) => handleGradeChange(e.target.value)}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+            className="w-full px-3 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
           >
             {grades.length === 0 ? (
               <option value="">لا توجد صفوف</option>
@@ -762,7 +762,7 @@ export function AbsencesView({
             value={sectionId}
             onChange={(e) => setSectionId(Number(e.target.value) || '')}
             disabled={availableSections.length === 0}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30 disabled:opacity-50"
+            className="w-full px-3 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30 disabled:opacity-50"
           >
             {availableSections.length === 0 ? (
               <option value="">لا توجد شعب</option>
@@ -788,7 +788,7 @@ export function AbsencesView({
             type="date"
             value={attendanceDate}
             onChange={(e) => setAttendanceDate(e.target.value)}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30 tabular-nums"
+            className="w-full px-3 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30 tabular-nums"
           />
           {sheet?.holiday_info && (
             <p
@@ -813,9 +813,9 @@ export function AbsencesView({
       {sheet?.holiday_info?.is_holiday && (
         <div
           role="status"
-          className="rounded-xl border border-amber-300 dark:border-amber-700/80 bg-amber-50/90 dark:bg-amber-950/35 p-4 sm:p-5 flex items-start gap-3.5"
+          className="rounded-2xl border border-amber-300 dark:border-amber-700/80 bg-amber-50/90 dark:bg-amber-950/35 p-4 sm:p-5 flex items-start gap-3.5 shadow-xs"
         >
-          <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
             <CalendarOff className="w-5 h-5" />
           </div>
           <div className="min-w-0 space-y-1.5">
@@ -866,7 +866,7 @@ export function AbsencesView({
 
       {/* Quick Control Bar */}
       {sheet && sheet.students.length > 0 && !isHolidayBlocked && (
-        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 sm:px-5 py-3.5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs px-4 sm:px-5 py-3.5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs">
             <span className="font-bold text-slate-800 dark:text-slate-100">
               {sheet.session ? 'سجل محفوظ مسبقاً لهذا التاريخ' : 'تسجيل جديد لهذا التاريخ'}
@@ -943,7 +943,7 @@ export function AbsencesView({
             <button
               type="button"
               onClick={handleMarkAllPresent}
-              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-950/70 text-xs font-bold transition-colors whitespace-nowrap shrink-0 flex-1 sm:flex-initial"
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 min-h-[38px] rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-950/70 text-xs font-bold transition-colors whitespace-nowrap shrink-0 flex-1 sm:flex-initial"
             >
               <CheckCheck className="w-4 h-4" />
               <span>الكل حاضر</span>
@@ -953,7 +953,7 @@ export function AbsencesView({
               type="button"
               onClick={handleResetDraft}
               disabled={!isDirty}
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-medium transition-colors whitespace-nowrap shrink-0 flex-1 sm:flex-initial disabled:opacity-40"
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 min-h-[38px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-medium transition-colors whitespace-nowrap shrink-0 flex-1 sm:flex-initial disabled:opacity-40"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>إعادة تعيين</span>
@@ -963,7 +963,7 @@ export function AbsencesView({
               type="button"
               onClick={handleRequestSave}
               disabled={saving}
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-xs font-bold transition-colors whitespace-nowrap shrink-0 w-full sm:w-auto disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 min-h-[38px] rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white text-xs font-bold transition-colors whitespace-nowrap shrink-0 w-full sm:w-auto disabled:opacity-60 shadow-xs"
             >
               <Save className="w-4 h-4" />
               <span>{sheet.session ? 'تأكيد وحفظ التعديلات' : 'حفظ سجل الغياب'}</span>
@@ -973,7 +973,7 @@ export function AbsencesView({
       )}
 
       {/* Attendance Table */}
-      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
         {loadingSheet ? (
           <div className="p-8 space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
@@ -1560,7 +1560,7 @@ export function AbsencesView({
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-4xl rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden max-h-[90dvh] flex flex-col">
+          <div className="w-full max-w-4xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden max-h-[90dvh] flex flex-col">
             <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0">
               <div className="min-w-0">
                 <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 font-display truncate">
@@ -1585,7 +1585,7 @@ export function AbsencesView({
               <button
                 type="button"
                 onClick={() => setDetailStudent(null)}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap shrink-0"
+                className="px-3.5 py-1.5 min-h-[36px] rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
               >
                 إغلاق
               </button>
@@ -1594,7 +1594,7 @@ export function AbsencesView({
             {detailStudent && (
               <div className="p-4 sm:p-6 overflow-y-auto space-y-5 sm:space-y-6">
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-center">
-                  <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 p-3">
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       إجمالي أيام الغياب
                     </p>
@@ -1602,7 +1602,7 @@ export function AbsencesView({
                       {count(detailStudent.total_full_days)}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 p-3">
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       غياب يوم كامل مباشر
                     </p>
@@ -1610,7 +1610,7 @@ export function AbsencesView({
                       {count(detailStudent.direct_full_days)}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 p-3">
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       أيام محولة من الدروس
                     </p>
@@ -1618,18 +1618,18 @@ export function AbsencesView({
                       {count(detailStudent.converted_lesson_days)}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 p-3">
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       العداد الموحد الحالي
                     </p>
-                    <p className="text-xl font-bold text-teal-700 dark:text-teal-400 mt-1 tabular-nums">
+                    <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400 mt-1 tabular-nums">
                       <LtrSpan>
                         {count(detailStudent.pending_lessons)} /{' '}
                         {count(detailStudent.lessons_per_absence_day)}
                       </LtrSpan>
                     </p>
                   </div>
-                  <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 p-3">
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       دروس الهروب المسجلة
                     </p>
@@ -1637,7 +1637,7 @@ export function AbsencesView({
                       {count(detailStudent.lesson_escape_lessons)}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 p-3">
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       الإجازات والرخص
                     </p>

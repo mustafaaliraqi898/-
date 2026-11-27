@@ -144,7 +144,7 @@ export function MonthlyStudentNotesModal({
       aria-label="تفاصيل ملاحظات الطالب"
     >
       <div
-        className="w-full max-w-2xl rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[88vh]"
+        className="w-full max-w-2xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[88vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -163,7 +163,7 @@ export function MonthlyStudentNotesModal({
             type="button"
             onClick={onClose}
             aria-label="إغلاق النافذة"
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors shrink-0"
+            className="p-1.5 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
@@ -172,7 +172,7 @@ export function MonthlyStudentNotesModal({
         {/* Scrollable Body */}
         <div className="p-5 space-y-4 overflow-y-auto flex-1">
           {/* Numeric Summary Box (Actual Records Only) */}
-          <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 p-3.5 space-y-2">
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 p-3.5 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
                 الملخص العددي من السجلات الفعلية
@@ -191,13 +191,13 @@ export function MonthlyStudentNotesModal({
             </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px] tabular-nums">
-              <div className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5">
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5">
                 <span className="text-slate-500 dark:text-slate-400">هروب من درس:</span>{' '}
                 <strong className="text-orange-700 dark:text-orange-300">
                   {count(student.lesson_escape_lessons)}
                 </strong>
               </div>
-              <div className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5">
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5">
                 <span className="text-slate-500 dark:text-slate-400">رخص الدروس:</span>{' '}
                 <strong className="text-indigo-700 dark:text-indigo-300">
                   {count(
@@ -206,13 +206,13 @@ export function MonthlyStudentNotesModal({
                   )}
                 </strong>
               </div>
-              <div className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5">
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5">
                 <span className="text-slate-500 dark:text-slate-400">غياب الدروس:</span>{' '}
                 <strong className="text-amber-700 dark:text-amber-300">
                   {count(student.lesson_absence_lessons)}
                 </strong>
               </div>
-              <div className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5">
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5">
                 <span className="text-slate-500 dark:text-slate-400">غياب مباشر:</span>{' '}
                 <strong className="text-red-700 dark:text-red-300">
                   {count(student.direct_full_days)}
@@ -222,17 +222,17 @@ export function MonthlyStudentNotesModal({
           </div>
 
           {/* Separate Manual Note Block with Action Button */}
-          <div className="rounded-lg border border-teal-200 dark:border-teal-900/60 bg-teal-50/50 dark:bg-teal-950/25 p-3.5 space-y-2.5">
+          <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/25 p-3.5 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-teal-900 dark:text-teal-200">
-                <FileText className="w-4 h-4 text-teal-700 dark:text-teal-400 shrink-0" />
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900 dark:text-emerald-200">
+                <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <span>الملاحظة الإدارية اليدوية (مستقلة عن أعداد الغياب)</span>
               </div>
 
               <button
                 type="button"
                 onClick={() => onEditManualNote(student)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold transition-colors"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[38px] rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-semibold transition-colors shadow-xs"
               >
                 {student.manual_note ? (
                   <>
@@ -333,7 +333,7 @@ export function MonthlyStudentNotesModal({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors"
+            className="inline-flex items-center gap-1.5 px-4 py-2 min-h-[38px] rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors"
           >
             <CheckCircle2 className="w-4 h-4" />
             إغلاق

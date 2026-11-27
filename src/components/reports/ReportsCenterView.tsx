@@ -324,10 +324,10 @@ export function ReportsCenterView({
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Header Banner */}
-      <div className="rounded-2xl border border-teal-200 dark:border-teal-800/60 bg-gradient-to-br from-teal-50/80 via-white to-teal-50/30 dark:from-teal-950/30 dark:via-slate-900 dark:to-teal-950/10 p-6 shadow-sm">
+      <div className="rounded-2xl border border-teal-200 dark:border-teal-800/60 bg-gradient-to-br from-teal-50/80 via-white to-teal-50/30 dark:from-teal-950/30 dark:via-slate-900 dark:to-teal-950/10 p-6 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-start gap-3.5">
-            <div className="w-11 h-11 rounded-xl bg-teal-700 text-white flex items-center justify-center shrink-0 shadow-md">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center shrink-0 shadow-md">
               <FileCheck className="w-6 h-6" />
             </div>
             <div>
@@ -343,15 +343,15 @@ export function ReportsCenterView({
             <button
               type="button"
               onClick={loadHistory}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-bold shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2.5 min-h-[40px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-semibold shadow-xs hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
             >
-              <History className="w-4 h-4 text-teal-700 dark:text-teal-400" />
+              <History className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               <span>سجل الكتب الصادرة</span>
             </button>
             <button
               type="button"
               onClick={() => fetchReport()}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs sm:text-sm font-bold shadow-sm transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2.5 min-h-[40px] rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs sm:text-sm font-semibold shadow-xs transition-colors"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               <span>تحديث البيانات</span>
@@ -361,16 +361,16 @@ export function ReportsCenterView({
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-4 flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm text-red-900 dark:text-red-200">
+        <div className="rounded-2xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 p-4 flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm text-rose-900 dark:text-rose-200 shadow-xs">
           <div className="flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
+            <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
             <span>{error}</span>
           </div>
           {error.includes('قالب') && onOpenLegalSettings && (
             <button
               type="button"
               onClick={onOpenLegalSettings}
-              className="px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-800 text-white text-xs font-bold"
+              className="px-3.5 py-1.5 min-h-[36px] rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold"
             >
               الذهاب لإعدادات القوالب
             </button>
@@ -379,7 +379,7 @@ export function ReportsCenterView({
       )}
 
       {issuedSuccess && (
-        <div className="rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 p-4 flex items-center gap-3 text-xs sm:text-sm text-emerald-900 dark:text-emerald-200">
+        <div className="rounded-2xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 p-4 flex items-center gap-3 text-xs sm:text-sm text-emerald-900 dark:text-emerald-200 shadow-xs">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <span>{issuedSuccess}</span>
         </div>
@@ -396,10 +396,10 @@ export function ReportsCenterView({
                 key={stage.id}
                 type="button"
                 onClick={() => setSelectedStageId(stage.id)}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+                className={`inline-flex items-center gap-2 px-4 py-2.5 min-h-[40px] rounded-xl text-xs sm:text-sm font-bold transition-all ${
                   isSelected
-                    ? 'bg-teal-700 text-white shadow-md'
-                    : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/70'
                 }`}
               >
                 <Layers className="w-4 h-4 opacity-80" />
@@ -414,7 +414,7 @@ export function ReportsCenterView({
       )}
 
       {/* Filters Bar */}
-      <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
         <form onSubmit={handleSearchSubmit} className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 flex-1 min-w-[220px]">
             <Search className="w-4 h-4 text-slate-400 shrink-0" />
@@ -423,7 +423,7 @@ export function ReportsCenterView({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="بحث باسم الطالب أو رقم القيد..."
-              className="w-full px-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+              className="w-full px-3 py-2 min-h-[40px] text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
             />
           </div>
           <div className="w-full sm:w-auto">
@@ -434,7 +434,7 @@ export function ReportsCenterView({
                 setSelectedGradeId(gId);
                 setSelectedSectionId(undefined);
               }}
-              className="w-full sm:w-44 px-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+              className="w-full sm:w-44 px-3 py-2 min-h-[40px] text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
             >
               <option value="">جميع الصفوف</option>
               {grades.map((g) => (
@@ -449,7 +449,7 @@ export function ReportsCenterView({
               value={selectedSectionId || ''}
               onChange={(e) => setSelectedSectionId(e.target.value ? Number(e.target.value) : undefined)}
               disabled={!selectedGradeId}
-              className="w-full sm:w-40 px-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30 disabled:opacity-50"
+              className="w-full sm:w-40 px-3 py-2 min-h-[40px] text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30 disabled:opacity-50"
             >
               <option value="">جميع الشعب</option>
               {currentSections.map((s) => (
@@ -462,7 +462,7 @@ export function ReportsCenterView({
           <div className="flex items-center gap-2">
             <button
               type="submit"
-              className="px-4 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs sm:text-sm font-semibold transition-colors"
+              className="px-4 py-2 min-h-[40px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs sm:text-sm font-semibold transition-colors"
             >
               تصفية
             </button>
@@ -470,7 +470,7 @@ export function ReportsCenterView({
               <button
                 type="button"
                 onClick={handleOpenIssueModal}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs sm:text-sm font-bold shadow-sm transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-2 min-h-[40px] rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs sm:text-sm font-bold shadow-xs transition-colors"
               >
                 <Send className="w-4 h-4" />
                 <span>إصدار كتاب رسمي للمرحلة</span>
@@ -481,13 +481,13 @@ export function ReportsCenterView({
       </section>
 
       {/* Main Table */}
-      <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden relative">
+      <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden relative">
         {loading && (
-          <div className="absolute top-0 inset-x-0 h-1 bg-teal-600 animate-pulse z-10" />
+          <div className="absolute top-0 inset-x-0 h-1 bg-emerald-600 animate-pulse z-10" />
         )}
-        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-900">
+        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70 dark:bg-slate-900/90">
           <div>
-            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 font-display">
               {reportData?.current_stage ? <BidiText text={reportData.current_stage.name} /> : 'تقرير الغياب'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -495,7 +495,7 @@ export function ReportsCenterView({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-bold text-teal-800 dark:text-teal-300 bg-teal-100 dark:bg-teal-950/60 px-3 py-1.5 rounded-lg">
+            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-950/60 px-3 py-1.5 rounded-xl border border-emerald-200/60 dark:border-emerald-800/60">
               السنة الدراسية: <LtrSpan>{academicYear(reportData?.academic_year.name)}</LtrSpan>
             </span>
             {reportData && reportData.current_stage && (
@@ -503,16 +503,16 @@ export function ReportsCenterView({
                 <button
                   type="button"
                   onClick={() => triggerPrintMode('report')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-sm transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold shadow-xs transition-colors"
                 >
-                  <Printer className="w-3.5 h-3.5 text-teal-700 dark:text-teal-400" />
+                  <Printer className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   <span>طباعة</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleExportReportPdf}
                   disabled={exportingReportPdf}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold shadow-sm transition-colors disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-60"
                 >
                   {exportingReportPdf ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -591,11 +591,11 @@ export function ReportsCenterView({
       {issueModalOpen && reportData && reportData.current_stage && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-[1px] flex items-center justify-center p-3 sm:p-5" role="dialog" aria-modal="true">
           <div className="w-full max-w-3xl max-h-[92vh] rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-900">
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
                 إصدار كتاب إداري رسمي موحد لـ ({reportData.current_stage.name})
               </h3>
-              <button type="button" onClick={() => setIssueModalOpen(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <button type="button" onClick={() => setIssueModalOpen(false)} className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -603,7 +603,7 @@ export function ReportsCenterView({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                    رقم الكتاب الرسمي <span className="text-red-500">*</span>
+                    رقم الكتاب الرسمي <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -611,26 +611,26 @@ export function ReportsCenterView({
                     value={docNumber}
                     onChange={(e) => setDocNumber(e.target.value)}
                     placeholder="مثال: ق/421"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                    className="w-full px-3 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
                   />
                 </div>
                 <div>
                   <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                    تاريخ الكتاب <span className="text-red-500">*</span>
+                    تاريخ الكتاب <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="date"
                     required
                     value={letterDate}
                     onChange={(e) => setLetterDate(e.target.value)}
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                    className="w-full px-3 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
                   />
                 </div>
               </div>
 
               <div>
                 <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  موضوع الكتاب (م/) <span className="text-red-500">*</span>
+                  موضوع الكتاب (م/) <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -638,16 +638,16 @@ export function ReportsCenterView({
                   value={subjectDraft}
                   onChange={(e) => setSubjectDraft(e.target.value)}
                   placeholder="م/ الإعلان عن أسماء الطلبة..."
-                  className="w-full px-3 py-2 text-sm font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                  className="w-full px-3 py-2 min-h-[40px] text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
                 />
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block font-bold text-slate-800 dark:text-slate-200">
-                    نص الكتاب الرسمي (مستمد من النص الموحد المعتمد لجميع المراحل) <span className="text-red-500">*</span>
+                    نص الكتاب الرسمي (مستمد من النص الموحد المعتمد لجميع المراحل) <span className="text-rose-500">*</span>
                   </label>
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
                     عدد الطلاب المشمولين: {plain(reportData.rows.length)} طالب
                   </span>
                 </div>
@@ -656,29 +656,29 @@ export function ReportsCenterView({
                   required
                   value={bodyDraft}
                   onChange={(e) => setBodyDraft(e.target.value)}
-                  className="w-full px-3 py-2 text-xs sm:text-sm font-sans rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30 leading-relaxed"
+                  className="w-full px-3 py-2 text-xs sm:text-sm font-sans rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30 leading-relaxed"
                 />
               </div>
 
               <div className="p-3 bg-slate-50 dark:bg-slate-950/50 rounded-xl border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300">
-                <span className="font-bold text-teal-700 dark:text-teal-400">معاينة الجدول:</span> سيتم إدراج جدول أسماء الطلبة تلقائياً في الأسفل (ت، اسم الطالب، الصف والشعبة، عدد أيام الغياب).
+                <span className="font-bold text-emerald-700 dark:text-emerald-400">معاينة الجدول:</span> سيتم إدراج جدول أسماء الطلبة تلقائياً في الأسفل (ت، اسم الطالب، الصف والشعبة، عدد أيام الغياب).
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIssueModalOpen(false)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className="px-4 py-2 min-h-[40px] rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
                   disabled={issuing}
-                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-sm disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-5 py-2 min-h-[40px] rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold shadow-xs disabled:opacity-50 transition-colors"
                 >
                   <Send className="w-4 h-4" />
-                  <span>{issuing ? 'جاري الإصدار والثبيت...' : 'اعتماد وإصدار الكتاب الرسمي'}</span>
+                  <span>{issuing ? 'جاري الإصدار والتثبيت...' : 'اعتماد وإصدار الكتاب الرسمي'}</span>
                 </button>
               </div>
             </form>
@@ -690,11 +690,11 @@ export function ReportsCenterView({
       {historyModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-[1px] flex items-center justify-center p-3 sm:p-5" role="dialog" aria-modal="true">
           <div className="w-full max-w-4xl max-h-[90vh] rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-900">
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
                 سجل الكتب الرسمية الصادرة ({plain(issuedLetters.length)})
               </h3>
-              <button type="button" onClick={() => setHistoryModalOpen(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <button type="button" onClick={() => setHistoryModalOpen(false)} className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -715,13 +715,13 @@ export function ReportsCenterView({
                       <div key={letter.id} className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900 dark:text-slate-100 text-sm">
+                            <span className="font-bold text-slate-900 dark:text-slate-100 text-sm font-display">
                               <BidiText text={letter.stage_name} />
                             </span>
-                            <span className="px-2 py-0.5 rounded bg-teal-100 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 text-xs font-bold">
+                            <span className="px-2 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-bold border border-emerald-200/60 dark:border-emerald-800/60">
                               رقم الكتاب: <BidiText text={letter.document_number} />
                             </span>
-                            <span className="text-xs text-slate-500">
+                            <span className="text-xs text-slate-500 dark:text-slate-400">
                               التاريخ: <LtrSpan>{dateDMY(letter.letter_date)}</LtrSpan>
                             </span>
                           </div>
@@ -736,7 +736,7 @@ export function ReportsCenterView({
                             setHistoryModalOpen(false);
                             setPrintPreviewOpen(true);
                           }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold shrink-0"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[38px] rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-semibold shrink-0 shadow-xs transition-colors"
                         >
                           <Printer className="w-3.5 h-3.5" />
                           <span>عرض ومعاينة الطباعة</span>
@@ -755,15 +755,15 @@ export function ReportsCenterView({
       {printPreviewOpen && selectedLetter && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-[1px] flex items-center justify-center p-3 sm:p-5 no-print" role="dialog" aria-modal="true">
           <div className="w-full max-w-4xl max-h-[92vh] rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between no-print">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between no-print bg-slate-50/70 dark:bg-slate-900">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 font-display">
                 معاينة طباعة الكتاب الرسمي رقم (<BidiText text={selectedLetter.document_number} />)
               </h3>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => triggerPrintMode('letter')}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 min-h-[36px] rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition-colors"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>طباعة</span>
@@ -772,7 +772,7 @@ export function ReportsCenterView({
                   type="button"
                   onClick={handleExportLetterPdf}
                   disabled={exportingLetterPdf}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-semibold disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 min-h-[36px] rounded-xl bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-semibold disabled:opacity-60 shadow-xs transition-colors"
                 >
                   {exportingLetterPdf ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -784,7 +784,7 @@ export function ReportsCenterView({
                 <button
                   type="button"
                   onClick={() => setPrintPreviewOpen(false)}
-                  className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className="p-1.5 rounded-xl text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>

@@ -492,10 +492,10 @@ export function SettingsView({
           role="tab"
           aria-selected={activeTab === 'general'}
           onClick={() => setActiveTab('general')}
-          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+          className={`inline-flex items-center gap-2 px-4 py-2 min-h-[40px] rounded-xl text-xs sm:text-sm font-semibold transition-colors ${
             activeTab === 'general'
-              ? 'bg-teal-700 text-white'
-              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/70'
           }`}
         >
           <Building2 className="w-4 h-4" />
@@ -507,10 +507,10 @@ export function SettingsView({
           role="tab"
           aria-selected={activeTab === 'holidays'}
           onClick={() => setActiveTab('holidays')}
-          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+          className={`inline-flex items-center gap-2 px-4 py-2 min-h-[40px] rounded-xl text-xs sm:text-sm font-semibold transition-colors ${
             activeTab === 'holidays'
-              ? 'bg-teal-700 text-white'
-              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/70'
           }`}
         >
           <CalendarOff className="w-4 h-4" />
@@ -522,10 +522,10 @@ export function SettingsView({
           role="tab"
           aria-selected={activeTab === 'legal'}
           onClick={() => setActiveTab('legal')}
-          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+          className={`inline-flex items-center gap-2 px-4 py-2 min-h-[40px] rounded-xl text-xs sm:text-sm font-semibold transition-colors ${
             activeTab === 'legal'
-              ? 'bg-teal-700 text-white'
-              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/70'
           }`}
         >
           <Scale className="w-4 h-4" />
@@ -537,10 +537,10 @@ export function SettingsView({
           role="tab"
           aria-selected={activeTab === 'backup'}
           onClick={() => setActiveTab('backup')}
-          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+          className={`inline-flex items-center gap-2 px-4 py-2 min-h-[40px] rounded-xl text-xs sm:text-sm font-semibold transition-colors ${
             activeTab === 'backup'
-              ? 'bg-teal-700 text-white'
-              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/70'
           }`}
         >
           <HardDriveDownload className="w-4 h-4" />
@@ -567,9 +567,9 @@ export function SettingsView({
       <>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 items-start">
         {/* School Info & Lesson Threshold Form */}
-        <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
-          <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5">
-            <Building2 className="w-4 h-4 text-teal-700 dark:text-teal-400 shrink-0" />
+        <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+          <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5 bg-slate-50/70 dark:bg-slate-900">
+            <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
               بيانات المؤسسة وقواعد الغياب
             </h3>
@@ -577,27 +577,27 @@ export function SettingsView({
           <form onSubmit={handleSaveGeneralSettings} className="p-4 sm:p-5 space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                اسم المدرسة <span className="text-red-500">*</span>
+                اسم المدرسة <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
                 required
                 value={schoolName}
                 onChange={(e) => setSchoolName(e.target.value)}
-                className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                className="w-full px-3.5 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
               />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                المديرية العامة للتربية <span className="text-red-500">*</span>
+                المديرية العامة للتربية <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
                 required
                 value={directorateName}
                 onChange={(e) => setDirectorateName(e.target.value)}
-                className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                className="w-full px-3.5 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
               />
             </div>
 
@@ -614,7 +614,7 @@ export function SettingsView({
                 value={principalName}
                 onChange={(e) => setPrincipalName(e.target.value)}
                 placeholder="أدخل اسم مدير المدرسة (اختياري)"
-                className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                className="w-full px-3.5 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
               />
             </div>
 
@@ -680,9 +680,9 @@ export function SettingsView({
                   htmlFor="lessons-per-day-input"
                   className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5"
                 >
-                  <Clock className="w-3.5 h-3.5 text-teal-700 dark:text-teal-400 shrink-0" />
+                  <Clock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   <span>عدد دروس الغياب التي تعادل يوماً كاملاً</span>
-                  <span className="text-red-500">*</span>
+                  <span className="text-rose-500">*</span>
                 </label>
                 <input
                   id="lessons-per-day-input"
@@ -693,7 +693,7 @@ export function SettingsView({
                   step={1}
                   value={lessonsPerDay}
                   onChange={(e) => setLessonsPerDay(e.target.value)}
-                  className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                  className="w-full px-3.5 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
                 />
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
                   الحد الافتراضي هو 5 دروس. عند تغيير هذا الرقم يُطبق على عمليات الاحتساب المستقبلية
@@ -706,9 +706,9 @@ export function SettingsView({
                   htmlFor="daily-lessons-count-input"
                   className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5"
                 >
-                  <Clock className="w-3.5 h-3.5 text-sky-700 dark:text-sky-400 shrink-0" />
+                  <Clock className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
                   <span>عدد الدروس اليومية في الجدول المدرسي</span>
-                  <span className="text-red-500">*</span>
+                  <span className="text-rose-500">*</span>
                 </label>
                 <input
                   id="daily-lessons-count-input"
@@ -719,7 +719,7 @@ export function SettingsView({
                   step={1}
                   value={dailyLessonsCount}
                   onChange={(e) => setDailyLessonsCount(e.target.value)}
-                  className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                  className="w-full px-3.5 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
                 />
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
                   يحدد عدد الدروس المتاحة للاختيار عند تسجيل «رخصة عن درس معين» (مثلاً {plain(7)} دروس: من
@@ -728,7 +728,7 @@ export function SettingsView({
               </div>
 
               <fieldset className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
-                <legend className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <legend className="text-xs font-semibold text-slate-700 dark:text-slate-300 font-display">
                   نظام عرض الأرقام
                 </legend>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
@@ -738,9 +738,9 @@ export function SettingsView({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                   <label
-                    className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${
+                    className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-colors ${
                       numberDisplayMode === 'arabic'
-                        ? 'border-teal-600 bg-teal-50/60 dark:bg-teal-950/30 dark:border-teal-500'
+                        ? 'border-emerald-600 bg-emerald-50/60 dark:bg-emerald-950/30 dark:border-emerald-500'
                         : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40'
                     }`}
                   >
@@ -750,7 +750,7 @@ export function SettingsView({
                       checked={numberDisplayMode === 'arabic'}
                       disabled={savingNumberMode}
                       onChange={() => void handleNumberDisplayModeChange('arabic')}
-                      className="mt-0.5 text-teal-700 focus:ring-teal-600 shrink-0"
+                      className="mt-0.5 text-emerald-600 focus:ring-emerald-500 shrink-0"
                     />
                     <div className="min-w-0">
                       <span className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -763,9 +763,9 @@ export function SettingsView({
                   </label>
 
                   <label
-                    className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${
+                    className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-colors ${
                       numberDisplayMode === 'english'
-                        ? 'border-teal-600 bg-teal-50/60 dark:bg-teal-950/30 dark:border-teal-500'
+                        ? 'border-emerald-600 bg-emerald-50/60 dark:bg-emerald-950/30 dark:border-emerald-500'
                         : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40'
                     }`}
                   >
@@ -775,7 +775,7 @@ export function SettingsView({
                       checked={numberDisplayMode === 'english'}
                       disabled={savingNumberMode}
                       onChange={() => void handleNumberDisplayModeChange('english')}
-                      className="mt-0.5 text-teal-700 focus:ring-teal-600 shrink-0"
+                      className="mt-0.5 text-emerald-600 focus:ring-emerald-500 shrink-0"
                     />
                     <div className="min-w-0">
                       <span className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -794,7 +794,7 @@ export function SettingsView({
               <button
                 type="submit"
                 disabled={savingSettings}
-                className="w-full sm:w-auto px-4 py-2 text-sm font-semibold rounded-lg bg-teal-700 hover:bg-teal-800 text-white transition-colors disabled:opacity-60"
+                className="w-full sm:w-auto px-4 py-2 min-h-[40px] text-sm font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white transition-colors disabled:opacity-60 shadow-xs"
               >
                 {savingSettings ? 'جاري الحفظ...' : 'حفظ الإعدادات'}
               </button>
@@ -803,9 +803,9 @@ export function SettingsView({
         </section>
 
         {/* Academic Years Management */}
-        <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
-          <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5">
-            <CalendarCheck2 className="w-4 h-4 text-teal-700 dark:text-teal-400 shrink-0" />
+        <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+          <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5 bg-slate-50/70 dark:bg-slate-900">
+            <CalendarCheck2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
               السنوات الدراسية
             </h3>
@@ -819,12 +819,12 @@ export function SettingsView({
                   value={newYearName}
                   onChange={(e) => setNewYearName(e.target.value)}
                   placeholder="مثال: 2027-2028"
-                  className="w-full min-w-0 sm:flex-1 px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                  className="w-full min-w-0 sm:flex-1 px-3.5 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
                 />
                 <button
                   type="submit"
                   disabled={creatingYear}
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white text-sm font-semibold transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 min-h-[40px] rounded-xl bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white text-sm font-semibold transition-colors whitespace-nowrap shrink-0 disabled:opacity-60 shadow-xs"
                 >
                   <Plus className="w-4 h-4" />
                   <span>إضافة سنة</span>
@@ -835,13 +835,13 @@ export function SettingsView({
                   type="checkbox"
                   checked={setNewYearActive}
                   onChange={(e) => setSetNewYearActive(e.target.checked)}
-                  className="mt-0.5 rounded border-slate-300 text-teal-700 focus:ring-teal-600 shrink-0"
+                  className="mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 shrink-0"
                 />
                 <span>تعيينها كسنة دراسية فعالة مباشرة بعد الإضافة</span>
               </label>
             </form>
 
-            <div className="border border-slate-200 dark:border-slate-800 rounded-lg divide-y divide-slate-200 dark:divide-slate-800">
+            <div className="border border-slate-200 dark:border-slate-800 rounded-xl divide-y divide-slate-200 dark:divide-slate-800">
               {academicYears.map((yr) => (
                 <div
                   key={yr.id}
@@ -852,7 +852,7 @@ export function SettingsView({
                       <LtrSpan>{academicYear(yr.name)}</LtrSpan>
                     </span>
                     {yr.is_active === 1 && (
-                      <span className="text-xs font-semibold text-teal-700 dark:text-teal-400">
+                      <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
                         · السنة الفعالة حالياً
                       </span>
                     )}
@@ -861,12 +861,12 @@ export function SettingsView({
                     <button
                       type="button"
                       onClick={() => handleActivateYear(yr.id)}
-                      className="px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
+                      className="px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
                     >
                       تفعيل
                     </button>
                   ) : (
-                    <span className="inline-flex items-center gap-1 text-xs text-teal-700 dark:text-teal-400 font-medium shrink-0">
+                    <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400 font-semibold shrink-0">
                       <Check className="w-3.5 h-3.5" />
                       <span>نشطة</span>
                     </span>
@@ -879,9 +879,9 @@ export function SettingsView({
       </div>
 
       {/* Leaves & Permissions Settings Section */}
-      <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+      <section className="rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
         <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5">
-          <FileCheck2 className="w-4 h-4 text-sky-700 dark:text-sky-400 shrink-0" />
+          <FileCheck2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
             إعدادات الإجازات والرخص
           </h3>
@@ -900,9 +900,9 @@ export function SettingsView({
 
               <div className="space-y-2 pt-1">
                 <label
-                  className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-colors ${
                     dailyPermCountsAsAbsence === 1
-                      ? 'border-teal-600 bg-teal-50/60 dark:bg-teal-950/30 dark:border-teal-500'
+                      ? 'border-emerald-600 bg-emerald-50/60 dark:bg-emerald-950/30 dark:border-emerald-500'
                       : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40'
                   }`}
                 >
@@ -911,7 +911,7 @@ export function SettingsView({
                     name="daily_permission_rule"
                     checked={dailyPermCountsAsAbsence === 1}
                     onChange={() => setDailyPermCountsAsAbsence(1)}
-                    className="mt-0.5 text-teal-700 focus:ring-teal-600 shrink-0"
+                    className="mt-0.5 text-emerald-600 focus:ring-emerald-500 shrink-0"
                   />
                   <span className="text-xs sm:text-sm font-medium text-slate-800 dark:text-slate-100">
                     نعم، يوم غياب كامل.
@@ -919,9 +919,9 @@ export function SettingsView({
                 </label>
 
                 <label
-                  className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-colors ${
                     dailyPermCountsAsAbsence === 0
-                      ? 'border-teal-600 bg-teal-50/60 dark:bg-teal-950/30 dark:border-teal-500'
+                      ? 'border-emerald-600 bg-emerald-50/60 dark:bg-emerald-950/30 dark:border-emerald-500'
                       : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40'
                   }`}
                 >
@@ -930,7 +930,7 @@ export function SettingsView({
                     name="daily_permission_rule"
                     checked={dailyPermCountsAsAbsence === 0}
                     onChange={() => setDailyPermCountsAsAbsence(0)}
-                    className="mt-0.5 text-teal-700 focus:ring-teal-600 shrink-0"
+                    className="mt-0.5 text-emerald-600 focus:ring-emerald-500 shrink-0"
                   />
                   <span className="text-xs sm:text-sm font-medium text-slate-800 dark:text-slate-100">
                     لا، لا تُحتسب غياباً.
@@ -950,9 +950,9 @@ export function SettingsView({
 
               <div className="space-y-2 pt-1">
                 <label
-                  className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-colors ${
                     lessonPermCountsAsAbsence === 1
-                      ? 'border-teal-600 bg-teal-50/60 dark:bg-teal-950/30 dark:border-teal-500'
+                      ? 'border-emerald-600 bg-emerald-50/60 dark:bg-emerald-950/30 dark:border-emerald-500'
                       : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40'
                   }`}
                 >
@@ -961,7 +961,7 @@ export function SettingsView({
                     name="lesson_permission_rule"
                     checked={lessonPermCountsAsAbsence === 1}
                     onChange={() => setLessonPermCountsAsAbsence(1)}
-                    className="mt-0.5 text-teal-700 focus:ring-teal-600 shrink-0"
+                    className="mt-0.5 text-emerald-600 focus:ring-emerald-500 shrink-0"
                   />
                   <span className="text-xs sm:text-sm font-medium text-slate-800 dark:text-slate-100">
                     نعم، تُحتسب غياب درس وتدخل في عداد الدروس المتراكم.
@@ -969,9 +969,9 @@ export function SettingsView({
                 </label>
 
                 <label
-                  className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-colors ${
                     lessonPermCountsAsAbsence === 0
-                      ? 'border-teal-600 bg-teal-50/60 dark:bg-teal-950/30 dark:border-teal-500'
+                      ? 'border-emerald-600 bg-emerald-50/60 dark:bg-emerald-950/30 dark:border-emerald-500'
                       : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40'
                   }`}
                 >
@@ -980,7 +980,7 @@ export function SettingsView({
                     name="lesson_permission_rule"
                     checked={lessonPermCountsAsAbsence === 0}
                     onChange={() => setLessonPermCountsAsAbsence(0)}
-                    className="mt-0.5 text-teal-700 focus:ring-teal-600 shrink-0"
+                    className="mt-0.5 text-emerald-600 focus:ring-emerald-500 shrink-0"
                   />
                   <span className="text-xs sm:text-sm font-medium text-slate-800 dark:text-slate-100">
                     لا، لا تُحتسب غياب درس.
@@ -992,7 +992,7 @@ export function SettingsView({
 
           <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-start gap-2 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              <ShieldCheck className="w-4 h-4 text-teal-700 dark:text-teal-400 shrink-0 mt-0.5" />
+              <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
               <span>
                 الإجازة المرضية لا تُحتسب غياباً مطلقاً في جميع الأحوال. تُطبق إعدادات الرخص على
                 التسجيلات الجديدة والمعدّلة من تاريخ تطبيقها، ولا تُعدّل السجلات التاريخية السابقة
@@ -1003,7 +1003,7 @@ export function SettingsView({
             <button
               type="submit"
               disabled={savingSettings}
-              className="w-full sm:w-auto px-4 py-2 text-sm font-semibold rounded-lg bg-teal-700 hover:bg-teal-800 text-white transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
+              className="w-full sm:w-auto min-h-[40px] px-5 py-2 text-sm font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
             >
               {savingSettings ? 'جاري الحفظ...' : 'حفظ إعدادات الإجازات والرخص'}
             </button>
@@ -1016,9 +1016,9 @@ export function SettingsView({
       {activeTab === 'holidays' && (
       <>
       {/* Weekly Holidays Settings Section */}
-      <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+      <section className="rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
         <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5">
-          <CalendarOff className="w-4 h-4 text-amber-700 dark:text-amber-400 shrink-0" />
+          <CalendarOff className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
           <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
             إعدادات العطل الأسبوعية
           </h3>
@@ -1036,7 +1036,7 @@ export function SettingsView({
               return (
                 <label
                   key={day.day_of_week}
-                  className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-colors ${
                     checked
                       ? 'border-amber-500 bg-amber-50/70 dark:bg-amber-950/30 dark:border-amber-500/80'
                       : 'border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/30 hover:bg-slate-50 dark:hover:bg-slate-800/60'
@@ -1082,11 +1082,11 @@ export function SettingsView({
                 value={weeklyHolidayReason}
                 onChange={(e) => setWeeklyHolidayReason(e.target.value)}
                 placeholder="عطلة أسبوعية رسمية"
-                className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                className="w-full min-h-[40px] px-3.5 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30"
               />
             </div>
 
-            <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 px-3.5 py-2.5 text-xs space-y-1">
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 px-3.5 py-2.5 text-xs space-y-1">
               <p className="text-slate-700 dark:text-slate-200">
                 <span className="font-semibold text-amber-700 dark:text-amber-400">
                   أيام العطلة:
@@ -1107,7 +1107,7 @@ export function SettingsView({
           {weeklyWarning && (
             <div
               role="alert"
-              className="rounded-lg border border-amber-300 dark:border-amber-700/70 bg-amber-50 dark:bg-amber-950/30 p-3.5 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200 leading-relaxed"
+              className="rounded-xl border border-amber-300 dark:border-amber-700/70 bg-amber-50 dark:bg-amber-950/30 p-3.5 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200 leading-relaxed"
             >
               <AlertTriangle className="w-4 h-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
               <div className="space-y-1">
@@ -1121,7 +1121,7 @@ export function SettingsView({
             <button
               type="submit"
               disabled={loadingHolidays || savingWeeklyHolidays}
-              className="w-full sm:w-auto px-4 py-2 text-sm font-semibold rounded-lg bg-teal-700 hover:bg-teal-800 text-white transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
+              className="w-full sm:w-auto min-h-[40px] px-5 py-2 text-sm font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
             >
               {savingWeeklyHolidays ? 'جاري الحفظ...' : 'حفظ العطل الأسبوعية'}
             </button>
@@ -1130,10 +1130,10 @@ export function SettingsView({
       </section>
 
       {/* Official & Exceptional Holidays Management Section */}
-      <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+      <section className="rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
         <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
-            <CalendarDays className="w-4 h-4 text-teal-700 dark:text-teal-400 shrink-0" />
+            <CalendarDays className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
               إدارة العطل الرسمية والاستثنائية
             </h3>
@@ -1147,7 +1147,7 @@ export function SettingsView({
           {/* Add / Edit Holiday Form */}
           <form
             onSubmit={handleSaveHoliday}
-            className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 p-4 space-y-4"
+            className="rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-800/30 p-4 space-y-4"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
@@ -1179,7 +1179,7 @@ export function SettingsView({
                   value={holidayName}
                   onChange={(e) => setHolidayName(e.target.value)}
                   placeholder="مثال: عطلة عيد الفطر المبارك أو عطلة أمطار"
-                  className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                  className="w-full min-h-[40px] px-3.5 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30"
                 />
               </div>
 
@@ -1196,7 +1196,7 @@ export function SettingsView({
                   required
                   value={holidayStartDate}
                   onChange={(e) => handleHolidayStartDateChange(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                  className="w-full min-h-[40px] px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-600/30"
                 />
               </div>
 
@@ -1214,7 +1214,7 @@ export function SettingsView({
                   min={holidayStartDate || undefined}
                   value={holidayEndDate}
                   onChange={(e) => setHolidayEndDate(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                  className="w-full min-h-[40px] px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-600/30"
                 />
               </div>
 
@@ -1229,7 +1229,7 @@ export function SettingsView({
                   id="holiday-type-select"
                   value={holidayType}
                   onChange={(e) => setHolidayType(e.target.value as HolidayType)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                  className="w-full min-h-[40px] px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30"
                 >
                   <option value="official">عطلة رسمية</option>
                   <option value="exceptional">عطلة استثنائية</option>
@@ -1250,7 +1250,7 @@ export function SettingsView({
                   value={holidayNotes}
                   onChange={(e) => setHolidayNotes(e.target.value)}
                   placeholder="تفاصيل إضافية أو رقم الكتاب الوزاري / القرار الإداري..."
-                  className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                  className="w-full min-h-[40px] px-3.5 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30"
                 />
               </div>
             </div>
@@ -1264,7 +1264,7 @@ export function SettingsView({
               <button
                 type="submit"
                 disabled={savingHoliday}
-                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg bg-teal-700 hover:bg-teal-800 text-white transition-colors whitespace-nowrap shrink-0 w-full sm:w-auto disabled:opacity-60"
+                className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-5 py-2 text-sm font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors whitespace-nowrap shrink-0 w-full sm:w-auto disabled:opacity-60"
               >
                 <Plus className="w-4 h-4" />
                 <span>
@@ -1281,7 +1281,7 @@ export function SettingsView({
           {holidayWarning && (
             <div
               role="alert"
-              className="rounded-lg border border-amber-300 dark:border-amber-700/70 bg-amber-50 dark:bg-amber-950/30 p-3.5 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200 leading-relaxed"
+              className="rounded-xl border border-amber-300 dark:border-amber-700/70 bg-amber-50 dark:bg-amber-950/30 p-3.5 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200 leading-relaxed"
             >
               <AlertTriangle className="w-4 h-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
               <div className="space-y-1">
@@ -1297,12 +1297,12 @@ export function SettingsView({
               {[1, 2].map((i) => (
                 <div
                   key={i}
-                  className="h-12 rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse"
+                  className="h-12 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse"
                 />
               ))}
             </div>
           ) : holidays.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center">
+            <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center">
               <CalendarDays className="w-7 h-7 text-slate-400 mx-auto mb-2" />
               <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                 لا توجد عطل رسمية أو استثنائية مسجلة حتى الآن
@@ -1312,7 +1312,7 @@ export function SettingsView({
               </p>
             </div>
           ) : (
-            <div className="border border-slate-200 dark:border-slate-800 rounded-lg overflow-x-auto">
+            <div className="border border-slate-200/80 dark:border-slate-800/80 rounded-2xl overflow-x-auto shadow-xs">
               <table className="w-full text-sm text-right">
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                   <tr>
@@ -1334,7 +1334,7 @@ export function SettingsView({
                       key={h.id}
                       className={
                         editingHolidayId === h.id
-                          ? 'bg-teal-50/50 dark:bg-teal-950/20'
+                          ? 'bg-emerald-50/50 dark:bg-emerald-950/20'
                           : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/30'
                       }
                     >
@@ -1379,7 +1379,7 @@ export function SettingsView({
                             type="button"
                             onClick={() => handleStartEditHoliday(h)}
                             title="تعديل العطلة"
-                            className="p-1.5 rounded-md text-slate-500 hover:text-teal-700 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors"
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
@@ -1387,7 +1387,7 @@ export function SettingsView({
                             type="button"
                             onClick={() => setDeleteHolidayTarget(h)}
                             title="حذف العطلة"
-                            className="p-1.5 rounded-md text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>

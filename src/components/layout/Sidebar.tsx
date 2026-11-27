@@ -99,14 +99,14 @@ export function Sidebar({
             type="button"
             onClick={onCloseMobile}
             aria-label="إغلاق القائمة الجانبية"
-            className="lg:hidden p-2 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
+            className="lg:hidden p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <nav
-          className="flex-1 px-3 py-3 lg:py-4 space-y-1 overflow-y-auto"
+          className="flex-1 px-3 py-3 lg:py-4 space-y-1.5 overflow-y-auto"
           aria-label="القائمة الرئيسية"
         >
           {NAV_ITEMS.map((item) => {
@@ -117,16 +117,16 @@ export function Sidebar({
                 key={item.id}
                 type="button"
                 onClick={() => handleSelect(item.id)}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors text-right min-h-[42px] ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors text-right min-h-[42px] ${
                   isActive
-                    ? 'bg-teal-50 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300 font-semibold'
-                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
+                    ? 'bg-emerald-50 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200 font-semibold border border-emerald-200/70 dark:border-emerald-800/60 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100 border border-transparent'
                 }`}
               >
                 <Icon
                   className={`w-[18px] h-[18px] shrink-0 ${
                     isActive
-                      ? 'text-teal-700 dark:text-teal-400'
+                      ? 'text-emerald-600 dark:text-emerald-400'
                       : 'text-slate-400 dark:text-slate-500'
                   }`}
                 />

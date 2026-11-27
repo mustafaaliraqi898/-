@@ -211,7 +211,7 @@ export function MonthlyDayDetailModal({
       aria-label="تفاصيل اليوم في السجل الشهري"
     >
       <div
-        className="w-full max-w-xl rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden"
+        className="w-full max-w-xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -228,7 +228,7 @@ export function MonthlyDayDetailModal({
             type="button"
             onClick={onClose}
             aria-label="إغلاق النافذة"
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors shrink-0"
+            className="p-1.5 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
@@ -237,7 +237,7 @@ export function MonthlyDayDetailModal({
         {/* Body */}
         <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
           {/* Date & Symbol Summary */}
-          <div className={`rounded-lg border p-3.5 flex items-start justify-between gap-3 ${statusMeta.boxClass}`}>
+          <div className={`rounded-xl border p-3.5 flex items-start justify-between gap-3 ${statusMeta.boxClass}`}>
             <div className="space-y-1 min-w-0">
               <div className="flex items-center gap-2 text-xs font-semibold opacity-90">
                 <Clock className="w-3.5 h-3.5 shrink-0" />
@@ -484,7 +484,7 @@ export function MonthlyDayDetailModal({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors"
+            className="inline-flex items-center gap-1.5 px-4 py-2 min-h-[38px] rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors"
           >
             <CheckCircle2 className="w-4 h-4" />
             إغلاق

@@ -47,7 +47,7 @@ export function Header({
           onClick={onOpenMobileMenu}
           aria-label="فتح القائمة الجانبية"
           aria-expanded={mobileMenuOpen}
-          className="lg:hidden inline-flex items-center justify-center w-10 h-10 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shrink-0"
+          className="lg:hidden inline-flex items-center justify-center w-10 h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shrink-0"
         >
           <Menu className="w-5 h-5" />
         </button>
@@ -59,7 +59,7 @@ export function Header({
           <span className="hidden md:inline text-slate-300 dark:text-slate-700" aria-hidden="true">
             /
           </span>
-          <span className="text-sm sm:text-base md:text-sm font-bold md:font-medium text-slate-900 md:text-teal-700 dark:text-slate-100 md:dark:text-teal-400 whitespace-nowrap truncate">
+          <span className="text-sm sm:text-base md:text-sm font-bold md:font-semibold text-slate-900 md:text-emerald-700 dark:text-slate-100 md:dark:text-emerald-400 whitespace-nowrap truncate">
             {SECTION_TITLES[activeSection]}
           </span>
         </div>
@@ -83,7 +83,7 @@ export function Header({
               aria-label="السنة الدراسية"
               value={selectedYearId ?? ''}
               onChange={(e) => onSelectYear(Number(e.target.value))}
-              className="max-w-[122px] sm:max-w-none px-2 sm:px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30 tabular-nums min-h-[36px]"
+              className="max-w-[122px] sm:max-w-none px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30 tabular-nums min-h-[38px]"
             >
               {academicYears.map((yr) => (
                 <option key={yr.id} value={yr.id}>
@@ -100,7 +100,7 @@ export function Header({
           onClick={onToggleTheme}
           aria-label={isDark ? 'التبديل إلى الوضع النهاري' : 'التبديل إلى الوضع الليلي'}
           title={isDark ? 'الوضع النهاري' : 'الوضع الليلي'}
-          className="inline-flex items-center justify-center gap-2 w-9 h-9 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-medium transition-colors whitespace-nowrap shrink-0"
+          className="inline-flex items-center justify-center gap-2 w-9 h-9 sm:w-auto sm:h-auto sm:px-3 sm:py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-medium transition-colors whitespace-nowrap shrink-0 min-h-[38px]"
         >
           {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
           <span className="hidden sm:inline">{isDark ? 'الوضع النهاري' : 'الوضع الليلي'}</span>

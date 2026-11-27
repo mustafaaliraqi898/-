@@ -32,13 +32,13 @@ export function ConfirmDialog({
       aria-modal="true"
       aria-labelledby="confirm-dialog-title"
     >
-      <div className="w-full max-w-md max-h-[90dvh] rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col">
+      <div className="w-full max-w-md max-h-[90dvh] rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col">
         <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <span
-              className={`p-2 rounded-lg shrink-0 ${
+              className={`p-2.5 rounded-xl shrink-0 ${
                 danger
-                  ? 'bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-400'
+                  ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400'
                   : 'bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-400'
               }`}
             >
@@ -46,7 +46,7 @@ export function ConfirmDialog({
             </span>
             <h3
               id="confirm-dialog-title"
-              className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 break-words min-w-0"
+              className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 break-words min-w-0 font-display"
             >
               {title}
             </h3>
@@ -56,7 +56,7 @@ export function ConfirmDialog({
             onClick={onCancel}
             disabled={loading}
             aria-label="إغلاق"
-            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -66,12 +66,12 @@ export function ConfirmDialog({
           <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{message}</p>
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2.5 sm:gap-3 px-4 sm:px-5 py-3.5 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-200 dark:border-slate-800 shrink-0">
+        <div className="flex flex-wrap items-center justify-end gap-2.5 sm:gap-3 px-4 sm:px-5 py-3.5 bg-slate-50/80 dark:bg-slate-900/80 border-t border-slate-200 dark:border-slate-800 shrink-0">
           <button
             type="button"
             onClick={onCancel}
             disabled={loading}
-            className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
+            className="px-4 py-2 min-h-[40px] text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
           >
             {cancelLabel}
           </button>
@@ -79,10 +79,10 @@ export function ConfirmDialog({
             type="button"
             onClick={onConfirm}
             disabled={loading}
-            className={`px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors whitespace-nowrap shrink-0 disabled:opacity-60 ${
+            className={`px-4 py-2 min-h-[40px] text-sm font-semibold rounded-xl text-white transition-colors whitespace-nowrap shrink-0 disabled:opacity-60 shadow-sm ${
               danger
-                ? 'bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500'
-                : 'bg-teal-700 hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500'
+                ? 'bg-rose-600 hover:bg-rose-700 dark:bg-rose-600 dark:hover:bg-rose-500'
+                : 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500'
             }`}
           >
             {loading ? 'جاري التنفيذ...' : confirmLabel}
