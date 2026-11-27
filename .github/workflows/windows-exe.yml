@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - build/windows-exe-electron
+      - integration/desktop-print-fix
     paths:
       - "package.json"
       - "vite.config.ts"
