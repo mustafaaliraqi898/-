@@ -216,7 +216,6 @@ export function buildStandalonePrintableHtml(
           (d) => `
           <th class="day-col ${d.is_holiday ? 'holiday-th' : ''}">
             <div class="day-num">${escapeHtml(formatPlainNumber(d.day_of_month, mode))}</div>
-            <div class="day-name">${escapeHtml(d.day_name.replace('ال', ''))}</div>
           </th>`
         )
         .join('');
@@ -896,9 +895,6 @@ export function MonthlyPrintSheet({
                   >
                     <div className="text-[10.5px] font-bold leading-tight">
                       {plain(d.day_of_month)}
-                    </div>
-                    <div className="text-[8.5px] font-normal opacity-90 leading-tight">
-                      {d.day_name.replace('ال', '')}
                     </div>
                   </th>
                 ))}
