@@ -17,6 +17,7 @@ on:
   push:
     branches:
       - build/windows-exe-electron
+      - fix/print-and-student-search
     paths:
       - "package.json"
       - "vite.config.ts"
