@@ -49,9 +49,9 @@ export function resolveEffectivePrintSpec(preset: PrintPaperPreset): {
     case 'a4-landscape':
       return {
         sizeCss: 'A4 landscape',
-        label: 'A4 أفقي',
-        maxDayColsPerPage: 22,
-        splitTotalsAndNotes: true,
+        label: 'A4 أفقي — احتواء تلقائي',
+        maxDayColsPerPage: 31,
+        splitTotalsAndNotes: false,
       };
     case 'a3-portrait':
       return {
@@ -344,7 +344,7 @@ export function buildStandalonePrintableHtml(
             <span><strong>ع</strong> = عطلة</span>
           </div>
 
-          <table class="register-table">
+          <table class="register-table ${paperPreset === 'a4-landscape' ? 'compact-landscape' : ''}">
             <thead>
               <tr>
                 <th class="ord-th">#</th>
@@ -519,6 +519,17 @@ export function buildStandalonePrintableHtml(
         font-size: 10.5px;
         font-variant-numeric: tabular-nums;
       }
+      .register-table.compact-landscape { width: 100%; table-layout: fixed; font-size: 6.5px; }
+      .register-table.compact-landscape th, .register-table.compact-landscape td { padding: 1.5px 0.5px; overflow-wrap: anywhere; }
+      .register-table.compact-landscape th.ord-th, .register-table.compact-landscape td.ord-cell { width: 2.5%; }
+      .register-table.compact-landscape th.name-th, .register-table.compact-landscape td.name-cell { width: 14%; min-width: 0; }
+      .register-table.compact-landscape th.day-col, .register-table.compact-landscape td.day-cell { width: 1.56%; min-width: 0; }
+      .register-table.compact-landscape th.tot-th, .register-table.compact-landscape td.num-cell { width: 3%; padding-left: 0; padding-right: 0; }
+      .register-table.compact-landscape th.notes-th, .register-table.compact-landscape td.notes-cell { width: 14%; min-width: 0; }
+      .register-table.compact-landscape .day-name { font-size: 5px; }
+      .register-table.compact-landscape .name-cell, .register-table.compact-landscape .notes-cell { white-space: normal; line-height: 1.15; font-size: 6px; }
+      .register-table.compact-landscape .cell-check { font-size: 6px; }
+      .register-table.compact-landscape .cell-lessons { font-size: 5px; }
       .register-table thead {
         display: table-header-group;
       }
