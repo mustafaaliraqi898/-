@@ -302,14 +302,17 @@ export function MonthlyRegisterView({
 
   function handlePrint() {
     if (!registerData || loading) return;
-    const printCurrentPage = (window as Window & {
-      electronAPI?: { printCurrentPage?: () => Promise<unknown> };
-    }).electronAPI?.printCurrentPage;
+    const printHtml = (window as Window & {
+      electronAPI?: { printHtml?: (html: string) => Promise<unknown> };
+    }).electronAPI?.printHtml;
 
-    if (printCurrentPage) {
-      void printCurrentPage().catch((error) => {
-        onNotify('error', error instanceof Error ? error.message : 'تعذرت طباعة السجل الشهري.');
-      });
+    if (printHtml) {
+      const html = buildStandalonePrintableHtml(registerData, paperPreset, mode);
+      void printHtml(html)
+        .then(() => onNotify('success', 'تم إنشاء ملف PDF وفتحه للطباعة.'))
+        .catch((error) =>
+          onNotify('error', error instanceof Error ? error.message : 'تعذرت طباعة السجل الشهري.')
+        );
       return;
     }
 

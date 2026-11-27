@@ -122,6 +122,31 @@ protocol.registerSchemesAsPrivileged([
 let mainWindow: BrowserWindow | null = null;
 
 function registerIpcHandlers() {
+  ipcMain.handle('print:html', async (_event: unknown, html: unknown) => {
+    if (typeof html !== 'string' || !html.trim() || html.length > 15000000) {
+      throw new Error('محتوى التقرير غير صالح أو يتجاوز الحجم المسموح.');
+    }
+
+    const timestamp = Date.now();
+    const htmlPath = path.join(app.getPath('temp'), `school-absence-print-${timestamp}.html`);
+    const pdfPath = path.join(app.getPath('temp'), `school-absence-print-${timestamp}.pdf`);
+    const printWindow = new BrowserWindow({
+      show: false, width: 1600, height: 1100,
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    try {
+      fs.writeFileSync(htmlPath, html, 'utf8');
+      await printWindow.loadFile(htmlPath);
+      const pdfData = await printWindow.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
+      fs.writeFileSync(pdfPath, Buffer.from(pdfData));
+    } finally {
+      if (!printWindow.isDestroyed()) printWindow.destroy();
+      try { if (fs.existsSync(htmlPath)) fs.unlinkSync(htmlPath); } catch { /* cleanup only */ }
+    }
+    const openError = await shell.openPath(pdfPath);
+    if (openError) throw new Error(`تعذر فتح ملف PDF للطباعة: ${openError}`);
+    return { opened: true, filename: path.basename(pdfPath) };
+  });
   ipcMain.handle('print:current-page', async () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       throw new Error('نافذة البرنامج غير متاحة للطباعة.');
