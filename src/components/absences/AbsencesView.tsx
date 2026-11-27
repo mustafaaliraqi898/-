@@ -3,6 +3,8 @@ import {
   BookOpenCheck,
   Calendar,
   CalendarOff,
+  ChevronLeft,
+  ChevronRight,
   Check,
   CheckCheck,
   Clock,
@@ -128,6 +130,137 @@ const HOLIDAY_CATEGORY_LABELS: Record<Exclude<HolidayCategory, 'workday'>, strin
   exceptional: 'عطلة استثنائية',
   school_specific: 'عطلة خاصة بالمدرسة',
 };
+
+type CompactArabicDatePickerProps = {
+  value: string;
+  onChange: (value: string) => void;
+};
+
+const ARABIC_WEEKDAY_SHORT = ['أح', 'إث', 'ثل', 'أر', 'خم', 'جم', 'سب'];
+
+function parseLocalDate(value: string): Date {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year || new Date().getFullYear(), (month || 1) - 1, day || 1);
+}
+
+function toIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function CompactArabicDatePicker({ value, onChange }: CompactArabicDatePickerProps) {
+  const [open, setOpen] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState(() => parseLocalDate(value));
+  const selectedDate = parseLocalDate(value);
+  const year = visibleMonth.getFullYear();
+  const month = visibleMonth.getMonth();
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayIso = toIsoDate(new Date());
+  const monthLabel = new Intl.DateTimeFormat('ar-IQ', {
+    month: 'long',
+    year: 'numeric',
+  }).format(visibleMonth);
+
+  function moveMonth(offset: number) {
+    setVisibleMonth(new Date(year, month + offset, 1));
+  }
+
+  return (
+    <div className="relative">
+      <button
+        id="abs-date-input"
+        type="button"
+        onClick={() => {
+          setVisibleMonth(parseLocalDate(value));
+          setOpen((current) => !current);
+        }}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 tabular-nums"
+      >
+        <span>{new Intl.DateTimeFormat('ar-IQ', { day: 'numeric', month: 'long', year: 'numeric' }).format(selectedDate)}</span>
+        <Calendar className="w-4 h-4 text-slate-500" />
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-label="اختيار تاريخ الغياب"
+          className="absolute z-40 top-full mt-2 left-0 w-[292px] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-xl"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <button type="button" onClick={() => moveMonth(-1)} aria-label="الشهر السابق" className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <span className="text-sm font-bold text-slate-800 dark:text-slate-100">{monthLabel}</span>
+            <button type="button" onClick={() => moveMonth(1)} aria-label="الشهر التالي" className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 mb-1">
+            {ARABIC_WEEKDAY_SHORT.map((day) => (
+              <div key={day} className="h-7 flex items-center justify-center text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                {day}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-1">
+            {Array.from({ length: firstWeekday }, (_, index) => (
+              <span key={`empty-${index}`} className="h-8" />
+            ))}
+            {Array.from({ length: daysInMonth }, (_, index) => {
+              const day = index + 1;
+              const date = new Date(year, month, day);
+              const iso = toIsoDate(date);
+              const isSelected = iso === value;
+              const isToday = iso === todayIso;
+              return (
+                <button
+                  key={iso}
+                  type="button"
+                  onClick={() => {
+                    onChange(iso);
+                    setOpen(false);
+                  }}
+                  aria-pressed={isSelected}
+                  className={`h-8 rounded-lg text-xs font-semibold transition-colors ${
+                    isSelected
+                      ? 'bg-emerald-700 text-white shadow-sm'
+                      : isToday
+                        ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
+                        : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 mt-3 pt-2 text-xs">
+            <button type="button" onClick={() => setOpen(false)} className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">إغلاق</button>
+            <button
+              type="button"
+              onClick={() => {
+                onChange(todayIso);
+                setVisibleMonth(new Date());
+                setOpen(false);
+              }}
+              className="font-semibold text-emerald-700 dark:text-emerald-400"
+            >
+              اليوم
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function getTodayIso(): string {
   const now = new Date();
@@ -795,13 +928,7 @@ export function AbsencesView({
           >
             تاريخ الغياب
           </label>
-          <input
-            id="abs-date-input"
-            type="date"
-            value={attendanceDate}
-            onChange={(e) => setAttendanceDate(e.target.value)}
-            className="w-full px-3 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30 tabular-nums"
-          />
+          <CompactArabicDatePicker value={attendanceDate} onChange={setAttendanceDate} />
           {sheet?.holiday_info && (
             <p
               className={`mt-1.5 text-[11px] font-semibold ${
@@ -1179,8 +1306,8 @@ export function AbsencesView({
                           : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/30';
 
                   return (
-                    <tr key={st.student_id} className={`transition-colors align-top ${rowTint}`}>
-                      <td className="py-3 px-2.5 text-center font-mono-tabular text-xs text-slate-500 dark:text-slate-400">
+                    <tr key={st.student_id} className={`transition-colors align-middle ${rowTint}`}>
+                      <td className="py-2 px-2.5 text-center font-mono-tabular text-xs text-slate-500 dark:text-slate-400">
                         <LtrSpan>{plain(idx + 1)}</LtrSpan>
                       </td>
 
@@ -1202,102 +1329,37 @@ export function AbsencesView({
                       </td>
 
                       <td className="py-2.5 px-3">
-                        <div
-                          className={`inline-flex flex-wrap items-center gap-1 p-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 max-w-[335px] ${
-                            isHolidayBlocked ? 'opacity-70 pointer-events-none' : ''
-                          }`}
-                          role="group"
-                          aria-label={`حالة حضور ${st.full_name}`}
-                        >
-                          <button
-                            type="button"
+                        <div className="max-w-[190px]">
+                          <select
+                            value={
+                              inLessonMode
+                                ? entry.active_lesson_tab
+                                : entry.status
+                            }
                             disabled={isHolidayBlocked}
-                            onClick={() => updateStudentStatus(st.student_id, 'present')}
-                            className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-                              isAttendingSchool
-                                ? 'bg-emerald-600 text-white shadow-sm'
-                                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                            }`}
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>حاضر</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={isHolidayBlocked}
-                            onClick={() => updateStudentStatus(st.student_id, 'full_day')}
-                            className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
+                            onChange={(e) => updateStudentStatus(st.student_id, e.target.value as AbsenceStatus)}
+                            aria-label={`حالة حضور ${st.full_name}`}
+                            className={`w-full h-9 px-2.5 rounded-lg border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-60 ${
                               entry.status === 'full_day'
-                                ? 'bg-red-600 text-white shadow-sm'
-                                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                                ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300'
+                                : entry.status === 'full_day_leave'
+                                  ? 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300'
+                                  : inLessonMode && entry.active_lesson_tab === 'lesson_absence'
+                                    ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
+                                    : inLessonMode && entry.active_lesson_tab === 'lesson_permission'
+                                      ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300'
+                                      : inLessonMode && entry.active_lesson_tab === 'lesson_escape'
+                                        ? 'border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-300'
+                                        : 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
                             }`}
                           >
-                            <UserX className="w-3.5 h-3.5" />
-                            <span>غائب يوم كامل</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={isHolidayBlocked}
-                            onClick={() => updateStudentStatus(st.student_id, 'lesson_absence')}
-                            className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-                              inLessonMode && entry.active_lesson_tab === 'lesson_absence'
-                                ? 'bg-amber-600 text-white shadow-sm'
-                                : inLessonMode && absLessonsCount > 0
-                                  ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700'
-                                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                            }`}
-                          >
-                            <Clock className="w-3.5 h-3.5" />
-                            <span>غائب عن درس</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={isHolidayBlocked}
-                            onClick={() => updateStudentStatus(st.student_id, 'lesson_permission')}
-                            className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-                              inLessonMode && entry.active_lesson_tab === 'lesson_permission'
-                                ? 'bg-indigo-600 text-white shadow-sm'
-                                : inLessonMode && permLessonsCount > 0
-                                  ? 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-700'
-                                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                            }`}
-                          >
-                            <BookOpenCheck className="w-3.5 h-3.5" />
-                            <span>رخصة عن درس</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={isHolidayBlocked}
-                            onClick={() => updateStudentStatus(st.student_id, 'lesson_escape')}
-                            className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-                              inLessonMode && entry.active_lesson_tab === 'lesson_escape'
-                                ? 'bg-orange-600 text-white shadow-sm'
-                                : inLessonMode && escLessonsCount > 0
-                                  ? 'bg-orange-100 dark:bg-orange-950/60 text-orange-800 dark:text-orange-200 border border-orange-300 dark:border-orange-700'
-                                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                            }`}
-                          >
-                            <LogOut className="w-3.5 h-3.5" />
-                            <span>هروب من درس</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={isHolidayBlocked}
-                            onClick={() => updateStudentStatus(st.student_id, 'full_day_leave')}
-                            className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-                              entry.status === 'full_day_leave'
-                                ? 'bg-sky-600 text-white shadow-sm'
-                                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                            }`}
-                          >
-                            <FileCheck2 className="w-3.5 h-3.5" />
-                            <span>مجاز يوم كامل</span>
-                          </button>
+                            <option value="present">✓ حاضر</option>
+                            <option value="full_day">غائب يوم كامل</option>
+                            <option value="lesson_absence">غائب عن درس</option>
+                            <option value="lesson_permission">رخصة عن درس</option>
+                            <option value="lesson_escape">هروب من درس</option>
+                            <option value="full_day_leave">مجاز يوم كامل</option>
+                          </select>
                         </div>
                       </td>
 
