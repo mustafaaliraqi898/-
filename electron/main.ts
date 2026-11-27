@@ -790,6 +790,9 @@ function createMainWindow() {
   }
 }
 
+app.setName('SchoolAbsenceManager');
+app.setPath('userData', path.join(app.getPath('appData'), 'SchoolAbsenceManager'));
+
 app.whenReady().then(() => {
   const userDataPath = app.getPath('userData');
   const dbPath = path.join(userDataPath, 'school_attendance.db');
