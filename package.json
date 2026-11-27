@@ -11,7 +11,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "build:electron": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --target=node22 --external:electron --external:better-sqlite3 --external:sharp --outdir=electron-dist --out-extension:.js=.cjs",
-    "dist:win": "npm run lint && npm run build:desktop && npm run build:electron && electron-builder --win nsis",
+    "dist:win": "npm run lint && npm run build:desktop && npm run build:electron && electron-builder --win nsis --publish never",
     "build:desktop": "vite build --mode electron"
   },
   "dependencies": {
