@@ -1,5 +1,5 @@
 /// <reference path="./electron.d.ts" />
-import { app, BrowserWindow, dialog, ipcMain, protocol } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, protocol, shell } from 'electron';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -122,6 +122,27 @@ protocol.registerSchemesAsPrivileged([
 let mainWindow: BrowserWindow | null = null;
 
 function registerIpcHandlers() {
+  ipcMain.handle('print:current-page', async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      throw new Error('نافذة البرنامج غير متاحة للطباعة.');
+    }
+
+    const pdfData = await mainWindow.webContents.printToPDF({
+      printBackground: true,
+      preferCSSPageSize: true,
+    });
+    const filename = `school-absence-print-${Date.now()}.pdf`;
+    const pdfPath = path.join(app.getPath('temp'), filename);
+    fs.writeFileSync(pdfPath, Buffer.from(pdfData));
+
+    const openError = await shell.openPath(pdfPath);
+    if (openError) {
+      throw new Error(`تعذر فتح ملف الطباعة: ${openError}`);
+    }
+
+    return { opened: true, filename };
+  });
+
   const wrap =
     <TArgs, TResult>(handler: (args: TArgs) => TResult | Promise<TResult>) =>
     async (_event: unknown, args: unknown) => {
