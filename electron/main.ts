@@ -767,7 +767,7 @@ function createMainWindow() {
     icon: path.join(app.getAppPath(), 'build', 'icon.png'),
     backgroundColor: '#f8fafc',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
