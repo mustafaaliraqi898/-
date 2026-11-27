@@ -296,6 +296,16 @@ export function MonthlyRegisterView({
 
   function handlePrint() {
     if (!registerData || loading) return;
+    const electronPrint = (window as Window & {
+      electronAPI?: { printCurrentPage?: () => Promise<unknown> };
+    }).electronAPI?.printCurrentPage;
+    if (electronPrint) {
+      void electronPrint().catch((error) => {
+        onNotify('error', error instanceof Error ? error.message : 'تعذرت طباعة السجل الشهري.');
+      });
+      return;
+    }
+
 
     if (printTimerRef.current !== null) {
       window.clearTimeout(printTimerRef.current);
