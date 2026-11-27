@@ -520,7 +520,7 @@ export function buildStandalonePrintableHtml(
         font-variant-numeric: tabular-nums;
       }
       .register-table.compact-landscape { width: 100%; table-layout: fixed; font-size: 6.5px; }
-      .register-table.compact-landscape th, .register-table.compact-landscape td { padding: 1.5px 0.5px; overflow-wrap: anywhere; }
+      .register-table.compact-landscape th, .register-table.compact-landscape td { padding: 1px !important; overflow-wrap: anywhere; }
       .register-table.compact-landscape th.ord-th, .register-table.compact-landscape td.ord-cell { width: 2.5%; }
       .register-table.compact-landscape th.name-th, .register-table.compact-landscape td.name-cell { width: 14%; min-width: 0; }
       .register-table.compact-landscape th.day-col, .register-table.compact-landscape td.day-cell { width: 1.56%; min-width: 0; }
