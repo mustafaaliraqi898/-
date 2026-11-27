@@ -2,6 +2,18 @@ name: Windows EXE
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - build/windows-exe-electron
+    paths:
+      - "package.json"
+      - "vite.config.ts"
+      - "electron/**"
+      - "build/**"
+      - "scripts/**"
+      - "server/**"
+      - "src/**"
+      - ".github/workflows/windows-exe.yml"
   push:
     branches:
       - build/windows-exe-electron
