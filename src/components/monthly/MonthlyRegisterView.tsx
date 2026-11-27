@@ -174,7 +174,6 @@ export function MonthlyRegisterView({
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
   const [printBlockedNotice, setPrintBlockedNotice] = useState(false);
   const [standaloneHtmlUrl, setStandaloneHtmlUrl] = useState<string | null>(null);
-  const printTimerRef = useRef<number | null>(null);
 
   // Sync grade & section selections cleanly
   useEffect(() => {
@@ -286,67 +285,10 @@ export function MonthlyRegisterView({
     };
   }, [printPreviewOpen, printBlockedNotice, registerData, paperPreset, mode]);
 
-  useEffect(() => {
-    return () => {
-      if (printTimerRef.current !== null) {
-        window.clearTimeout(printTimerRef.current);
-      }
-    };
-  }, []);
-
   function handlePrint() {
     if (!registerData || loading) return;
-    const electronPrint = (window as Window & {
-      electronAPI?: { printCurrentPage?: () => Promise<unknown> };
-    }).electronAPI?.printCurrentPage;
-    if (electronPrint) {
-      void electronPrint().catch((error) => {
-        onNotify('error', error instanceof Error ? error.message : 'تعذرت طباعة السجل الشهري.');
-      });
-      return;
-    }
-
-    // Browser/PWA print is handled by the shared print-preview tab in src/main.tsx.
+    // The shared print handler opens a dedicated browser print-preview tab.
     window.print();
-    return;
-
-    if (printTimerRef.current !== null) {
-      window.clearTimeout(printTimerRef.current);
-      printTimerRef.current = null;
-    }
-
-    setPrintBlockedNotice(false);
-
-    // Wait two animation frames so portal #monthly-print-sheet & @page style are committed
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        let didTriggerBeforePrint = false;
-        const onBeforePrint = () => {
-          didTriggerBeforePrint = true;
-        };
-
-        window.addEventListener('beforeprint', onBeforePrint, { once: true });
-
-        try {
-          window.print();
-        } catch {
-          // Handled cleanly below when beforeprint did not fire
-        }
-
-        printTimerRef.current = window.setTimeout(() => {
-          window.removeEventListener('beforeprint', onBeforePrint);
-          printTimerRef.current = null;
-          if (!didTriggerBeforePrint) {
-            setPrintBlockedNotice(true);
-            setPrintPreviewOpen(true);
-            onNotify(
-              'info',
-              'بيئة المعاينة الحالية تمنع نافذة الطباعة المباشرة؛ تم فتح معاينة الطباعة مع خيار الفتح في تبويب جديد أو تنزيل نسخة HTML للطباعة.'
-            );
-          }
-        }, 300);
-      });
-    });
   }
 
   async function handleSaveManualNote(noteText: string) {
