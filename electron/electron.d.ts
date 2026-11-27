@@ -21,6 +21,7 @@ declare module 'electron' {
       printToPDF(options?: {
         pageSize?: string;
         printBackground?: boolean;
+        preferCSSPageSize?: boolean;
         margins?: {
           top?: number;
           bottom?: number;
@@ -40,7 +41,7 @@ declare module 'electron' {
 
   export const app: {
     whenReady(): Promise<void>;
-    getPath(name: 'userData' | 'documents' | 'desktop'): string;
+    getPath(name: 'userData' | 'documents' | 'desktop' | 'temp'): string;
     quit(): void;
     on(event: string, listener: (...args: unknown[]) => void): void;
   };
@@ -58,6 +59,10 @@ declare module 'electron' {
 
   export const contextBridge: {
     exposeInMainWorld(apiKey: string, api: Record<string, unknown>): void;
+  };
+
+  export const shell: {
+    openPath(path: string): Promise<string>;
   };
 
   export const protocol: {
