@@ -49,8 +49,8 @@ window.print = () => {
   const startPrint = () => {
     printWindow.focus();
     window.setTimeout(() => {
-      printWindow.print();
       printWindow.onafterprint = () => printWindow.close();
+      printWindow.print();
     }, 400);
   };
 
