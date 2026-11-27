@@ -21,6 +21,7 @@ import type { SqliteDb } from '../db/connection';
 import { ServiceError, normalizeNullableString, normalizeArabicLookup } from '../utils/validation';
 import { getMonthHolidayCalendar } from './holidayService';
 import { getActiveAcademicYear, getSchoolSettings } from './settingsService';
+import { recordAuditLog } from './auditLogService';
 
 export const ARABIC_MONTH_NAMES: readonly string[] = [
   'كانون الثاني',
@@ -1237,12 +1238,19 @@ export function saveMonthlyStudentNote(
     throw new ServiceError('الشهر غير صالح.', 400);
   }
 
-  const student = db.prepare('SELECT id FROM students WHERE id = ?').get(studentId) as
-    | { id: number }
+  const student = db.prepare('SELECT id, full_name FROM students WHERE id = ?').get(studentId) as
+    | { id: number; full_name: string }
     | undefined;
   if (!student) {
     throw new ServiceError('الطالب غير موجود.', 404, 'STUDENT_NOT_FOUND');
   }
+
+  const existingNote = db
+    .prepare(
+      `SELECT note_text FROM monthly_student_notes
+       WHERE academic_year_id = ? AND student_id = ? AND year = ? AND month = ?`
+    )
+    .get(academicYearId, studentId, year, month) as { note_text: string } | undefined;
 
   const cleanText = normalizeNullableString(input.note_text);
   if (!cleanText) {
@@ -1250,6 +1258,17 @@ export function saveMonthlyStudentNote(
       `DELETE FROM monthly_student_notes
        WHERE academic_year_id = ? AND student_id = ? AND year = ? AND month = ?`
     ).run(academicYearId, studentId, year, month);
+
+    if (existingNote) {
+      recordAuditLog(db, {
+        operation_type: 'delete',
+        section: 'absences',
+        description: `حذف ملاحظة السجل الشهري (${month}/${year}) للطالب: ${student.full_name}`,
+        target_id: `${studentId}-${year}-${month}`,
+        target_label: student.full_name,
+        old_value: { year, month, note_text: existingNote.note_text },
+      });
+    }
 
     return { student_id: studentId, year, month, manual_note: null };
   }
@@ -1265,6 +1284,16 @@ export function saveMonthlyStudentNote(
      ON CONFLICT(academic_year_id, student_id, year, month)
      DO UPDATE SET note_text = excluded.note_text, updated_at = datetime('now')`
   ).run(academicYearId, studentId, year, month, cleanText);
+
+  recordAuditLog(db, {
+    operation_type: existingNote ? 'update' : 'create',
+    section: 'absences',
+    description: `${existingNote ? 'تعديل' : 'إضافة'} ملاحظة في السجل الشهري (${month}/${year}) للطالب: ${student.full_name}`,
+    target_id: `${studentId}-${year}-${month}`,
+    target_label: student.full_name,
+    old_value: existingNote ? { year, month, note_text: existingNote.note_text } : null,
+    new_value: { year, month, note_text: cleanText },
+  });
 
   return { student_id: studentId, year, month, manual_note: cleanText };
 }
@@ -1291,10 +1320,32 @@ export function deleteMonthlyStudentNote(
     throw new ServiceError('الشهر غير صالح.', 400);
   }
 
+  const existingNote = db
+    .prepare(
+      `SELECT m.note_text, st.full_name
+       FROM monthly_student_notes m
+       JOIN students st ON st.id = m.student_id
+       WHERE m.academic_year_id = ? AND m.student_id = ? AND m.year = ? AND m.month = ?`
+    )
+    .get(academicYearId, studentId, year, month) as
+    | { note_text: string; full_name: string }
+    | undefined;
+
   db.prepare(
     `DELETE FROM monthly_student_notes
      WHERE academic_year_id = ? AND student_id = ? AND year = ? AND month = ?`
   ).run(academicYearId, studentId, year, month);
+
+  if (existingNote) {
+    recordAuditLog(db, {
+      operation_type: 'delete',
+      section: 'absences',
+      description: `حذف ملاحظة السجل الشهري (${month}/${year}) للطالب: ${existingNote.full_name}`,
+      target_id: `${studentId}-${year}-${month}`,
+      target_label: existingNote.full_name,
+      old_value: { year, month, note_text: existingNote.note_text },
+    });
+  }
 }
 
 function getExcelCellStyleForSymbol(cellData: MonthlyDayCellData): {

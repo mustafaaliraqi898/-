@@ -2,6 +2,11 @@ import type { SqliteDb } from '../db/connection';
 import { ServiceError, normalizeWhitespace } from '../utils/validation';
 import { getAcademicYearAbsenceTotalsMap } from './absenceService';
 import { getActiveAcademicYear, getSchoolSettings } from './settingsService';
+import { recordAuditLog } from './auditLogService';
+import {
+  UNIFIED_OFFICIAL_LETTER_TEMPLATE,
+  resolveOfficialLetterTemplate,
+} from '../../src/utils/officialDocumentHtml';
 import type {
   AbsenceStage,
   AbsenceReportStudentRow,
@@ -28,11 +33,8 @@ export function seedDefaultAbsenceStagesIfNeeded(db: SqliteDb, academicYearId: n
     .get(academicYearId) as { cnt: number };
 
   if (countRow.cnt === 0) {
-    const defaultTemplate =
-      'إلى ولي أمر الطالب/ة المحترم ({{student_name}}) — الصف: {{grade_name}} / الشعبة: {{section_name}}\n' +
-      'نود إعلامكم بأن مجموع أيام الغياب المحتسبة للطالب/ة قد بلغ ({{absence_days}}) يوماً في العام الدراسي {{academic_year}} ضمن مرحلة ({stage_name}).\n' +
-      'يرجى مراجعة إدارة المدرسة في أقرب وقت.';
-
+    const savedTemplate =
+      getSchoolSettings(db).unified_letter_template ?? UNIFIED_OFFICIAL_LETTER_TEMPLATE;
     const defaults = [
       { name: 'تحذير', days: 10 },
       { name: 'إنذار أولي', days: 20 },
@@ -51,7 +53,7 @@ export function seedDefaultAbsenceStagesIfNeeded(db: SqliteDb, academicYearId: n
           academicYearId,
           d.name,
           d.days,
-          defaultTemplate.replace('({stage_name})', `(${d.name})`),
+          savedTemplate,
           idx
         );
       });
@@ -72,7 +74,8 @@ export function createAbsenceStage(
   const yearId = input.academic_year_id ?? activeYear.id;
   const name = normalizeWhitespace(input.name);
   const days = Number(input.days_threshold);
-  const template = (input.letter_template ?? '').trim();
+  const template =
+    getSchoolSettings(db).unified_letter_template ?? UNIFIED_OFFICIAL_LETTER_TEMPLATE;
 
   if (!name) {
     throw new ServiceError('اسم المرحلة حقل إجباري.', 400, 'INVALID_STAGE_NAME');
@@ -104,7 +107,20 @@ export function createAbsenceStage(
     .run(yearId, name, days, template);
 
   const stageId = Number(info.lastInsertRowid);
-  return db.prepare('SELECT * FROM absence_stages WHERE id = ?').get(stageId) as AbsenceStage;
+  const created = db.prepare('SELECT * FROM absence_stages WHERE id = ?').get(stageId) as AbsenceStage;
+  recordAuditLog(db, {
+    operation_type: 'create',
+    section: 'stages',
+    description: `إضافة مرحلة غياب جديدة: ${created.name} (${created.days_threshold} يوم)`,
+    target_id: created.id,
+    target_label: created.name,
+    new_value: {
+      academic_year_id: created.academic_year_id,
+      name: created.name,
+      days_threshold: created.days_threshold,
+    },
+  });
+  return created;
 }
 
 export function updateAbsenceStage(
@@ -123,7 +139,8 @@ export function updateAbsenceStage(
 
   const name = normalizeWhitespace(input.name);
   const days = Number(input.days_threshold);
-  const template = input.letter_template !== undefined ? input.letter_template.trim() : existing.letter_template;
+  const template =
+    getSchoolSettings(db).unified_letter_template ?? UNIFIED_OFFICIAL_LETTER_TEMPLATE;
 
   if (!name) {
     throw new ServiceError('اسم المرحلة حقل إجباري.', 400, 'INVALID_STAGE_NAME');
@@ -146,13 +163,38 @@ export function updateAbsenceStage(
     throw new ServiceError(`عتبة الأيام (${days}) مستخدمة مسبقاً للمرحلة "${conflict.name}".`, 409, 'DUPLICATE_STAGE_DAYS');
   }
 
+  const legacyToKeep =
+    existing.letter_template && existing.letter_template.trim() !== template.trim()
+      ? existing.letter_template
+      : null;
+
   db.prepare(
     `UPDATE absence_stages
-     SET name = ?, days_threshold = ?, letter_template = ?, updated_at = datetime('now')
+     SET name = ?,
+         days_threshold = ?,
+         legacy_letter_template = COALESCE(legacy_letter_template, ?),
+         letter_template = ?,
+         updated_at = datetime('now')
      WHERE id = ?`
-  ).run(name, days, template, stageId);
+  ).run(name, days, legacyToKeep, template, stageId);
 
-  return db.prepare('SELECT * FROM absence_stages WHERE id = ?').get(stageId) as AbsenceStage;
+  const updated = db.prepare('SELECT * FROM absence_stages WHERE id = ?').get(stageId) as AbsenceStage;
+  recordAuditLog(db, {
+    operation_type: 'update',
+    section: 'stages',
+    description: `تعديل مرحلة الغياب: ${existing.name} ← ${updated.name}`,
+    target_id: updated.id,
+    target_label: updated.name,
+    old_value: {
+      name: existing.name,
+      days_threshold: existing.days_threshold,
+    },
+    new_value: {
+      name: updated.name,
+      days_threshold: updated.days_threshold,
+    },
+  });
+  return updated;
 }
 
 export function deleteAbsenceStage(db: SqliteDb, stageId: number, _fallbackStageId?: number): { deleted: true } {
@@ -165,6 +207,18 @@ export function deleteAbsenceStage(db: SqliteDb, stageId: number, _fallbackStage
     // Since classification is dynamic based on student absence days and remaining stages thresholds,
     // deleting a stage automatically reclassifies students because classification evaluates against remaining stages!
     db.prepare('DELETE FROM absence_stages WHERE id = ?').run(stageId);
+    recordAuditLog(db, {
+      operation_type: 'delete',
+      section: 'stages',
+      description: `حذف مرحلة الغياب: ${stage.name} (${stage.days_threshold} يوم)`,
+      target_id: stage.id,
+      target_label: stage.name,
+      old_value: {
+        academic_year_id: stage.academic_year_id,
+        name: stage.name,
+        days_threshold: stage.days_threshold,
+      },
+    });
   });
 
   tx();
@@ -315,6 +369,8 @@ export function issueOfficialLetter(
     stage_id: number;
     document_number: string;
     letter_date: string;
+    subject?: string;
+    custom_body?: string;
     grade_id?: number;
     section_id?: number;
     search?: string;
@@ -324,6 +380,13 @@ export function issueOfficialLetter(
   if (!stage) {
     throw new ServiceError('المرحلة المحددة غير موجودة.', 404, 'STAGE_NOT_FOUND');
   }
+  const settings = getSchoolSettings(db);
+  const savedUnifiedTemplate =
+    settings.unified_letter_template ?? UNIFIED_OFFICIAL_LETTER_TEMPLATE;
+  const templateText =
+    input.custom_body !== undefined && input.custom_body.trim().length > 0
+      ? input.custom_body.trim()
+      : savedUnifiedTemplate;
 
   const reportData = getDynamicStageReport(db, {
     academic_year_id: input.academic_year_id,
@@ -333,24 +396,24 @@ export function issueOfficialLetter(
     search: input.search,
   });
 
-  const settings = getSchoolSettings(db);
   const students = reportData.rows;
+  const subjectText = (input.subject ?? `الإعلان عن أسماء الطلبة المشمولين بمرحلة ${stage.name}`).trim();
 
-  let content = stage.letter_template || '';
-  content = content
-    .replace(/\{school_name\}/g, settings.school_name)
-    .replace(/\{academic_year\}/g, reportData.academic_year.name)
-    .replace(/\{date\}/g, input.letter_date)
-    .replace(/\{document_number\}/g, input.document_number)
-    .replace(/\{stage_name\}/g, stage.name)
-    .replace(/\{absence_days\}/g, String(stage.days_threshold))
-    .replace(/\{student_count\}/g, String(students.length));
+  const content = resolveOfficialLetterTemplate(templateText, {
+    absence_days: stage.days_threshold,
+    stage_name: stage.name,
+    academic_year: reportData.academic_year.name,
+    school_name: settings.school_name,
+    date: input.letter_date,
+    document_number: input.document_number,
+    student_count: students.length,
+  });
 
   const info = db
     .prepare(
       `INSERT INTO issued_official_letters
-         (academic_year_id, stage_id, stage_name, days_threshold, document_number, letter_date, rendered_content, students_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+         (academic_year_id, stage_id, stage_name, days_threshold, document_number, letter_date, subject, rendered_content, students_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       input.academic_year_id,
@@ -359,21 +422,55 @@ export function issueOfficialLetter(
       stage.days_threshold,
       input.document_number,
       input.letter_date,
+      subjectText,
       content,
       JSON.stringify(students)
     );
 
   const letterId = Number(info.lastInsertRowid);
-  return db.prepare('SELECT * FROM issued_official_letters WHERE id = ?').get(letterId) as IssuedOfficialLetter;
+  const letter = db.prepare('SELECT * FROM issued_official_letters WHERE id = ?').get(letterId) as IssuedOfficialLetter;
+  recordAuditLog(db, {
+    operation_type: 'issue_letter',
+    section: 'letters',
+    description: `إصدار كتاب رسمي رقم (${letter.document_number}) لمرحلة ${letter.stage_name} بعدد ${students.length} طالب`,
+    target_id: letter.id,
+    target_label: letter.document_number,
+    new_value: {
+      academic_year_id: letter.academic_year_id,
+      stage_id: letter.stage_id,
+      stage_name: letter.stage_name,
+      days_threshold: letter.days_threshold,
+      document_number: letter.document_number,
+      letter_date: letter.letter_date,
+      subject: letter.subject,
+      student_count: students.length,
+    },
+  });
+  return letter;
 }
 
 export function listIssuedLetters(db: SqliteDb, academicYearId: number): IssuedOfficialLetter[] {
   return db
     .prepare(
-      `SELECT id, academic_year_id, stage_id, stage_name, days_threshold, document_number, letter_date, rendered_content, students_json, created_at
+      `SELECT id, academic_year_id, stage_id, stage_name, days_threshold, document_number, letter_date, subject, rendered_content, students_json, created_at
        FROM issued_official_letters
        WHERE academic_year_id = ?
        ORDER BY id DESC`
     )
     .all(academicYearId) as IssuedOfficialLetter[];
+}
+
+export function getIssuedLetterById(db: SqliteDb, letterId: number): IssuedOfficialLetter {
+  const letter = db
+    .prepare(
+      `SELECT id, academic_year_id, stage_id, stage_name, days_threshold, document_number, letter_date, subject, rendered_content, students_json, created_at
+       FROM issued_official_letters
+       WHERE id = ?`
+    )
+    .get(letterId) as IssuedOfficialLetter | undefined;
+
+  if (!letter) {
+    throw new ServiceError('الكتاب الرسمي المطلوب غير موجود.', 404, 'LETTER_NOT_FOUND');
+  }
+  return letter;
 }

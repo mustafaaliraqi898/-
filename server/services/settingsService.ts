@@ -1,4 +1,5 @@
-import type { AcademicYear, SchoolSettings } from '../../src/types/school';
+import type { AcademicYear, NumberDisplayMode, SchoolSettings } from '../../src/types/school';
+import { UNIFIED_OFFICIAL_LETTER_TEMPLATE } from '../../src/utils/officialDocumentHtml';
 import type { SqliteDb } from '../db/connection';
 import {
   ServiceError,
@@ -7,13 +8,24 @@ import {
   validatePhotoDataUrl,
 } from '../utils/validation';
 import { resolveAssetIdFromImageRef } from './imageService';
+import { recordAuditLog } from './auditLogService';
+
+function normalizeEditableLetterTemplate(rawTemplate: string): string {
+  const normalized = String(rawTemplate ?? '').replace(/\r\n/g, '\n');
+  if (normalized.trim().length === 0) {
+    throw new ServiceError('يرجى إدخال النص الرسمي الموحد قبل الحفظ.', 400, 'EMPTY_LETTER_TEMPLATE');
+  }
+  return normalized;
+}
 
 export function getSchoolSettings(db: SqliteDb): SchoolSettings {
   const row = db
     .prepare(
-      `SELECT s.id, s.school_name, s.directorate_name, s.academic_year_id,
+      `SELECT s.id, s.school_name, s.directorate_name, s.principal_name, s.academic_year_id,
               s.lessons_per_absence_day, s.daily_lessons_count,
               s.daily_permission_counts_as_absence, s.lesson_permission_counts_as_absence,
+              COALESCE(s.number_display_mode, 'english') as number_display_mode,
+              s.unified_letter_template,
               s.school_logo_data, s.school_logo_asset_id, s.updated_at,
               ay.name as academic_year_name
        FROM school_settings s
@@ -25,7 +37,44 @@ export function getSchoolSettings(db: SqliteDb): SchoolSettings {
   if (!row) {
     throw new ServiceError('تعذر العثور على إعدادات المدرسة.', 500, 'SETTINGS_MISSING');
   }
-  return row;
+  return {
+    ...row,
+    number_display_mode: row.number_display_mode === 'arabic' ? 'arabic' : 'english',
+    unified_letter_template: row.unified_letter_template ?? UNIFIED_OFFICIAL_LETTER_TEMPLATE,
+  };
+}
+
+export function updateUnifiedLetterTemplate(
+  db: SqliteDb,
+  template: string
+): { unified_letter_template: string } {
+  const normalized = normalizeEditableLetterTemplate(template);
+  const currentSettings = getSchoolSettings(db);
+  const previousTemplate = currentSettings.unified_letter_template ?? UNIFIED_OFFICIAL_LETTER_TEMPLATE;
+  const tx = db.transaction(() => {
+    db.prepare(
+      `UPDATE school_settings
+       SET unified_letter_template = ?,
+           updated_at = datetime('now')
+       WHERE id = 1`
+    ).run(normalized);
+    db.prepare(
+      `UPDATE absence_stages
+       SET letter_template = ?,
+           updated_at = datetime('now')`
+    ).run(normalized);
+    recordAuditLog(db, {
+      operation_type: 'update',
+      section: 'letters',
+      description: 'تحديث النص الرسمي الموحد للكتب الرسمية',
+      target_id: 'unified_letter_template',
+      target_label: 'النص الرسمي الموحد',
+      old_value: { unified_letter_template: previousTemplate },
+      new_value: { unified_letter_template: normalized },
+    });
+  });
+  tx();
+  return { unified_letter_template: normalized };
 }
 
 export function updateSchoolSettings(
@@ -33,10 +82,13 @@ export function updateSchoolSettings(
   input: {
     school_name: string;
     directorate_name: string;
+    principal_name?: string | null;
     lessons_per_absence_day?: number;
     daily_lessons_count?: number;
     daily_permission_counts_as_absence?: number | boolean;
     lesson_permission_counts_as_absence?: number | boolean;
+    number_display_mode?: NumberDisplayMode;
+    unified_letter_template?: string;
     school_logo_data?: string | null;
     school_logo_asset_id?: number | null;
   }
@@ -52,10 +104,17 @@ export function updateSchoolSettings(
   }
 
   const current = getSchoolSettings(db);
+  const principalName =
+    input.principal_name !== undefined
+      ? normalizeNullableString(input.principal_name)
+      : (current.principal_name ?? null);
   let lessonsPerDay = current.lessons_per_absence_day;
   let dailyLessonsCount = current.daily_lessons_count;
   let dailyPermCounts = current.daily_permission_counts_as_absence;
   let lessonPermCounts = current.lesson_permission_counts_as_absence;
+  let numberDisplayMode: NumberDisplayMode = current.number_display_mode ?? 'english';
+  let unifiedLetterTemplate =
+    current.unified_letter_template ?? UNIFIED_OFFICIAL_LETTER_TEMPLATE;
   let schoolLogoData = current.school_logo_data ?? null;
   let schoolLogoAssetId = current.school_logo_asset_id ?? null;
 
@@ -93,6 +152,17 @@ export function updateSchoolSettings(
     lessonPermCounts = raw === 1 || raw === true ? 1 : 0;
   }
 
+  if (input.number_display_mode !== undefined) {
+    if (input.number_display_mode !== 'arabic' && input.number_display_mode !== 'english') {
+      throw new ServiceError('قيمة إعداد نظام عرض الأرقام غير صالحة.');
+    }
+    numberDisplayMode = input.number_display_mode;
+  }
+
+  if (input.unified_letter_template !== undefined) {
+    unifiedLetterTemplate = normalizeEditableLetterTemplate(input.unified_letter_template);
+  }
+
   if (input.school_logo_data !== undefined || input.school_logo_asset_id !== undefined) {
     const normalizedLogo =
       input.school_logo_data !== undefined
@@ -120,10 +190,13 @@ export function updateSchoolSettings(
     `UPDATE school_settings
      SET school_name = ?,
          directorate_name = ?,
+         principal_name = ?,
          lessons_per_absence_day = ?,
          daily_lessons_count = ?,
          daily_permission_counts_as_absence = ?,
          lesson_permission_counts_as_absence = ?,
+         number_display_mode = ?,
+         unified_letter_template = ?,
          school_logo_data = ?,
          school_logo_asset_id = ?,
          updated_at = datetime('now')
@@ -131,15 +204,56 @@ export function updateSchoolSettings(
   ).run(
     schoolName,
     directorateName,
+    principalName,
     lessonsPerDay,
     dailyLessonsCount,
     dailyPermCounts,
     lessonPermCounts,
+    numberDisplayMode,
+    unifiedLetterTemplate,
     schoolLogoData,
     schoolLogoAssetId
   );
 
-  return getSchoolSettings(db);
+  if (input.unified_letter_template !== undefined) {
+    db.prepare(
+      `UPDATE absence_stages
+       SET letter_template = ?,
+           updated_at = datetime('now')`
+    ).run(unifiedLetterTemplate);
+  }
+
+  const updated = getSchoolSettings(db);
+  recordAuditLog(db, {
+    operation_type: 'update',
+    section: 'settings',
+    description: `تحديث إعدادات المدرسة (${updated.school_name})`,
+    target_id: 1,
+    target_label: updated.school_name,
+    old_value: {
+      school_name: current.school_name,
+      directorate_name: current.directorate_name,
+      principal_name: current.principal_name ?? null,
+      lessons_per_absence_day: current.lessons_per_absence_day,
+      daily_lessons_count: current.daily_lessons_count,
+      daily_permission_counts_as_absence: current.daily_permission_counts_as_absence,
+      lesson_permission_counts_as_absence: current.lesson_permission_counts_as_absence,
+      number_display_mode: current.number_display_mode,
+      school_logo_asset_id: current.school_logo_asset_id ?? null,
+    },
+    new_value: {
+      school_name: updated.school_name,
+      directorate_name: updated.directorate_name,
+      principal_name: updated.principal_name ?? null,
+      lessons_per_absence_day: updated.lessons_per_absence_day,
+      daily_lessons_count: updated.daily_lessons_count,
+      daily_permission_counts_as_absence: updated.daily_permission_counts_as_absence,
+      lesson_permission_counts_as_absence: updated.lesson_permission_counts_as_absence,
+      number_display_mode: updated.number_display_mode,
+      school_logo_asset_id: updated.school_logo_asset_id ?? null,
+    },
+  });
+  return updated;
 }
 
 export function listAcademicYears(db: SqliteDb): AcademicYear[] {
@@ -219,9 +333,20 @@ export function createAcademicYear(
       }
     }
 
-    return db
+    const created = db
       .prepare('SELECT id, name, is_active, created_at FROM academic_years WHERE id = ?')
       .get(newId) as AcademicYear;
+
+    recordAuditLog(db, {
+      operation_type: 'create',
+      section: 'settings',
+      description: `إضافة سنة دراسية جديدة: ${created.name}${created.is_active ? ' (وتفعيلها)' : ''}`,
+      target_id: created.id,
+      target_label: created.name,
+      new_value: created,
+    });
+
+    return created;
   });
 
   return tx();
@@ -236,6 +361,8 @@ export function setActiveAcademicYear(db: SqliteDb, yearId: number): AcademicYea
     throw new ServiceError('السنة الدراسية المحددة غير موجودة.', 404, 'YEAR_NOT_FOUND');
   }
 
+  const previousActive = getActiveAcademicYear(db);
+
   const tx = db.transaction(() => {
     db.prepare('UPDATE academic_years SET is_active = CASE WHEN id = ? THEN 1 ELSE 0 END').run(
       yearId
@@ -243,6 +370,15 @@ export function setActiveAcademicYear(db: SqliteDb, yearId: number): AcademicYea
     db.prepare(
       `UPDATE school_settings SET academic_year_id = ?, updated_at = datetime('now') WHERE id = 1`
     ).run(yearId);
+    recordAuditLog(db, {
+      operation_type: 'update',
+      section: 'settings',
+      description: `تغيير السنة الدراسية الفعالة من (${previousActive.name}) إلى (${target.name})`,
+      target_id: target.id,
+      target_label: target.name,
+      old_value: { academic_year_id: previousActive.id, name: previousActive.name },
+      new_value: { academic_year_id: target.id, name: target.name },
+    });
   });
 
   tx();

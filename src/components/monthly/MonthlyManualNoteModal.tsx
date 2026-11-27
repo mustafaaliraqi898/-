@@ -1,6 +1,8 @@
 import { Save, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { MonthlyStudentRow } from '../../types/school';
+import { useNumberDisplay } from '../../contexts/NumberDisplayContext';
+import { BidiText, LtrSpan } from '../common/BidirectionalText';
 
 interface MonthlyManualNoteModalProps {
   open: boolean;
@@ -23,6 +25,7 @@ export function MonthlyManualNoteModal({
   onDelete,
   onClose,
 }: MonthlyManualNoteModalProps) {
+  const { count, plain } = useNumberDisplay();
   const [noteText, setNoteText] = useState('');
 
   useEffect(() => {
@@ -65,7 +68,7 @@ export function MonthlyManualNoteModal({
               ملاحظة الإدارة الشهرية للطالب
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              {student.full_name} — {monthName} {year}
+              {student.full_name} — {monthName} <LtrSpan>{plain(year)}</LtrSpan>
             </p>
           </div>
           <button
@@ -88,7 +91,7 @@ export function MonthlyManualNoteModal({
               <ul className="space-y-1 text-xs text-slate-600 dark:text-slate-300 list-disc list-inside">
                 {student.auto_notes.map((note, idx) => (
                   <li key={idx} className="leading-relaxed">
-                    {note}
+                    <BidiText text={note} />
                   </li>
                 ))}
               </ul>
@@ -113,7 +116,9 @@ export function MonthlyManualNoteModal({
             />
             <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mt-1 tabular-nums">
               <span>تظهر هذه الملاحظة في السجل والطباعة وتصدير Excel.</span>
-              <span>{noteText.length} / 500</span>
+              <span>
+                <LtrSpan>{count(noteText.length)}</LtrSpan> / <LtrSpan>{plain(500)}</LtrSpan>
+              </span>
             </div>
           </div>
 

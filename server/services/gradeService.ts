@@ -1,6 +1,7 @@
 import type { EducationalStage, GradeWithSections, SectionItem } from '../../src/types/school';
 import { inferStageFromGradeName, type SqliteDb } from '../db/connection';
 import { ServiceError, normalizeWhitespace } from '../utils/validation';
+import { recordAuditLog } from './auditLogService';
 import { getActiveAcademicYear } from './settingsService';
 
 const VALID_STAGES = new Set<EducationalStage>(['primary', 'intermediate', 'preparatory']);
@@ -109,6 +110,16 @@ export function createGrade(
     for (const secName of uniqueSections) {
       insertSection.run(createdGradeId, secName);
     }
+
+    recordAuditLog(db, {
+      operation_type: 'create',
+      section: 'grades',
+      description: `إضافة صف دراسي جديد: ${name}`,
+      target_id: createdGradeId,
+      target_label: name,
+      new_value: { name, stage, initial_sections: uniqueSections },
+    });
+
     return createdGradeId;
   })();
 
@@ -130,8 +141,8 @@ export function updateGrade(
     throw new ServiceError('اسم الصف الدراسي حقل إجباري.');
   }
 
-  const existing = db.prepare('SELECT id, stage FROM grades WHERE id = ?').get(gradeId) as
-    | { id: number; stage: EducationalStage | null }
+  const existing = db.prepare('SELECT id, name, stage FROM grades WHERE id = ?').get(gradeId) as
+    | { id: number; name: string; stage: EducationalStage | null }
     | undefined;
   if (!existing) {
     throw new ServiceError('الصف الدراسي غير موجود.', 404, 'GRADE_NOT_FOUND');
@@ -149,11 +160,22 @@ export function updateGrade(
       ? normalizeStageInput(input.stage)
       : existing.stage ?? inferStageFromGradeName(name);
 
-  db.prepare(`UPDATE grades SET name = ?, stage = ?, updated_at = datetime('now') WHERE id = ?`).run(
-    name,
-    nextStage,
-    gradeId
-  );
+  db.transaction(() => {
+    db.prepare(`UPDATE grades SET name = ?, stage = ?, updated_at = datetime('now') WHERE id = ?`).run(
+      name,
+      nextStage,
+      gradeId
+    );
+    recordAuditLog(db, {
+      operation_type: 'update',
+      section: 'grades',
+      description: `تعديل بيانات الصف الدراسي: ${name}`,
+      target_id: gradeId,
+      target_label: name,
+      old_value: { name: existing.name, stage: existing.stage },
+      new_value: { name, stage: nextStage },
+    });
+  })();
 
   const updated = listGradesWithSections(db).find((g) => g.id === gradeId);
   if (!updated) {
@@ -167,17 +189,28 @@ export function updateGradeStage(
   gradeId: number,
   stage: EducationalStage | null
 ): GradeWithSections {
-  const existing = db.prepare('SELECT id, name FROM grades WHERE id = ?').get(gradeId) as
-    | { id: number; name: string }
+  const existing = db.prepare('SELECT id, name, stage FROM grades WHERE id = ?').get(gradeId) as
+    | { id: number; name: string; stage: EducationalStage | null }
     | undefined;
   if (!existing) {
     throw new ServiceError('الصف الدراسي غير موجود.', 404, 'GRADE_NOT_FOUND');
   }
   const normalizedStage = normalizeStageInput(stage);
-  db.prepare(`UPDATE grades SET stage = ?, updated_at = datetime('now') WHERE id = ?`).run(
-    normalizedStage,
-    gradeId
-  );
+  db.transaction(() => {
+    db.prepare(`UPDATE grades SET stage = ?, updated_at = datetime('now') WHERE id = ?`).run(
+      normalizedStage,
+      gradeId
+    );
+    recordAuditLog(db, {
+      operation_type: 'update',
+      section: 'grades',
+      description: `تعديل المرحلة التعليمية للصف: ${existing.name}`,
+      target_id: gradeId,
+      target_label: existing.name,
+      old_value: { stage: existing.stage },
+      new_value: { stage: normalizedStage },
+    });
+  })();
   const updated = listGradesWithSections(db).find((g) => g.id === gradeId);
   if (!updated) {
     throw new ServiceError('تعذر العثور على الصف بعد تحديث المرحلة.', 404);
@@ -226,7 +259,17 @@ export function deleteGrade(db: SqliteDb, gradeId: number): void {
     );
   }
 
-  db.prepare('DELETE FROM grades WHERE id = ?').run(gradeId);
+  db.transaction(() => {
+    db.prepare('DELETE FROM grades WHERE id = ?').run(gradeId);
+    recordAuditLog(db, {
+      operation_type: 'delete',
+      section: 'grades',
+      description: `حذف الصف الدراسي: ${grade.name}`,
+      target_id: gradeId,
+      target_label: grade.name,
+      old_value: { id: grade.id, name: grade.name },
+    });
+  })();
 }
 
 export function createSections(
@@ -272,6 +315,16 @@ export function createSections(
       const info = insertStmt.run(gradeId, secName, capacity);
       ids.push(Number(info.lastInsertRowid));
     }
+
+    recordAuditLog(db, {
+      operation_type: 'create',
+      section: 'grades',
+      description: `إضافة شعب (${cleanedNames.join('، ')}) إلى صف ${grade.name}`,
+      target_id: gradeId,
+      target_label: grade.name,
+      new_value: { grade_name: grade.name, sections: cleanedNames, capacity },
+    });
+
     return ids;
   })();
 
@@ -285,8 +338,8 @@ export function updateSection(
   input: { name: string; capacity?: number | null }
 ): SectionItem {
   const section = db
-    .prepare('SELECT id, grade_id, name FROM sections WHERE id = ?')
-    .get(sectionId) as { id: number; grade_id: number; name: string } | undefined;
+    .prepare('SELECT id, grade_id, name, capacity FROM sections WHERE id = ?')
+    .get(sectionId) as { id: number; grade_id: number; name: string; capacity: number | null } | undefined;
   if (!section) {
     throw new ServiceError('الشعبة الدراسية غير موجودة.', 404, 'SECTION_NOT_FOUND');
   }
@@ -308,9 +361,20 @@ export function updateSection(
       ? Math.floor(Number(input.capacity))
       : null;
 
-  db.prepare(
-    `UPDATE sections SET name = ?, capacity = ?, updated_at = datetime('now') WHERE id = ?`
-  ).run(name, capacity, sectionId);
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE sections SET name = ?, capacity = ?, updated_at = datetime('now') WHERE id = ?`
+    ).run(name, capacity, sectionId);
+    recordAuditLog(db, {
+      operation_type: 'update',
+      section: 'grades',
+      description: `تعديل الشعبة: ${name}`,
+      target_id: sectionId,
+      target_label: name,
+      old_value: { name: section.name, capacity: section.capacity },
+      new_value: { name, capacity },
+    });
+  })();
 
   const gradeObj = listGradesWithSections(db).find((g) => g.id === section.grade_id);
   const updated = gradeObj?.sections.find((s) => s.id === sectionId);
@@ -367,5 +431,15 @@ export function deleteSection(db: SqliteDb, sectionId: number): void {
     );
   }
 
-  db.prepare('DELETE FROM sections WHERE id = ?').run(sectionId);
+  db.transaction(() => {
+    db.prepare('DELETE FROM sections WHERE id = ?').run(sectionId);
+    recordAuditLog(db, {
+      operation_type: 'delete',
+      section: 'grades',
+      description: `حذف الشعبة "${section.name}" من صف ${section.grade_name}`,
+      target_id: sectionId,
+      target_label: `${section.grade_name} - ${section.name}`,
+      old_value: { id: section.id, name: section.name, grade_name: section.grade_name },
+    });
+  })();
 }

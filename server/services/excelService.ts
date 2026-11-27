@@ -15,6 +15,7 @@ import {
   normalizeWhitespace,
   validateBirthDate,
 } from '../utils/validation';
+import { recordAuditLog } from './auditLogService';
 import { listGradesWithSections } from './gradeService';
 import { getActiveAcademicYear } from './settingsService';
 
@@ -593,6 +594,19 @@ export function commitExcelStudents(
       bucket.count += 1;
       distributionMap.set(key, bucket);
     }
+
+    recordAuditLog(db, {
+      operation_type: 'import',
+      section: 'students',
+      description: `استيراد ${validation.rows.length} طالب عبر ملف Excel للسنة الدراسية ${validation.academic_year.name}`,
+      target_id: yearId,
+      target_label: validation.academic_year.name,
+      new_value: {
+        imported_count: validation.rows.length,
+        academic_year_name: validation.academic_year.name,
+        distribution: Array.from(distributionMap.values()),
+      },
+    });
   })();
 
   return {

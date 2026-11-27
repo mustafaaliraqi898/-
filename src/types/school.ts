@@ -5,6 +5,7 @@ export type NavSectionId =
   | 'absences'
   | 'monthly'
   | 'reports'
+  | 'audit'
   | 'settings';
 
 export type StudentStatus = 'active' | 'transferred_out' | 'graduated' | 'archived';
@@ -52,16 +53,21 @@ export interface AcademicYear {
 
 export type EducationalStage = 'primary' | 'intermediate' | 'preparatory';
 
+export type NumberDisplayMode = 'arabic' | 'english';
+
 export interface SchoolSettings {
   id: number;
   school_name: string;
   directorate_name: string;
+  principal_name?: string | null;
   academic_year_id: number | null;
   academic_year_name?: string | null;
   lessons_per_absence_day: number;
   daily_lessons_count: number;
   daily_permission_counts_as_absence: number;
   lesson_permission_counts_as_absence: number;
+  number_display_mode: NumberDisplayMode;
+  unified_letter_template?: string;
   school_logo_data?: string | null;
   school_logo_asset_id?: number | null;
   updated_at: string;
@@ -223,6 +229,48 @@ export interface DashboardActivityItem {
   is_transfer: boolean;
 }
 
+export interface DashboardStageCountItem {
+  stage_id: number;
+  stage_name: string;
+  days_threshold: number;
+  students_count: number;
+}
+
+export interface DashboardMonthlyAbsencePoint {
+  month_key: string;
+  month_number: number;
+  year_number: number;
+  label: string;
+  full_day_count: number;
+  converted_day_count: number;
+  leave_count: number;
+  total_absence_days: number;
+  affected_students_count: number;
+}
+
+export interface DashboardApproachingStudent {
+  student_id: number;
+  full_name: string;
+  grade_name: string;
+  section_name: string;
+  counted_days: number;
+  next_stage_id: number;
+  next_stage_name: string;
+  next_stage_threshold: number;
+  remaining_days: number;
+}
+
+export interface DashboardExceededStudent {
+  student_id: number;
+  full_name: string;
+  grade_name: string;
+  section_name: string;
+  counted_days: number;
+  stage_id: number;
+  stage_name: string;
+  days_threshold: number;
+}
+
 export interface DashboardStats {
   active_academic_year: AcademicYear | null;
   total_students: number;
@@ -231,10 +279,20 @@ export interface DashboardStats {
   total_grades: number;
   total_sections: number;
   absence_days_count: number;
+  students_with_absences: number;
   last_absence_date: string | null;
   today_sections_recorded: number;
   grades_without_sections: number;
   sections_without_students: number;
+  within_limit_students_count: number;
+  stage_counts: DashboardStageCountItem[];
+  monthly_absences: DashboardMonthlyAbsencePoint[];
+  approaching_stage_students: DashboardApproachingStudent[];
+  exceeded_stage_students: DashboardExceededStudent[];
+  filters_applied?: {
+    grade_id: number | null;
+    stage_id: number | null;
+  };
   grade_distribution: DashboardGradeSummary[];
   recent_activities: DashboardActivityItem[];
 }
@@ -1025,6 +1083,7 @@ export interface IssuedOfficialLetter {
   days_threshold: number;
   document_number: string;
   letter_date: string;
+  subject: string;
   rendered_content: string;
   students_json: string;
   created_at: string;
@@ -1046,5 +1105,112 @@ export interface DynamicStageReportResponse {
     stage_counts: Record<number, number>;
   };
   rows: DynamicStageStudentRow[];
+}
+
+// Backup & Restore Types
+export type BackupFrequency = 'daily' | 'weekly';
+export type BackupRecordType = 'manual' | 'auto' | 'pre_restore';
+
+export interface BackupSettings {
+  id: number;
+  auto_enabled: number;
+  frequency: BackupFrequency;
+  retention_count: number;
+  backup_dir: string | null;
+  resolved_backup_dir: string;
+  last_backup_at: string | null;
+  last_backup_status: string | null;
+  last_backup_message: string | null;
+  updated_at: string;
+}
+
+export interface BackupRecord {
+  id: number;
+  filename: string;
+  file_path: string;
+  backup_type: BackupRecordType;
+  size_bytes: number;
+  integrity_ok: number;
+  file_exists: boolean;
+  created_at: string;
+}
+
+export interface BackupOverviewResponse {
+  settings: BackupSettings;
+  records: BackupRecord[];
+  runtime_note: string;
+  media_included_note: string;
+}
+
+export interface UpdateBackupSettingsInput {
+  auto_enabled: boolean | number;
+  frequency: BackupFrequency;
+  retention_count: number;
+  backup_dir?: string | null;
+}
+
+export interface CreateBackupResult {
+  record: BackupRecord;
+  integrity_status: string;
+  pruned_count: number;
+}
+
+export interface RestoreBackupResult {
+  restored: boolean;
+  media_assets_count: number;
+  students_count: number;
+  pre_restore_backup_filename: string | null;
+  integrity_status: string;
+}
+
+// Audit Log Types (Append-only)
+export type AuditOperationType =
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'transfer'
+  | 'import'
+  | 'issue_letter'
+  | 'backup'
+  | 'restore';
+
+export type AuditSectionType =
+  | 'students'
+  | 'absences'
+  | 'holidays'
+  | 'grades'
+  | 'stages'
+  | 'letters'
+  | 'settings'
+  | 'backup';
+
+export interface AuditLogRecord {
+  id: number;
+  operation_type: AuditOperationType;
+  section: AuditSectionType;
+  actor_name: string;
+  description: string;
+  target_id: string | null;
+  target_label: string | null;
+  old_value_json: string | null;
+  new_value_json: string | null;
+  created_at: string;
+}
+
+export interface AuditLogQuery {
+  search?: string;
+  operation_type?: AuditOperationType | 'all';
+  section?: AuditSectionType | 'all';
+  actor_name?: string;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface AuditLogListResponse {
+  total: number;
+  items: AuditLogRecord[];
+  actors: string[];
 }
 

@@ -1,5 +1,7 @@
 /// <reference path="./electron.d.ts" />
-import { app, BrowserWindow, ipcMain, protocol } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, protocol } from 'electron';
+import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { closeDb, createDatabaseConnection, setDbInstance, getDb } from '../server/db/connection';
 import { getActiveAcademicYear } from '../server/services/settingsService';
@@ -20,6 +22,10 @@ import {
   issueOfficialLetter,
   listIssuedLetters,
 } from '../server/services/absenceStagesService';
+import {
+  generateIssuedLetterDocumentHtml,
+  generateStageReportDocumentHtml,
+} from '../server/services/pdfService';
 import { getDashboardStats } from '../server/services/dashboardService';
 import {
   commitExcelStudents,
@@ -67,11 +73,23 @@ import {
   listAcademicYears,
   setActiveAcademicYear,
   updateSchoolSettings,
+  updateUnifiedLetterTemplate,
 } from '../server/services/settingsService';
 import {
-  exportDatabaseBackupBuffer,
+  createManagedBackup,
+  createVerifiedBackupBuffer,
+  getBackupOverview,
+  getBackupRecordFile,
   restoreDatabaseBackupBuffer,
+  runAutoBackupIfDue,
+  updateBackupSettings,
 } from '../server/services/backupService';
+import {
+  generateAuditLogsExcel,
+  listAuditLogs,
+  recordAuditLog,
+} from '../server/services/auditLogService';
+import type { AuditLogQuery, UpdateBackupSettingsInput } from '../src/types/school';
 import {
   getMediaAssetBlob,
   getMediaAssetMetaById,
@@ -121,13 +139,22 @@ function registerIpcHandlers() {
       (payload: {
         school_name: string;
         directorate_name: string;
+        principal_name?: string | null;
         lessons_per_absence_day?: number;
         daily_lessons_count?: number;
         daily_permission_counts_as_absence?: number | boolean;
         lesson_permission_counts_as_absence?: number | boolean;
+        number_display_mode?: 'arabic' | 'english';
+        unified_letter_template?: string;
         school_logo_data?: string | null;
         school_logo_asset_id?: number | null;
       }) => updateSchoolSettings(getDb(), payload)
+    )
+  );
+  ipcMain.handle(
+    'settings:update-unified-letter-template',
+    wrap((payload: { unified_letter_template: string }) =>
+      updateUnifiedLetterTemplate(getDb(), payload.unified_letter_template)
     )
   );
   ipcMain.handle('academic-years:list', wrap(() => listAcademicYears(getDb())));
@@ -142,8 +169,11 @@ function registerIpcHandlers() {
 
   ipcMain.handle(
     'dashboard:stats',
-    wrap((payload?: { academic_year_id?: number }) =>
-      getDashboardStats(getDb(), payload?.academic_year_id)
+    wrap((payload?: { academic_year_id?: number; grade_id?: number; stage_id?: number }) =>
+      getDashboardStats(getDb(), payload?.academic_year_id, {
+        gradeId: payload?.grade_id,
+        stageId: payload?.stage_id,
+      })
     )
   );
 
@@ -427,6 +457,30 @@ function registerIpcHandlers() {
       listIssuedLetters(getDb(), payload.academic_year_id)
     )
   );
+  ipcMain.handle(
+    'absence-stages:report-pdf',
+    wrap(
+      async (payload: {
+        academic_year_id?: number;
+        stage_id?: number;
+        grade_id?: number;
+        section_id?: number;
+        search?: string;
+      }) => {
+        const { html, filename } = await generateStageReportDocumentHtml(getDb(), payload ?? {});
+        const buffer = await renderHtmlToPdfElectron(html);
+        return { base64: buffer.toString('base64'), filename };
+      }
+    )
+  );
+  ipcMain.handle(
+    'absence-stages:letter-pdf',
+    wrap(async (payload: { letter_id: number }) => {
+      const { html, filename } = await generateIssuedLetterDocumentHtml(getDb(), payload.letter_id);
+      const buffer = await renderHtmlToPdfElectron(html);
+      return { base64: buffer.toString('base64'), filename };
+    })
+  );
 
   ipcMain.handle(
     'reports:absences',
@@ -475,9 +529,108 @@ function registerIpcHandlers() {
     'media:compat-data-url',
     wrap((payload: { id: number }) => resolveMediaAssetDataUrl(getDb(), payload.id, 'compat'))
   );
+  ipcMain.handle('backup:overview', wrap(() => getBackupOverview(getDb())));
+  ipcMain.handle(
+    'backup:update-settings',
+    wrap((payload: UpdateBackupSettingsInput) => updateBackupSettings(getDb(), payload))
+  );
+  ipcMain.handle('backup:create', wrap(() => createManagedBackup(getDb(), 'manual')));
+  ipcMain.handle(
+    'backup:run-auto',
+    wrap(async (payload?: { force?: boolean }) => {
+      const db = getDb();
+      const result = await runAutoBackupIfDue(db, { force: Boolean(payload?.force) });
+      return {
+        executed: Boolean(result),
+        result,
+        overview: getBackupOverview(db),
+      };
+    })
+  );
+  ipcMain.handle(
+    'backup:download-record',
+    wrap((payload: { id: number }) => {
+      const { filePath, filename } = getBackupRecordFile(getDb(), payload.id);
+      const buffer = fs.readFileSync(filePath);
+      return { base64: buffer.toString('base64'), filename };
+    })
+  );
+  ipcMain.handle(
+    'backup:pick-directory',
+    wrap(async (payload?: { defaultPath?: string }) => {
+      if (!mainWindow) {
+        return { canceled: true, path: null };
+      }
+      const res = await dialog.showOpenDialog(mainWindow, {
+        title: 'اختر مجلد حفظ النسخ الاحتياطية',
+        defaultPath: payload?.defaultPath,
+        properties: ['openDirectory', 'createDirectory'],
+      });
+      if (res.canceled || res.filePaths.length === 0) {
+        return { canceled: true, path: null };
+      }
+      return { canceled: false, path: res.filePaths[0] };
+    })
+  );
+  ipcMain.handle(
+    'backup:save-manual-dialog',
+    wrap(async () => {
+      const db = getDb();
+      const { buffer, integrity_status, filename } = await createVerifiedBackupBuffer(db);
+      if (!mainWindow) {
+        return { canceled: true };
+      }
+      const res = await dialog.showSaveDialog(mainWindow, {
+        title: 'حفظ النسخة الاحتياطية لقاعدة البيانات',
+        defaultPath: filename,
+        filters: [{ name: 'قاعدة بيانات SQLite', extensions: ['db'] }],
+      });
+      if (res.canceled || !res.filePath) {
+        return { canceled: true };
+      }
+      fs.writeFileSync(res.filePath, buffer);
+      recordAuditLog(db, {
+        operation_type: 'backup',
+        section: 'backup',
+        description: `تصدير نسخة احتياطية يدوية إلى (${path.basename(res.filePath)})`,
+        target_label: path.basename(res.filePath),
+        new_value: {
+          file_path: res.filePath,
+          size_bytes: buffer.length,
+          integrity_status,
+        },
+      });
+      return {
+        canceled: false,
+        file_path: res.filePath,
+        filename: path.basename(res.filePath),
+        size_bytes: buffer.length,
+        integrity_status,
+      };
+    })
+  );
   ipcMain.handle(
     'backup:export',
-    wrap(() => exportDatabaseBackupBuffer(getDb()).toString('base64'))
+    wrap(async () => {
+      const db = getDb();
+      const { buffer, integrity_status, filename } = await createVerifiedBackupBuffer(db);
+      recordAuditLog(db, {
+        operation_type: 'backup',
+        section: 'backup',
+        description: `تصدير نسخة احتياطية يدوية (${filename})`,
+        target_label: filename,
+        new_value: {
+          filename,
+          size_bytes: buffer.length,
+          integrity_status,
+        },
+      });
+      return {
+        base64: buffer.toString('base64'),
+        filename,
+        integrity_status,
+      };
+    })
   );
   ipcMain.handle(
     'backup:restore',
@@ -485,9 +638,64 @@ function registerIpcHandlers() {
       const buffer = Buffer.from(
         payload.bytes instanceof ArrayBuffer ? new Uint8Array(payload.bytes) : payload.bytes
       );
-      return restoreDatabaseBackupBuffer(getDb(), buffer);
+      const res = await restoreDatabaseBackupBuffer(getDb(), buffer);
+      return {
+        restored: true,
+        media_assets_count: res.media_assets_count,
+        students_count: res.students_count,
+        pre_restore_backup_filename: res.pre_restore_backup_filename,
+        integrity_status: res.integrity_status,
+      };
     })
   );
+
+  ipcMain.handle(
+    'audit-logs:list',
+    wrap((payload?: AuditLogQuery) => listAuditLogs(getDb(), payload ?? {}))
+  );
+  ipcMain.handle(
+    'audit-logs:export',
+    wrap(async (payload?: AuditLogQuery) => {
+      const { buffer, filename } = await generateAuditLogsExcel(getDb(), payload ?? {});
+      return { base64: buffer.toString('base64'), filename };
+    })
+  );
+}
+
+async function renderHtmlToPdfElectron(html: string): Promise<Buffer> {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-pdf-'));
+  const htmlPath = path.join(tmpDir, 'document.html');
+  fs.writeFileSync(htmlPath, html, 'utf8');
+
+  const pdfWin = new BrowserWindow({
+    show: false,
+    width: 794,
+    height: 1123,
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  try {
+    await pdfWin.loadFile(htmlPath);
+    const pdfData = await pdfWin.webContents.printToPDF({
+      pageSize: 'A4',
+      printBackground: true,
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+    });
+    return Buffer.from(pdfData);
+  } finally {
+    if (!pdfWin.isDestroyed()) {
+      pdfWin.destroy();
+    }
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup
+    }
+  }
 }
 
 function createMainWindow() {
@@ -549,6 +757,12 @@ app.whenReady().then(() => {
 
   registerIpcHandlers();
   createMainWindow();
+
+  void runAutoBackupIfDue(getDb()).catch(() => {});
+  const autoTimer = setInterval(() => {
+    void runAutoBackupIfDue(getDb()).catch(() => {});
+  }, 30 * 60 * 1000);
+  autoTimer.unref?.();
 });
 
 app.on('window-all-closed', () => {

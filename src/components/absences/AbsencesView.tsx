@@ -28,6 +28,8 @@ import type {
   StudentAbsenceDetailResponse,
 } from '../../types/school';
 import { schoolService } from '../../services/schoolService';
+import { useNumberDisplay } from '../../contexts/NumberDisplayContext';
+import { BidiText, LtrSpan } from '../common/BidirectionalText';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 
 interface AbsencesViewProps {
@@ -142,6 +144,7 @@ export function AbsencesView({
   onRefreshGlobalStats,
   onNotify,
 }: AbsencesViewProps) {
+  const { academicYear, convert, count, dateDMY, plain } = useNumberDisplay();
   const [gradeId, setGradeId] = useState<number | ''>('');
   const [sectionId, setSectionId] = useState<number | ''>('');
   const [attendanceDate, setAttendanceDate] = useState<string>(getTodayIso);
@@ -585,14 +588,14 @@ export function AbsencesView({
 
       const convertedNote =
         result.newly_converted_days > 0
-          ? ` (تم احتساب ${result.newly_converted_days.toLocaleString('ar-IQ')} يوم غياب كامل تلقائياً لبلوغ حد الدروس)`
+          ? ` (تم احتساب ${count(result.newly_converted_days)} يوم غياب كامل تلقائياً لبلوغ حد الدروس)`
           : result.newly_converted_days < 0
             ? ' (تم تحديث رصيد الأيام المحتسبة من الدروس بعد التعديل)'
             : '';
 
       onNotify(
         'success',
-        `تم حفظ سجل الغياب والإجازات لـ ${result.saved_count.toLocaleString('ar-IQ')} طالب بنجاح${convertedNote}.`
+        `تم حفظ سجل الغياب والإجازات لـ ${count(result.saved_count)} طالب بنجاح${convertedNote}.`
       );
       await onRefreshGlobalStats();
     } catch (err) {
@@ -661,7 +664,7 @@ export function AbsencesView({
             <span>
               حد الاحتساب:{' '}
               <strong className="text-teal-700 dark:text-teal-400">
-                {sheet.lessons_per_absence_day.toLocaleString('ar-IQ')} دروس = يوم غياب
+                {count(sheet.lessons_per_absence_day)} دروس = يوم غياب
               </strong>
             </span>
             <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
@@ -715,7 +718,7 @@ export function AbsencesView({
           >
             {academicYears.map((yr) => (
               <option key={yr.id} value={yr.id}>
-                {yr.name}
+                {academicYear(yr.name)}
                 {yr.is_active ? ' (الفعالة)' : ''}
               </option>
             ))}
@@ -819,7 +822,7 @@ export function AbsencesView({
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <h3 className="text-sm sm:text-base font-bold text-amber-950 dark:text-amber-100 font-display">
                 هذا التاريخ يوم عطلة ({sheet.holiday_info.day_name} ·{' '}
-                <span className="tabular-nums">{sheet.holiday_info.date}</span>)
+                <LtrSpan className="tabular-nums">{dateDMY(sheet.holiday_info.date)}</LtrSpan>)
               </h3>
               <span className="text-xs font-bold text-amber-800 dark:text-amber-300">
                 ·{' '}
@@ -874,7 +877,16 @@ export function AbsencesView({
                   ·
                 </span>
                 <span className="text-slate-500 dark:text-slate-400 tabular-nums">
-                  آخر تحديث: {sheet.session.updated_at}
+                  آخر تحديث:{' '}
+                  <LtrSpan>
+                    {sheet.session.updated_at.length >= 10
+                      ? `${dateDMY(sheet.session.updated_at.slice(0, 10))}${
+                          sheet.session.updated_at.length > 10
+                            ? ` ${plain(sheet.session.updated_at.slice(11))}`
+                            : ''
+                        }`
+                      : convert(sheet.session.updated_at)}
+                  </LtrSpan>
                 </span>
               </>
             )}
@@ -882,37 +894,37 @@ export function AbsencesView({
               ·
             </span>
             <span className="text-emerald-700 dark:text-emerald-400 font-semibold tabular-nums">
-              حاضر: {draftSummary.present.toLocaleString('ar-IQ')}
+              حاضر: {count(draftSummary.present)}
             </span>
             <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
               ·
             </span>
             <span className="text-red-600 dark:text-red-400 font-semibold tabular-nums">
-              غياب يوم: {draftSummary.full_day.toLocaleString('ar-IQ')}
+              غياب يوم: {count(draftSummary.full_day)}
             </span>
             <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
               ·
             </span>
             <span className="text-amber-700 dark:text-amber-400 font-semibold tabular-nums">
-              غياب درس: {draftSummary.lesson_absence.toLocaleString('ar-IQ')}
+              غياب درس: {count(draftSummary.lesson_absence)}
             </span>
             <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
               ·
             </span>
             <span className="text-orange-700 dark:text-orange-400 font-semibold tabular-nums">
-              هروب: {draftSummary.lesson_escape.toLocaleString('ar-IQ')}
+              هروب: {count(draftSummary.lesson_escape)}
             </span>
             <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
               ·
             </span>
             <span className="text-sky-700 dark:text-sky-400 font-semibold tabular-nums">
-              مجاز: {draftSummary.full_day_leave.toLocaleString('ar-IQ')}
+              مجاز: {count(draftSummary.full_day_leave)}
             </span>
             <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
               ·
             </span>
             <span className="text-indigo-700 dark:text-indigo-400 font-semibold tabular-nums">
-              رخصة درس: {draftSummary.lesson_permission.toLocaleString('ar-IQ')}
+              رخصة درس: {count(draftSummary.lesson_permission)}
             </span>
             {isDirty && (
               <>
@@ -1001,7 +1013,7 @@ export function AbsencesView({
               لا يُسمح بتسجيل الغياب في يوم العطلة
             </h3>
             <p className="text-sm text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">
-              تاريخ <span className="font-bold tabular-nums">{sheet.attendance_date}</span> (
+              تاريخ <LtrSpan className="font-bold tabular-nums">{dateDMY(sheet.attendance_date)}</LtrSpan> (
               {sheet.holiday_info.day_name}) مصنف كـ{' '}
               <span className="font-bold text-amber-700 dark:text-amber-400">
                 {
@@ -1124,7 +1136,7 @@ export function AbsencesView({
                   return (
                     <tr key={st.student_id} className={`transition-colors align-top ${rowTint}`}>
                       <td className="py-3 px-2.5 text-center font-mono-tabular text-xs text-slate-500 dark:text-slate-400">
-                        {(idx + 1).toLocaleString('ar-IQ')}
+                        <LtrSpan>{plain(idx + 1)}</LtrSpan>
                       </td>
 
                       <td className="py-3 px-3">
@@ -1132,8 +1144,15 @@ export function AbsencesView({
                           {st.full_name}
                         </p>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono-tabular mt-0.5 whitespace-nowrap">
-                          {st.student_uid}
-                          {st.registry_number ? ` · قيد: ${st.registry_number}` : ''}
+                          <LtrSpan>{st.student_uid}</LtrSpan>
+                          {st.registry_number ? (
+                            <>
+                              {' '}
+                              · قيد: <BidiText text={st.registry_number} />
+                            </>
+                          ) : (
+                            ''
+                          )}
                         </p>
                       </td>
 
@@ -1340,7 +1359,7 @@ export function AbsencesView({
                                     }`}
                                   >
                                     {meta.shortLabel}
-                                    {tabCount > 0 ? ` (${tabCount.toLocaleString('ar-IQ')})` : ''}
+                                    {tabCount > 0 ? ` (${count(tabCount)})` : ''}
                                   </button>
                                 );
                               })}
@@ -1392,7 +1411,7 @@ export function AbsencesView({
                                           : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-slate-400'
                                     }`}
                                   >
-                                    {getLessonLabel(lessonNum)}
+                                    {convert(getLessonLabel(lessonNum))}
                                     {assignedToOther && otherMeta
                                       ? ` · ${otherMeta.shortLabel}`
                                       : ''}
@@ -1404,9 +1423,8 @@ export function AbsencesView({
                             {entry.lesson_details.length === 0 ? (
                               entry.legacy_lessons_count > 0 ? (
                                 <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
-                                  سجل سابق بعدد{' '}
-                                  {entry.legacy_lessons_count.toLocaleString('ar-IQ')} دروس — اختر
-                                  أرقام الدروس لتحديده بدقة أو احفظ كما هو.
+                                  سجل سابق بعدد {count(entry.legacy_lessons_count)} دروس — اختر أرقام
+                                  الدروس لتحديده بدقة أو احفظ كما هو.
                                 </p>
                               ) : (
                                 <p className="text-[11px] text-red-600 dark:text-red-400 font-medium">
@@ -1416,11 +1434,11 @@ export function AbsencesView({
                             ) : (
                               <div className="space-y-0.5 text-[11px]">
                                 <p className="font-semibold text-slate-700 dark:text-slate-200 tabular-nums">
-                                  المحدد: {entry.lesson_details.length.toLocaleString('ar-IQ')}{' '}
+                                  المحدد: {count(entry.lesson_details.length)}{' '}
                                   {entry.lesson_details.length === 1 ? 'درس' : 'دروس'} · المضاف
                                   للعداد:{' '}
                                   <span className="text-teal-700 dark:text-teal-400 font-bold">
-                                    {totalCountedLessonsInDraft.toLocaleString('ar-IQ')}
+                                    {count(totalCountedLessonsInDraft)}
                                   </span>
                                 </p>
                                 {permLessonsCount > 0 && (
@@ -1431,7 +1449,7 @@ export function AbsencesView({
                                         : 'text-indigo-700 dark:text-indigo-400'
                                     }`}
                                   >
-                                    رخصة الدروس ({permLessonsCount.toLocaleString('ar-IQ')}):{' '}
+                                    رخصة الدروس ({count(permLessonsCount)}):{' '}
                                     {effectiveLessonPermCounted
                                       ? isUnchangedSavedLessonPermission
                                         ? 'محتسبة في العداد الموحد (وفق المسجل)'
@@ -1449,23 +1467,24 @@ export function AbsencesView({
 
                       <td className="py-3 px-3 tabular-nums whitespace-nowrap">
                         <p className="font-bold text-slate-900 dark:text-slate-100">
-                          {st.pending_lessons.toLocaleString('ar-IQ')} /{' '}
-                          {sheet.lessons_per_absence_day.toLocaleString('ar-IQ')}
+                          <LtrSpan>
+                            {count(st.pending_lessons)} / {count(sheet.lessons_per_absence_day)}
+                          </LtrSpan>
                         </p>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                          المحتسب: {st.total_lessons_missed.toLocaleString('ar-IQ')} درس
+                          المحتسب: {count(st.total_lessons_missed)} درس
                         </p>
                       </td>
 
                       <td className="py-3 px-3 tabular-nums whitespace-nowrap">
                         <p className="font-bold text-slate-900 dark:text-slate-100">
-                          {st.total_full_days.toLocaleString('ar-IQ')} يوم
+                          {count(st.total_full_days)} يوم
                         </p>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                          مباشر: {st.direct_full_days.toLocaleString('ar-IQ')} · دروس:{' '}
-                          {st.converted_lesson_days.toLocaleString('ar-IQ')}
+                          مباشر: {count(st.direct_full_days)} · دروس:{' '}
+                          {count(st.converted_lesson_days)}
                           {st.counted_daily_permission_days > 0
-                            ? ` · رخص: ${st.counted_daily_permission_days.toLocaleString('ar-IQ')}`
+                            ? ` · رخص: ${count(st.counted_daily_permission_days)}`
                             : ''}
                         </p>
                       </td>
@@ -1512,8 +1531,8 @@ export function AbsencesView({
         title={sheet?.session ? 'تأكيد تعديل سجل الغياب السابق' : 'تأكيد حفظ سجل الغياب'}
         message={
           sheet?.session
-            ? `توجد بيانات محفوظة مسبقاً لشعبة "${sheet.section_name}" بتاريخ ${sheet.attendance_date}. هل تريد حفظ التعديلات (حاضر: ${draftSummary.present}، غياب يوم: ${draftSummary.full_day}، غياب درس: ${draftSummary.lesson_absence}، هروب: ${draftSummary.lesson_escape}، مجاز: ${draftSummary.full_day_leave}، رخصة درس: ${draftSummary.lesson_permission}) وإعادة احتساب الأرصدة؟`
-            : `هل تريد تأكيد حفظ سجل الحضور والإجازات لشعبة "${sheet?.section_name ?? ''}" بتاريخ ${sheet?.attendance_date ?? ''}؟ (حاضر: ${draftSummary.present}، غياب يوم: ${draftSummary.full_day}، غياب درس: ${draftSummary.lesson_absence}، هروب: ${draftSummary.lesson_escape}، مجاز: ${draftSummary.full_day_leave}، رخصة درس: ${draftSummary.lesson_permission})`
+            ? `توجد بيانات محفوظة مسبقاً لشعبة "${sheet.section_name}" بتاريخ ${dateDMY(sheet.attendance_date)}. هل تريد حفظ التعديلات (حاضر: ${count(draftSummary.present)}، غياب يوم: ${count(draftSummary.full_day)}، غياب درس: ${count(draftSummary.lesson_absence)}، هروب: ${count(draftSummary.lesson_escape)}، مجاز: ${count(draftSummary.full_day_leave)}، رخصة درس: ${count(draftSummary.lesson_permission)}) وإعادة احتساب الأرصدة؟`
+            : `هل تريد تأكيد حفظ سجل الحضور والإجازات لشعبة "${sheet?.section_name ?? ''}" بتاريخ ${sheet?.attendance_date ? dateDMY(sheet.attendance_date) : ''}؟ (حاضر: ${count(draftSummary.present)}، غياب يوم: ${count(draftSummary.full_day)}، غياب درس: ${count(draftSummary.lesson_absence)}، هروب: ${count(draftSummary.lesson_escape)}، مجاز: ${count(draftSummary.full_day_leave)}، رخصة درس: ${count(draftSummary.lesson_permission)})`
         }
         confirmLabel={sheet?.session ? 'نعم، حفظ التعديلات' : 'نعم، احفظ السجل'}
         danger={false}
@@ -1551,8 +1570,15 @@ export function AbsencesView({
                 </h3>
                 {detailStudent && (
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums truncate">
-                    {detailStudent.student_uid}
-                    {detailStudent.registry_number ? ` · رقم القيد: ${detailStudent.registry_number}` : ''}
+                    <LtrSpan>{detailStudent.student_uid}</LtrSpan>
+                    {detailStudent.registry_number ? (
+                      <>
+                        {' '}
+                        · رقم القيد: <BidiText text={detailStudent.registry_number} />
+                      </>
+                    ) : (
+                      ''
+                    )}
                   </p>
                 )}
               </div>
@@ -1573,7 +1599,7 @@ export function AbsencesView({
                       إجمالي أيام الغياب
                     </p>
                     <p className="text-xl font-bold text-slate-900 dark:text-slate-100 mt-1 tabular-nums">
-                      {detailStudent.total_full_days.toLocaleString('ar-IQ')}
+                      {count(detailStudent.total_full_days)}
                     </p>
                   </div>
                   <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
@@ -1581,7 +1607,7 @@ export function AbsencesView({
                       غياب يوم كامل مباشر
                     </p>
                     <p className="text-xl font-bold text-red-600 dark:text-red-400 mt-1 tabular-nums">
-                      {detailStudent.direct_full_days.toLocaleString('ar-IQ')}
+                      {count(detailStudent.direct_full_days)}
                     </p>
                   </div>
                   <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
@@ -1589,7 +1615,7 @@ export function AbsencesView({
                       أيام محولة من الدروس
                     </p>
                     <p className="text-xl font-bold text-amber-600 dark:text-amber-400 mt-1 tabular-nums">
-                      {detailStudent.converted_lesson_days.toLocaleString('ar-IQ')}
+                      {count(detailStudent.converted_lesson_days)}
                     </p>
                   </div>
                   <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
@@ -1597,8 +1623,10 @@ export function AbsencesView({
                       العداد الموحد الحالي
                     </p>
                     <p className="text-xl font-bold text-teal-700 dark:text-teal-400 mt-1 tabular-nums">
-                      {detailStudent.pending_lessons.toLocaleString('ar-IQ')} /{' '}
-                      {detailStudent.lessons_per_absence_day.toLocaleString('ar-IQ')}
+                      <LtrSpan>
+                        {count(detailStudent.pending_lessons)} /{' '}
+                        {count(detailStudent.lessons_per_absence_day)}
+                      </LtrSpan>
                     </p>
                   </div>
                   <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
@@ -1606,7 +1634,7 @@ export function AbsencesView({
                       دروس الهروب المسجلة
                     </p>
                     <p className="text-xl font-bold text-orange-600 dark:text-orange-400 mt-1 tabular-nums">
-                      {detailStudent.lesson_escape_lessons.toLocaleString('ar-IQ')}
+                      {count(detailStudent.lesson_escape_lessons)}
                     </p>
                   </div>
                   <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
@@ -1614,11 +1642,11 @@ export function AbsencesView({
                       الإجازات والرخص
                     </p>
                     <p className="text-sm font-bold text-sky-700 dark:text-sky-400 mt-1.5 tabular-nums">
-                      مرضية: {detailStudent.sick_leave_days.toLocaleString('ar-IQ')} · رخص:{' '}
-                      {(
+                      مرضية: {count(detailStudent.sick_leave_days)} · رخص:{' '}
+                      {count(
                         detailStudent.daily_permission_days +
-                        detailStudent.lesson_permission_records
-                      ).toLocaleString('ar-IQ')}
+                          detailStudent.lesson_permission_records
+                      )}
                     </p>
                   </div>
                 </div>
@@ -1626,7 +1654,7 @@ export function AbsencesView({
                 {/* Converted Days Log */}
                 <div>
                   <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
-                    الأيام المحتسبة نتيجة بلوغ حد الدروس ({detailStudent.conversions.length})
+                    الأيام المحتسبة نتيجة بلوغ حد الدروس ({count(detailStudent.conversions.length)})
                   </h4>
                   {detailStudent.conversions.length === 0 ? (
                     <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -1655,13 +1683,13 @@ export function AbsencesView({
                           {detailStudent.conversions.map((c) => (
                             <tr key={c.id}>
                               <td className="py-2 px-3 font-medium tabular-nums whitespace-nowrap align-top">
-                                {c.converted_date}
+                                <LtrSpan>{dateDMY(c.converted_date)}</LtrSpan>
                               </td>
                               <td className="py-2 px-3 tabular-nums whitespace-nowrap align-top">
-                                {c.lessons_consumed.toLocaleString('ar-IQ')} دروس
+                                {count(c.lessons_consumed)} دروس
                               </td>
                               <td className="py-2 px-3 tabular-nums text-slate-500 dark:text-slate-400 whitespace-nowrap align-top">
-                                {c.threshold_used.toLocaleString('ar-IQ')} دروس
+                                {count(c.threshold_used)} دروس
                               </td>
                               <td className="py-2 px-3">
                                 {c.contributing_lessons && c.contributing_lessons.length > 0 ? (
@@ -1673,9 +1701,9 @@ export function AbsencesView({
                                           key={`${c.id}-${item.absence_id}-${item.lesson_number ?? cIdx}`}
                                           className={`px-1.5 py-0.5 rounded border text-[10.5px] font-semibold tabular-nums ${meta.conflictBadgeClass}`}
                                         >
-                                          {item.absence_date} ·{' '}
+                                          <LtrSpan>{dateDMY(item.absence_date)}</LtrSpan> ·{' '}
                                           {item.lesson_number
-                                            ? getLessonLabel(item.lesson_number)
+                                            ? convert(getLessonLabel(item.lesson_number))
                                             : 'درس'}{' '}
                                           ({meta.shortLabel})
                                         </span>
@@ -1697,7 +1725,7 @@ export function AbsencesView({
                 {/* Daily Records Log */}
                 <div>
                   <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
-                    السجل اليومي المفصل ({detailStudent.records.length})
+                    السجل اليومي المفصل ({count(detailStudent.records.length)})
                   </h4>
                   {detailStudent.records.length === 0 ? (
                     <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -1742,10 +1770,10 @@ export function AbsencesView({
                             return (
                               <tr key={rec.id}>
                                 <td className="py-2 px-3 font-medium tabular-nums whitespace-nowrap">
-                                  {rec.absence_date}
+                                  <LtrSpan>{dateDMY(rec.absence_date)}</LtrSpan>
                                 </td>
                                 <td className="py-2 px-3 whitespace-nowrap">
-                                  {rec.grade_name} · شعبة {rec.section_name}
+                                  <BidiText text={`${rec.grade_name} · شعبة ${rec.section_name}`} />
                                 </td>
                                 <td className="py-2 px-3 font-semibold whitespace-nowrap">
                                   {rec.status === 'full_day' ? (
@@ -1792,16 +1820,16 @@ export function AbsencesView({
                                             key={d.lesson_number}
                                             className={`px-1.5 py-0.5 rounded border text-[10.5px] font-semibold ${meta.conflictBadgeClass}`}
                                           >
-                                            {getLessonLabel(d.lesson_number)} ({meta.shortLabel})
+                                            {convert(getLessonLabel(d.lesson_number))} ({meta.shortLabel})
                                           </span>
                                         );
                                       })}
                                     </div>
                                   ) : rec.status === 'lesson_absence' ||
                                     rec.status === 'lesson_escape' ? (
-                                    `${rec.lessons_count.toLocaleString('ar-IQ')} درس`
+                                    `${count(rec.lessons_count)} درس`
                                   ) : rec.status === 'lesson_permission' ? (
-                                    <span>{formatLessonList(rec.lesson_numbers)}</span>
+                                    <span>{convert(formatLessonList(rec.lesson_numbers))}</span>
                                   ) : rec.status === 'full_day_leave' ? (
                                     rec.leave_type === 'sick_leave' ? (
                                       'إجازة مرضية'
@@ -1836,7 +1864,15 @@ export function AbsencesView({
                                   )}
                                 </td>
                                 <td className="py-2 px-3 text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
-                                  {rec.updated_at}
+                                  <LtrSpan>
+                                    {rec.updated_at.length >= 10
+                                      ? `${dateDMY(rec.updated_at.slice(0, 10))}${
+                                          rec.updated_at.length > 10
+                                            ? ` ${plain(rec.updated_at.slice(11))}`
+                                            : ''
+                                        }`
+                                      : convert(rec.updated_at)}
+                                  </LtrSpan>
                                 </td>
                               </tr>
                             );

@@ -9,6 +9,8 @@ import {
   X,
 } from 'lucide-react';
 import { useState, type ChangeEvent } from 'react';
+import { useNumberDisplay } from '../../contexts/NumberDisplayContext';
+import { schoolService } from '../../services/schoolService';
 import type {
   ExcelCommitResult,
   ExcelImportRowInput,
@@ -16,7 +18,7 @@ import type {
   ExcelValidationResult,
   GradeWithSections,
 } from '../../types/school';
-import { schoolService } from '../../services/schoolService';
+import { BidiText, LtrSpan } from '../common/BidirectionalText';
 
 interface ExcelImportModalProps {
   open: boolean;
@@ -35,6 +37,7 @@ export function ExcelImportModal({
   onImported,
   onError,
 }: ExcelImportModalProps) {
+  const { academicYear, count, plain } = useNumberDisplay();
   const [step, setStep] = useState<'upload' | 'preview' | 'done'>('upload');
   const [downloading, setDownloading] = useState(false);
   const [validating, setValidating] = useState(false);
@@ -205,19 +208,23 @@ export function ExcelImportModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/50 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/55 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
+      aria-labelledby="excel-import-modal-title"
     >
-      <div className="w-full max-w-5xl rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden max-h-[92dvh] flex flex-col">
+      <div className="w-full max-w-5xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden max-h-[92dvh] flex flex-col">
         {/* Modal Header */}
-        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="p-2 rounded-lg bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-400 shrink-0">
+            <span className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 shrink-0">
               <FileSpreadsheet className="w-5 h-5" />
             </span>
             <div className="min-w-0">
-              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 font-display truncate">
+              <h3
+                id="excel-import-modal-title"
+                className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 font-display truncate"
+              >
                 الاستيراد الجماعي للطلاب عبر قالب Excel الموحد
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
@@ -240,11 +247,11 @@ export function ExcelImportModal({
           {step === 'upload' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               {/* Step A: Download Unified Template */}
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 sm:p-6 flex flex-col justify-between space-y-5">
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20 p-4 sm:p-6 flex flex-col justify-between space-y-5">
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
-                    <span className="w-6 h-6 rounded-md bg-teal-700 text-white text-xs flex items-center justify-center tabular-nums">
-                      1
+                  <div className="flex items-center gap-2.5 text-sm font-bold text-slate-900 dark:text-slate-100 font-display">
+                    <span className="w-6 h-6 rounded-lg bg-emerald-600 text-white text-xs flex items-center justify-center tabular-nums">
+                      {plain(1)}
                     </span>
                     <span>تنزيل قالب Excel الموحد</span>
                   </div>
@@ -263,7 +270,7 @@ export function ExcelImportModal({
                   type="button"
                   onClick={handleDownloadTemplate}
                   disabled={downloading}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-teal-700 dark:border-teal-500 text-teal-800 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950/50 text-sm font-semibold transition-colors disabled:opacity-60"
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-teal-200 dark:border-teal-800 bg-teal-50/80 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-950/60 text-sm font-semibold transition-colors disabled:opacity-60 min-h-[42px]"
                 >
                   <Download className="w-4 h-4" />
                   <span>{downloading ? 'جاري تجهيز القالب...' : 'تنزيل القالب الموحد (.xlsx)'}</span>
@@ -271,11 +278,11 @@ export function ExcelImportModal({
               </div>
 
               {/* Step B: Upload Filled File */}
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 sm:p-6 flex flex-col justify-between space-y-5">
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20 p-4 sm:p-6 flex flex-col justify-between space-y-5">
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
-                    <span className="w-6 h-6 rounded-md bg-slate-800 dark:bg-slate-700 text-white text-xs flex items-center justify-center tabular-nums">
-                      2
+                  <div className="flex items-center gap-2.5 text-sm font-bold text-slate-900 dark:text-slate-100 font-display">
+                    <span className="w-6 h-6 rounded-lg bg-teal-700 text-white text-xs flex items-center justify-center tabular-nums">
+                      {plain(2)}
                     </span>
                     <span>رفع الملف ومعاينة البيانات</span>
                   </div>
@@ -285,7 +292,7 @@ export function ExcelImportModal({
                   </p>
                 </div>
 
-                <label className="cursor-pointer rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-teal-600 dark:hover:border-teal-500 bg-slate-50/70 dark:bg-slate-800/40 p-6 text-center transition-colors block">
+                <label className="cursor-pointer rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-600 dark:hover:border-emerald-500 bg-white dark:bg-slate-900/60 p-6 text-center transition-colors block">
                   <input
                     type="file"
                     accept=".xlsx"
@@ -293,7 +300,7 @@ export function ExcelImportModal({
                     disabled={validating}
                     className="hidden"
                   />
-                  <Upload className="w-7 h-7 text-teal-700 dark:text-teal-400 mx-auto mb-2" />
+                  <Upload className="w-7 h-7 text-emerald-600 dark:text-emerald-400 mx-auto mb-2" />
                   <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
                     {validating ? 'جاري قراءة وفحص الملف...' : 'اضغط لاختيار ملف Excel (.xlsx)'}
                   </p>
@@ -308,16 +315,17 @@ export function ExcelImportModal({
           {step === 'preview' && validationResult && (
             <div className="space-y-4">
               {/* Summary & Filter Bar */}
-              <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 px-4 py-3">
-                <div className="flex flex-wrap items-center gap-4 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-3 text-xs">
                   <span className="font-semibold text-slate-700 dark:text-slate-200 tabular-nums">
-                    السنة المستهدفة: {validationResult.academic_year.name}
+                    السنة المستهدفة:{' '}
+                    <LtrSpan>{academicYear(validationResult.academic_year.name)}</LtrSpan>
                   </span>
                   <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
                     ·
                   </span>
                   <span className="font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">
-                    صفوف صالحة: {validCount.toLocaleString('ar-IQ')}
+                    صفوف صالحة: <LtrSpan>{count(validCount)}</LtrSpan>
                   </span>
                   <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
                     ·
@@ -325,11 +333,11 @@ export function ExcelImportModal({
                   <span
                     className={`font-semibold tabular-nums ${
                       errorCount > 0
-                        ? 'text-red-600 dark:text-red-400'
+                        ? 'text-rose-600 dark:text-rose-400'
                         : 'text-slate-500 dark:text-slate-400'
                     }`}
                   >
-                    صفوف بها أخطاء: {errorCount.toLocaleString('ar-IQ')}
+                    صفوف بها أخطاء: <LtrSpan>{count(errorCount)}</LtrSpan>
                   </span>
                   {validationResult.summary.sample_skipped_count > 0 && (
                     <>
@@ -338,7 +346,7 @@ export function ExcelImportModal({
                       </span>
                       <span className="text-slate-500 dark:text-slate-400 tabular-nums">
                         صفوف إرشادية مستبعدة تلقائياً:{' '}
-                        {validationResult.summary.sample_skipped_count.toLocaleString('ar-IQ')}
+                        <LtrSpan>{count(validationResult.summary.sample_skipped_count)}</LtrSpan>
                       </span>
                     </>
                   )}
@@ -350,7 +358,7 @@ export function ExcelImportModal({
                     onClick={() => setShowErrorsOnly((prev) => !prev)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap ${
                       showErrorsOnly
-                        ? 'bg-red-50 dark:bg-red-950/50 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
+                        ? 'bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300'
                         : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
                     }`}
                   >
@@ -361,7 +369,7 @@ export function ExcelImportModal({
                     type="button"
                     onClick={handleRevalidate}
                     disabled={validating}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 dark:hover:bg-slate-600 text-white text-xs font-semibold transition-colors whitespace-nowrap disabled:opacity-60"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-700 dark:bg-teal-600 hover:bg-teal-800 dark:hover:bg-teal-500 text-white text-xs font-semibold transition-colors whitespace-nowrap disabled:opacity-60"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${validating ? 'animate-spin' : ''}`} />
                     <span>إعادة الفحص</span>
@@ -370,7 +378,8 @@ export function ExcelImportModal({
               </div>
 
               {dirtySinceValidate && (
-                <div className="rounded-lg border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-200 flex items-center justify-between gap-3">
+                <div className="rounded-xl border border-amber-200 dark:border-amber-800/70 bg-amber-50/75 dark:bg-amber-950/25 px-4 py-2.5 text-xs text-amber-900 dark:text-amber-200 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                   <span>
                     تم تعديل بعض القيم في المعاينة. يرجى الضغط على «إعادة الفحص» للتحقق من البيانات
                     المعدلة قبل الحفظ.
@@ -381,15 +390,15 @@ export function ExcelImportModal({
               {/* Editable Preview Table */}
               <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto">
                 <table className="w-full text-xs text-right">
-                  <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                  <thead className="bg-slate-50/90 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
                     <tr>
-                      <th className="py-2.5 px-3 font-semibold w-16">صف Excel</th>
-                      <th className="py-2.5 px-3 font-semibold min-w-[200px]">اسم الطالب</th>
-                      <th className="py-2.5 px-3 font-semibold min-w-[150px]">الصف</th>
-                      <th className="py-2.5 px-3 font-semibold min-w-[110px]">الشعبة</th>
-                      <th className="py-2.5 px-3 font-semibold min-w-[120px]">رقم القيد</th>
-                      <th className="py-2.5 px-3 font-semibold min-w-[230px]">نتيجة الفحص</th>
-                      <th className="py-2.5 px-3 font-semibold w-12 text-center">إزالة</th>
+                      <th className="py-3 px-3 font-semibold w-16">صف Excel</th>
+                      <th className="py-3 px-3 font-semibold min-w-[200px]">اسم الطالب</th>
+                      <th className="py-3 px-3 font-semibold min-w-[150px]">الصف</th>
+                      <th className="py-3 px-3 font-semibold min-w-[110px]">الشعبة</th>
+                      <th className="py-3 px-3 font-semibold min-w-[120px]">رقم القيد</th>
+                      <th className="py-3 px-3 font-semibold min-w-[230px]">نتيجة الفحص</th>
+                      <th className="py-3 px-3 font-semibold w-12 text-center">إزالة</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -403,7 +412,9 @@ export function ExcelImportModal({
                             key={row.rowNumber}
                             className="bg-amber-50/50 dark:bg-amber-950/20 text-slate-500 dark:text-slate-400"
                           >
-                            <td className="py-2.5 px-3 font-mono-tabular">{row.rowNumber}</td>
+                            <td className="py-2.5 px-3 font-mono-tabular">
+                              <LtrSpan>{plain(row.rowNumber)}</LtrSpan>
+                            </td>
                             <td className="py-2.5 px-3" colSpan={5}>
                               {row.full_name} —{' '}
                               <span className="font-semibold">
@@ -415,7 +426,7 @@ export function ExcelImportModal({
                                 type="button"
                                 onClick={() => removeRow(row.rowNumber)}
                                 aria-label="إزالة الصف"
-                                className="p-1 text-slate-400 hover:text-red-600 transition-colors"
+                                className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -429,12 +440,12 @@ export function ExcelImportModal({
                           key={row.rowNumber}
                           className={
                             !row.is_valid
-                              ? 'bg-red-50/40 dark:bg-red-950/20'
-                              : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/30'
+                              ? 'bg-rose-50/40 dark:bg-rose-950/20'
+                              : 'hover:bg-emerald-50/35 dark:hover:bg-emerald-950/20'
                           }
                         >
                           <td className="py-2 px-3 font-mono-tabular text-slate-500 dark:text-slate-400">
-                            {row.rowNumber}
+                            <LtrSpan>{plain(row.rowNumber)}</LtrSpan>
                           </td>
                           <td className="py-2 px-3">
                             <input
@@ -443,7 +454,7 @@ export function ExcelImportModal({
                               onChange={(e) =>
                                 updateRowField(row.rowNumber, 'full_name', e.target.value)
                               }
-                              className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-teal-600"
+                              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-600"
                             />
                           </td>
                           <td className="py-2 px-3">
@@ -452,7 +463,7 @@ export function ExcelImportModal({
                               onChange={(e) =>
                                 updateRowField(row.rowNumber, 'grade_name', e.target.value)
                               }
-                              className="w-full px-2 py-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-teal-600"
+                              className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-600"
                             >
                               {!matchedGrade && (
                                 <option value="">
@@ -477,7 +488,7 @@ export function ExcelImportModal({
                                 updateRowField(row.rowNumber, 'section_name', e.target.value)
                               }
                               disabled={!matchedGrade}
-                              className="w-full px-2 py-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-teal-600 disabled:opacity-50"
+                              className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-600 disabled:opacity-50"
                             >
                               {!availableSections.some((s) => s.name === row.section_name) && (
                                 <option value="">
@@ -499,7 +510,7 @@ export function ExcelImportModal({
                                 updateRowField(row.rowNumber, 'registry_number', e.target.value)
                               }
                               placeholder="اختياري"
-                              className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono-tabular focus:outline-none focus:ring-1 focus:ring-teal-600"
+                              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono-tabular focus:outline-none focus:ring-1 focus:ring-emerald-600"
                             />
                           </td>
                           <td className="py-2 px-3">
@@ -509,7 +520,7 @@ export function ExcelImportModal({
                                 <span>بيانات سليمة</span>
                               </span>
                             ) : (
-                              <div className="space-y-0.5 text-red-700 dark:text-red-400">
+                              <div className="space-y-0.5 text-rose-700 dark:text-rose-400">
                                 {row.errors.map((errMsg, i) => (
                                   <p key={i} className="flex items-start gap-1 leading-snug">
                                     <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -524,7 +535,7 @@ export function ExcelImportModal({
                               type="button"
                               onClick={() => removeRow(row.rowNumber)}
                               aria-label="حذف الصف من الدفعة"
-                              className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -540,7 +551,7 @@ export function ExcelImportModal({
 
           {step === 'done' && commitResult && (
             <div className="py-6 space-y-5 text-center max-w-xl mx-auto">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-100 dark:border-emerald-900/60 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center">
                 <CheckCircle2 className="w-8 h-8" />
               </div>
               <div>
@@ -549,20 +560,20 @@ export function ExcelImportModal({
                 </h4>
                 <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 tabular-nums">
                   تم تسجيل{' '}
-                  <span className="font-bold text-teal-700 dark:text-teal-400">
-                    {commitResult.imported_count.toLocaleString('ar-IQ')}
+                  <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                    <LtrSpan>{count(commitResult.imported_count)}</LtrSpan>
                   </span>{' '}
-                  طالب في السنة الدراسية {commitResult.academic_year_name}
+                  طالب في السنة الدراسية <LtrSpan>{academicYear(commitResult.academic_year_name)}</LtrSpan>
                 </p>
               </div>
 
               <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto text-right">
                 <table className="w-full text-sm">
-                  <thead className="bg-slate-50 dark:bg-slate-800/50 text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                  <thead className="bg-slate-50/90 dark:bg-slate-800/60 text-xs text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
                     <tr>
-                      <th className="py-2.5 px-4 font-semibold whitespace-nowrap">الصف</th>
-                      <th className="py-2.5 px-4 font-semibold whitespace-nowrap">الشعبة</th>
-                      <th className="py-2.5 px-4 font-semibold text-left whitespace-nowrap">
+                      <th className="py-3 px-4 font-semibold whitespace-nowrap">الصف</th>
+                      <th className="py-3 px-4 font-semibold whitespace-nowrap">الشعبة</th>
+                      <th className="py-3 px-4 font-semibold text-left whitespace-nowrap">
                         عدد الطلاب المضافين
                       </th>
                     </tr>
@@ -571,13 +582,13 @@ export function ExcelImportModal({
                     {commitResult.distribution.map((dist, idx) => (
                       <tr key={idx}>
                         <td className="py-2.5 px-4 font-medium text-slate-900 dark:text-slate-100 whitespace-nowrap">
-                          {dist.grade_name}
+                          <BidiText text={dist.grade_name} />
                         </td>
                         <td className="py-2.5 px-4 text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                          شعبة {dist.section_name}
+                          <BidiText text={`شعبة ${dist.section_name}`} />
                         </td>
-                        <td className="py-2.5 px-4 text-left font-bold text-teal-700 dark:text-teal-400 tabular-nums whitespace-nowrap">
-                          {dist.count.toLocaleString('ar-IQ')}
+                        <td className="py-2.5 px-4 text-left font-bold text-emerald-700 dark:text-emerald-400 tabular-nums whitespace-nowrap">
+                          <LtrSpan>{count(dist.count)}</LtrSpan>
                         </td>
                       </tr>
                     ))}
@@ -589,24 +600,24 @@ export function ExcelImportModal({
         </div>
 
         {/* Footer */}
-        <div className="px-4 sm:px-6 py-3.5 sm:py-4 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 shrink-0">
+        <div className="px-4 sm:px-6 py-3.5 bg-slate-50/80 dark:bg-slate-900/80 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 shrink-0">
           {step === 'preview' ? (
             <>
               <button
                 type="button"
                 onClick={resetState}
                 disabled={validating || committing}
-                className="px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors whitespace-nowrap"
+                className="px-4 py-2 text-xs sm:text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors whitespace-nowrap min-h-[40px]"
               >
                 اختيار ملف آخر
               </button>
 
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
                 <button
                   type="button"
                   onClick={handleClose}
                   disabled={validating || committing}
-                  className="px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+                  className="px-4 py-2 text-xs sm:text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors whitespace-nowrap min-h-[40px]"
                 >
                   إلغاء
                 </button>
@@ -619,13 +630,13 @@ export function ExcelImportModal({
                     nonSampleRows.length === 0 ||
                     (!dirtySinceValidate && errorCount > 0)
                   }
-                  className="px-4 sm:px-5 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-teal-700 hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500 text-white transition-colors whitespace-nowrap disabled:opacity-50"
+                  className="px-4 sm:px-5 py-2 text-xs sm:text-sm font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white shadow-sm transition-colors whitespace-nowrap disabled:opacity-50 min-h-[40px]"
                 >
                   {committing
                     ? 'جاري الحفظ والتوزيع...'
                     : dirtySinceValidate
                       ? 'فحص البيانات المعدلة أولاً'
-                      : `اعتماد وحفظ (${validCount.toLocaleString('ar-IQ')} طالب)`}
+                      : `اعتماد وحفظ (${count(validCount)} طالب)`}
                 </button>
               </div>
             </>
@@ -634,7 +645,7 @@ export function ExcelImportModal({
               <button
                 type="button"
                 onClick={handleClose}
-                className="px-5 py-2 text-sm font-semibold rounded-lg bg-slate-800 dark:bg-slate-700 text-white hover:bg-slate-900 dark:hover:bg-slate-600 transition-colors"
+                className="px-5 py-2 text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors min-h-[40px]"
               >
                 إغلاق
               </button>

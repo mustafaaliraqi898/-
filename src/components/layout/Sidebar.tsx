@@ -3,6 +3,7 @@ import {
   BookOpenCheck,
   CalendarDays,
   ClipboardCheck,
+  History,
   Home,
   Layers,
   Settings,
@@ -33,6 +34,7 @@ const NAV_ITEMS: NavItemConfig[] = [
   { id: 'absences', label: 'تسجيل الغيابات', icon: ClipboardCheck },
   { id: 'monthly', label: 'السجل الشهري', icon: CalendarDays },
   { id: 'reports', label: 'التقارير', icon: BarChart3 },
+  { id: 'audit', label: 'سجل العمليات', icon: History },
   { id: 'settings', label: 'الإعدادات', icon: Settings },
 ];
 

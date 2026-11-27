@@ -1,5 +1,6 @@
 declare module 'electron' {
   export interface BrowserWindowConstructorOptions {
+    show?: boolean;
     width?: number;
     height?: number;
     minWidth?: number;
@@ -16,9 +17,23 @@ declare module 'electron' {
 
   export class BrowserWindow {
     constructor(options?: BrowserWindowConstructorOptions);
+    webContents: {
+      printToPDF(options?: {
+        pageSize?: string;
+        printBackground?: boolean;
+        margins?: {
+          top?: number;
+          bottom?: number;
+          left?: number;
+          right?: number;
+        };
+      }): Promise<Uint8Array>;
+    };
     loadURL(url: string): Promise<void>;
     loadFile(filePath: string): Promise<void>;
     setMenuBarVisibility(visible: boolean): void;
+    isDestroyed(): boolean;
+    destroy(): void;
     static getAllWindows(): BrowserWindow[];
   }
 
@@ -59,5 +74,24 @@ declare module 'electron' {
       scheme: string,
       handler: (request: { url: string }) => Response | Promise<Response>
     ): void;
+  };
+
+  export const dialog: {
+    showSaveDialog(
+      browserWindow: BrowserWindow,
+      options: {
+        title?: string;
+        defaultPath?: string;
+        filters?: Array<{ name: string; extensions: string[] }>;
+      }
+    ): Promise<{ canceled: boolean; filePath?: string }>;
+    showOpenDialog(
+      browserWindow: BrowserWindow,
+      options: {
+        title?: string;
+        defaultPath?: string;
+        properties?: Array<'openFile' | 'openDirectory' | 'createDirectory'>;
+      }
+    ): Promise<{ canceled: boolean; filePaths: string[] }>;
   };
 }

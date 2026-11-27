@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { SCHEMA_SQL } from './schema';
+import { UNIFIED_OFFICIAL_LETTER_TEMPLATE } from '../../src/utils/officialDocumentHtml';
 
 export type SqliteDb = Database.Database;
 
@@ -205,6 +206,20 @@ function runSafeMigrations(db: SqliteDb): void {
     db.exec(
       'ALTER TABLE school_settings ADD COLUMN school_logo_asset_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL'
     );
+  }
+  if (!settingsCols.some((c) => c.name === 'principal_name')) {
+    db.exec('ALTER TABLE school_settings ADD COLUMN principal_name TEXT');
+  }
+  if (!settingsCols.some((c) => c.name === 'number_display_mode')) {
+    db.exec(
+      "ALTER TABLE school_settings ADD COLUMN number_display_mode TEXT NOT NULL DEFAULT 'english' CHECK (number_display_mode IN ('arabic', 'english'))"
+    );
+  }
+  if (!settingsCols.some((c) => c.name === 'unified_letter_template')) {
+    db.exec('ALTER TABLE school_settings ADD COLUMN unified_letter_template TEXT');
+    db.prepare(
+      'UPDATE school_settings SET unified_letter_template = ? WHERE id = 1 AND unified_letter_template IS NULL'
+    ).run(UNIFIED_OFFICIAL_LETTER_TEMPLATE);
   }
 
   // 1a. Ensure students has photo_asset_id column for centralized media storage
@@ -427,6 +442,54 @@ function runSafeMigrations(db: SqliteDb): void {
     db.exec('ALTER TABLE lesson_converted_days ADD COLUMN contributing_lessons_json TEXT');
   }
 
+  // 5. Ensure issued_official_letters has subject column
+  const issuedCols = db.prepare('PRAGMA table_info(issued_official_letters)').all() as Array<{ name: string }>;
+  if (!issuedCols.some((c) => c.name === 'subject')) {
+    db.exec('ALTER TABLE issued_official_letters ADD COLUMN subject TEXT NOT NULL DEFAULT ""');
+  }
+
+  // 6. Safely unify absence_stages.letter_template while backing up any prior per-stage template in legacy_letter_template
+  const absenceStageCols = db.prepare('PRAGMA table_info(absence_stages)').all() as Array<{ name: string }>;
+  if (!absenceStageCols.some((c) => c.name === 'legacy_letter_template')) {
+    db.exec('ALTER TABLE absence_stages ADD COLUMN legacy_letter_template TEXT');
+  }
+
+  const existingStages = db
+    .prepare('SELECT id, letter_template, legacy_letter_template FROM absence_stages')
+    .all() as Array<{ id: number; letter_template: string; legacy_letter_template: string | null }>;
+
+  const savedUnifiedRow = db
+    .prepare('SELECT unified_letter_template FROM school_settings WHERE id = 1')
+    .get() as { unified_letter_template?: string | null } | undefined;
+  const effectiveUnifiedTemplate =
+    savedUnifiedRow?.unified_letter_template !== undefined &&
+    savedUnifiedRow?.unified_letter_template !== null
+      ? savedUnifiedRow.unified_letter_template
+      : UNIFIED_OFFICIAL_LETTER_TEMPLATE;
+
+  if (existingStages.length > 0) {
+    const unifyStmt = db.prepare(
+      `UPDATE absence_stages
+       SET legacy_letter_template = COALESCE(legacy_letter_template, ?),
+           letter_template = ?,
+           updated_at = datetime('now')
+       WHERE id = ?`
+    );
+    const unifyTx = db.transaction(() => {
+      for (const st of existingStages) {
+        const current = (st.letter_template || '').trim();
+        if (current !== effectiveUnifiedTemplate.trim()) {
+          unifyStmt.run(
+            current.length > 0 ? st.letter_template : null,
+            effectiveUnifiedTemplate,
+            st.id
+          );
+        }
+      }
+    });
+    unifyTx();
+  }
+
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_absences_year_status_counted ON absences(academic_year_id, status, counted_as_absence);'
   );
@@ -489,12 +552,34 @@ export function initializeDatabase(db: SqliteDb): void {
            id, school_name, directorate_name, academic_year_id,
            lessons_per_absence_day, daily_lessons_count,
            daily_permission_counts_as_absence, lesson_permission_counts_as_absence,
-           weekly_holiday_reason
+           weekly_holiday_reason, unified_letter_template
          )
-         VALUES (1, ?, ?, ?, 5, 7, 0, 0, 'عطلة أسبوعية رسمية')`
-      ).run('المدرسة النموذجية', 'المديرية العامة للتربية', activeYearId);
-    } else if (!existingSettings.academic_year_id && activeYearId) {
-      db.prepare('UPDATE school_settings SET academic_year_id = ? WHERE id = 1').run(activeYearId);
+         VALUES (1, ?, ?, ?, 5, 7, 0, 0, 'عطلة أسبوعية رسمية', ?)`
+      ).run(
+        'المدرسة النموذجية',
+        'المديرية العامة للتربية',
+        activeYearId,
+        UNIFIED_OFFICIAL_LETTER_TEMPLATE
+      );
+    } else {
+      if (!existingSettings.academic_year_id && activeYearId) {
+        db.prepare('UPDATE school_settings SET academic_year_id = ? WHERE id = 1').run(activeYearId);
+      }
+      db.prepare(
+        'UPDATE school_settings SET unified_letter_template = ? WHERE id = 1 AND unified_letter_template IS NULL'
+      ).run(UNIFIED_OFFICIAL_LETTER_TEMPLATE);
+    }
+
+    // Seed default backup_settings row if empty
+    const existingBackupSettings = db
+      .prepare('SELECT id FROM backup_settings WHERE id = 1')
+      .get() as { id: number } | undefined;
+
+    if (!existingBackupSettings) {
+      db.prepare(
+        `INSERT INTO backup_settings (id, auto_enabled, frequency, retention_count, backup_dir)
+         VALUES (1, 0, 'daily', 7, NULL)`
+      ).run();
     }
 
     // Seed default 7 weekly_holidays rows if empty (Friday=5, Saturday=6 are holidays by default)

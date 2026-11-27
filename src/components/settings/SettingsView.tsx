@@ -7,6 +7,7 @@ import {
   Check,
   Clock,
   FileCheck2,
+  HardDriveDownload,
   ImagePlus,
   Loader2,
   Pencil,
@@ -23,19 +24,23 @@ import type {
   GradeWithSections,
   HolidayRecord,
   HolidayType,
+  NumberDisplayMode,
   SchoolSettings,
   WeeklyHolidayDay,
 } from '../../types/school';
+import { useNumberDisplay } from '../../contexts/NumberDisplayContext';
 import { schoolService } from '../../services/schoolService';
 import {
   ACCEPTED_IMAGE_INPUT,
   describeMediaProcessingResult,
   processAndUploadImageFile,
 } from '../../utils/imageUpload';
+import { LtrSpan } from '../common/BidirectionalText';
 import { ConfirmDialog } from '../common/ConfirmDialog';
+import { BackupSettingsTab } from './BackupSettingsTab';
 import { LegalRegulationsView } from './LegalRegulationsView';
 
-export type SettingsTabId = 'general' | 'holidays' | 'legal';
+export type SettingsTabId = 'general' | 'holidays' | 'legal' | 'backup';
 
 interface SettingsViewProps {
   settings: SchoolSettings | null;
@@ -78,9 +83,11 @@ export function SettingsView({
   onRefresh,
   onNotify,
 }: SettingsViewProps) {
+  const { count, plain, dateDMY, academicYear } = useNumberDisplay();
   const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab);
   const [schoolName, setSchoolName] = useState(settings?.school_name ?? '');
   const [directorateName, setDirectorateName] = useState(settings?.directorate_name ?? '');
+  const [principalName, setPrincipalName] = useState(settings?.principal_name ?? '');
   const [schoolLogoData, setSchoolLogoData] = useState<string | null>(
     settings?.school_logo_data ?? null
   );
@@ -101,6 +108,10 @@ export function SettingsView({
   const [lessonPermCountsAsAbsence, setLessonPermCountsAsAbsence] = useState<0 | 1>(
     settings?.lesson_permission_counts_as_absence ? 1 : 0
   );
+  const [numberDisplayMode, setNumberDisplayMode] = useState<NumberDisplayMode>(
+    settings?.number_display_mode ?? 'english'
+  );
+  const [savingNumberMode, setSavingNumberMode] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
 
   const [newYearName, setNewYearName] = useState('');
@@ -144,12 +155,14 @@ export function SettingsView({
     if (settings) {
       setSchoolName(settings.school_name);
       setDirectorateName(settings.directorate_name);
+      setPrincipalName(settings.principal_name ?? '');
       setSchoolLogoData(settings.school_logo_data ?? null);
       setSchoolLogoAssetId(settings.school_logo_asset_id ?? null);
       setLessonsPerDay(String(settings.lessons_per_absence_day ?? 5));
       setDailyLessonsCount(String(settings.daily_lessons_count ?? 7));
       setDailyPermCountsAsAbsence(settings.daily_permission_counts_as_absence ? 1 : 0);
       setLessonPermCountsAsAbsence(settings.lesson_permission_counts_as_absence ? 1 : 0);
+      setNumberDisplayMode(settings.number_display_mode ?? 'english');
     }
   }, [settings]);
 
@@ -235,10 +248,12 @@ export function SettingsView({
       await schoolService.updateSettings({
         school_name: schoolName,
         directorate_name: directorateName,
+        principal_name: principalName.trim() || null,
         lessons_per_absence_day: parsedThreshold,
         daily_lessons_count: parsedDailyLessons,
         daily_permission_counts_as_absence: dailyPermCountsAsAbsence,
         lesson_permission_counts_as_absence: lessonPermCountsAsAbsence,
+        number_display_mode: numberDisplayMode,
         school_logo_data: schoolLogoData,
         school_logo_asset_id: schoolLogoAssetId,
       });
@@ -248,6 +263,35 @@ export function SettingsView({
       onNotify('error', err instanceof Error ? err.message : 'تعذر حفظ الإعدادات.');
     } finally {
       setSavingSettings(false);
+    }
+  }
+
+  async function handleNumberDisplayModeChange(nextMode: NumberDisplayMode) {
+    if (nextMode === numberDisplayMode || savingNumberMode) return;
+    const prevMode = numberDisplayMode;
+    setNumberDisplayMode(nextMode);
+    setSavingNumberMode(true);
+    try {
+      const effectiveSchoolName = schoolName.trim() || settings?.school_name || 'المدرسة النموذجية';
+      const effectiveDirectorate =
+        directorateName.trim() || settings?.directorate_name || 'المديرية العامة للتربية';
+      await schoolService.updateSettings({
+        school_name: effectiveSchoolName,
+        directorate_name: effectiveDirectorate,
+        number_display_mode: nextMode,
+      });
+      onNotify(
+        'success',
+        nextMode === 'arabic'
+          ? 'تم تفعيل نظام الأرقام العربية (١٢٣٤٥٦٧٨٩٠) وتطبيقه على كامل البرنامج.'
+          : 'تم تفعيل نظام الأرقام الإنجليزية (1234567890) وتطبيقه على كامل البرنامج.'
+      );
+      await onRefresh();
+    } catch (err) {
+      setNumberDisplayMode(prevMode);
+      onNotify('error', err instanceof Error ? err.message : 'تعذر حفظ نظام عرض الأرقام.');
+    } finally {
+      setSavingNumberMode(false);
     }
   }
 
@@ -487,10 +531,30 @@ export function SettingsView({
           <Scale className="w-4 h-4" />
           <span>حدود الغياب والإنذارات</span>
         </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'backup'}
+          onClick={() => setActiveTab('backup')}
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+            activeTab === 'backup'
+              ? 'bg-teal-700 text-white'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+          }`}
+        >
+          <HardDriveDownload className="w-4 h-4" />
+          <span>النسخ الاحتياطي والاستعادة</span>
+        </button>
       </div>
+
+      {activeTab === 'backup' && (
+        <BackupSettingsTab onRefresh={onRefresh} onNotify={onNotify} />
+      )}
 
       {activeTab === 'legal' && (
         <LegalRegulationsView
+          settings={settings}
           grades={grades}
           academicYears={academicYears}
           selectedYearId={selectedYearId}
@@ -533,6 +597,23 @@ export function SettingsView({
                 required
                 value={directorateName}
                 onChange={(e) => setDirectorateName(e.target.value)}
+                className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="principal-name-input"
+                className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5"
+              >
+                اسم مدير المدرسة
+              </label>
+              <input
+                id="principal-name-input"
+                type="text"
+                value={principalName}
+                onChange={(e) => setPrincipalName(e.target.value)}
+                placeholder="أدخل اسم مدير المدرسة (اختياري)"
                 className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
               />
             </div>
@@ -641,10 +722,72 @@ export function SettingsView({
                   className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-600/30"
                 />
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-                  يحدد عدد الدروس المتاحة للاختيار عند تسجيل «رخصة عن درس معين» (مثلاً 7 دروس: من
+                  يحدد عدد الدروس المتاحة للاختيار عند تسجيل «رخصة عن درس معين» (مثلاً {plain(7)} دروس: من
                   الدرس الأول إلى الدرس السابع).
                 </p>
               </div>
+
+              <fieldset className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                <legend className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  نظام عرض الأرقام
+                </legend>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  يُطبق فوراً على جميع الواجهات والتقارير والسجل الشهري والكتب الرسمية دون تغيير
+                  البيانات المحفوظة.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <label
+                    className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      numberDisplayMode === 'arabic'
+                        ? 'border-teal-600 bg-teal-50/60 dark:bg-teal-950/30 dark:border-teal-500'
+                        : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="number_display_mode"
+                      checked={numberDisplayMode === 'arabic'}
+                      disabled={savingNumberMode}
+                      onChange={() => void handleNumberDisplayModeChange('arabic')}
+                      className="mt-0.5 text-teal-700 focus:ring-teal-600 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <span className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        الأرقام العربية (١٢٣٤٥٦٧٨٩٠)
+                      </span>
+                      <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        مثال: <LtrSpan>٢٦-١١-٢٠٢٦</LtrSpan> · <LtrSpan>٢٠٢٦-٢٠٢٧</LtrSpan>
+                      </span>
+                    </div>
+                  </label>
+
+                  <label
+                    className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      numberDisplayMode === 'english'
+                        ? 'border-teal-600 bg-teal-50/60 dark:bg-teal-950/30 dark:border-teal-500'
+                        : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="number_display_mode"
+                      checked={numberDisplayMode === 'english'}
+                      disabled={savingNumberMode}
+                      onChange={() => void handleNumberDisplayModeChange('english')}
+                      className="mt-0.5 text-teal-700 focus:ring-teal-600 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <span className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        الأرقام الإنجليزية (1234567890)
+                      </span>
+                      <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        مثال: <LtrSpan>26-11-2026</LtrSpan> · <LtrSpan>2026-2027</LtrSpan>
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </fieldset>
             </div>
 
             <div className="pt-2 flex justify-end">
@@ -706,7 +849,7 @@ export function SettingsView({
                 >
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
                     <span className="font-bold text-slate-900 dark:text-slate-100 tabular-nums">
-                      {yr.name}
+                      <LtrSpan>{academicYear(yr.name)}</LtrSpan>
                     </span>
                     {yr.is_active === 1 && (
                       <span className="text-xs font-semibold text-teal-700 dark:text-teal-400">
@@ -996,7 +1139,7 @@ export function SettingsView({
             </h3>
           </div>
           <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-            {holidays.length.toLocaleString('ar-IQ')} عطلة مسجلة
+            {count(holidays.length)} عطلة مسجلة
           </span>
         </div>
 
@@ -1206,14 +1349,19 @@ export function SettingsView({
 
                       <td className="py-3 px-3.5 tabular-nums whitespace-nowrap align-top">
                         <p className="font-medium text-slate-800 dark:text-slate-200">
-                          {h.start_date === h.end_date
-                            ? h.start_date
-                            : `${h.start_date} ← ${h.end_date}`}
+                          {h.start_date === h.end_date ? (
+                            <LtrSpan>{dateDMY(h.start_date)}</LtrSpan>
+                          ) : (
+                            <>
+                              <LtrSpan>{dateDMY(h.start_date)}</LtrSpan> ←{' '}
+                              <LtrSpan>{dateDMY(h.end_date)}</LtrSpan>
+                            </>
+                          )}
                         </p>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                           {h.days_count === 1
                             ? 'يوم واحد'
-                            : `${h.days_count.toLocaleString('ar-IQ')} أيام`}
+                            : `${count(h.days_count)} أيام`}
                         </p>
                       </td>
 
@@ -1262,8 +1410,8 @@ export function SettingsView({
         message={`هل أنت متأكد من حذف العطلة "${deleteHolidayTarget?.name ?? ''}" (${
           deleteHolidayTarget
             ? deleteHolidayTarget.start_date === deleteHolidayTarget.end_date
-              ? deleteHolidayTarget.start_date
-              : `من ${deleteHolidayTarget.start_date} إلى ${deleteHolidayTarget.end_date}`
+              ? dateDMY(deleteHolidayTarget.start_date)
+              : `من ${dateDMY(deleteHolidayTarget.start_date)} إلى ${dateDMY(deleteHolidayTarget.end_date)}`
             : ''
         })؟ لن تتأثر سجلات الغياب التاريخية السابقة، وسيعود التاريخ يوم دوام طبيعي ما لم يصادف عطلة أسبوعية.`}
         confirmLabel="نعم، احذف العطلة"

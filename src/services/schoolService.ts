@@ -4,6 +4,11 @@ import type {
   AbsenceStage,
   AbsenceThresholdsSettings,
   AcademicYear,
+  AuditLogListResponse,
+  AuditLogQuery,
+  BackupOverviewResponse,
+  BackupSettings,
+  CreateBackupResult,
   CreateHolidayInput,
   CreateStudentInput,
   DashboardStats,
@@ -22,6 +27,8 @@ import type {
   MonthCalendarDay,
   MonthlyRegisterData,
   MonthlyRegisterQuery,
+  NumberDisplayMode,
+  RestoreBackupResult,
   SaveHolidayResult,
   SaveMonthlyNoteInput,
   SaveSectionAttendanceInput,
@@ -35,6 +42,7 @@ import type {
   StudentRecord,
   TransferStudentInput,
   UpdateAbsenceThresholdsInput,
+  UpdateBackupSettingsInput,
   UpdateStudentInput,
   UpdateWeeklyHolidaysInput,
   UpdateWeeklyHolidaysResult,
@@ -121,10 +129,13 @@ export const schoolService = {
   async updateSettings(payload: {
     school_name: string;
     directorate_name: string;
+    principal_name?: string | null;
     lessons_per_absence_day?: number;
     daily_lessons_count?: number;
     daily_permission_counts_as_absence?: number;
     lesson_permission_counts_as_absence?: number;
+    number_display_mode?: NumberDisplayMode;
+    unified_letter_template?: string;
     school_logo_data?: string | null;
     school_logo_asset_id?: number | null;
   }): Promise<SchoolSettings> {
@@ -133,6 +144,24 @@ export const schoolService = {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
+  },
+
+  async updateUnifiedLetterTemplate(
+    unified_letter_template: string
+  ): Promise<{ unified_letter_template: string }> {
+    if (isElectronMode()) {
+      return ipcCall<{ unified_letter_template: string }>(
+        'settings:update-unified-letter-template',
+        { unified_letter_template }
+      );
+    }
+    return httpJson<{ unified_letter_template: string }>(
+      '/api/settings/unified-letter-template',
+      {
+        method: 'PUT',
+        body: JSON.stringify({ unified_letter_template }),
+      }
+    );
   },
 
   // Centralized Image Processing & Storage Service
@@ -217,12 +246,23 @@ export const schoolService = {
   },
 
   // Dashboard
-  async getDashboardStats(academicYearId?: number): Promise<DashboardStats> {
+  async getDashboardStats(
+    academicYearId?: number,
+    filters?: { grade_id?: number; stage_id?: number }
+  ): Promise<DashboardStats> {
     if (isElectronMode()) {
-      return ipcCall<DashboardStats>('dashboard:stats', { academic_year_id: academicYearId });
+      return ipcCall<DashboardStats>('dashboard:stats', {
+        academic_year_id: academicYearId,
+        grade_id: filters?.grade_id,
+        stage_id: filters?.stage_id,
+      });
     }
-    const qs = academicYearId ? `?academic_year_id=${academicYearId}` : '';
-    return httpJson<DashboardStats>(`/api/dashboard${qs}`);
+    const qs = new URLSearchParams();
+    if (academicYearId) qs.set('academic_year_id', String(academicYearId));
+    if (filters?.grade_id) qs.set('grade_id', String(filters.grade_id));
+    if (filters?.stage_id) qs.set('stage_id', String(filters.stage_id));
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return httpJson<DashboardStats>(`/api/dashboard${suffix}`);
   },
 
   // Grades & Sections
@@ -807,6 +847,8 @@ export const schoolService = {
     stage_id: number;
     document_number: string;
     letter_date: string;
+    subject?: string;
+    custom_body?: string;
     grade_id?: number;
     section_id?: number;
     search?: string;
@@ -825,6 +867,326 @@ export const schoolService = {
       return ipcCall<IssuedOfficialLetter[]>('absence-stages:issued-letters', { academic_year_id: academicYearId });
     }
     return httpJson<IssuedOfficialLetter[]>(`/api/absence-stages/issued-letters?academic_year_id=${academicYearId}`);
+  },
+
+  async exportStageReportPdf(query: {
+    academic_year_id?: number;
+    stage_id?: number;
+    grade_id?: number;
+    section_id?: number;
+    search?: string;
+  }): Promise<void> {
+    if (isElectronMode()) {
+      const result = await ipcCall<{ base64: string; filename: string }>(
+        'absence-stages:report-pdf',
+        query
+      );
+      const bytes = Uint8Array.from(atob(result.base64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      triggerBlobDownload(blob, result.filename);
+      return;
+    }
+
+    const qs = new URLSearchParams();
+    if (query.academic_year_id) qs.set('academic_year_id', String(query.academic_year_id));
+    if (query.stage_id) qs.set('stage_id', String(query.stage_id));
+    if (query.grade_id) qs.set('grade_id', String(query.grade_id));
+    if (query.section_id) qs.set('section_id', String(query.section_id));
+    if (query.search) qs.set('search', query.search);
+
+    const res = await fetch(`/api/absence-stages/report/pdf?${qs.toString()}`);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'تعذر تصدير التقرير إلى ملف PDF.');
+    }
+    const blob = await res.blob();
+    triggerBlobDownload(blob, 'تقرير_الغياب.pdf');
+  },
+
+  async exportIssuedLetterPdf(letterId: number, documentNumber?: string): Promise<void> {
+    if (isElectronMode()) {
+      const result = await ipcCall<{ base64: string; filename: string }>(
+        'absence-stages:letter-pdf',
+        { letter_id: letterId }
+      );
+      const bytes = Uint8Array.from(atob(result.base64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      triggerBlobDownload(blob, result.filename);
+      return;
+    }
+
+    const res = await fetch(`/api/absence-stages/issued-letters/${letterId}/pdf`);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'تعذر تصدير الكتاب الرسمي إلى ملف PDF.');
+    }
+    const blob = await res.blob();
+    const safeDoc = (documentNumber || String(letterId)).replace(/[/\\:*?"<>|]+/g, '_');
+    triggerBlobDownload(blob, `كتاب_رسمي_${safeDoc}.pdf`);
+  },
+
+  // Backup & Restore
+  isElectron(): boolean {
+    return isElectronMode();
+  },
+
+  async getBackupOverview(): Promise<BackupOverviewResponse> {
+    if (isElectronMode()) {
+      return ipcCall<BackupOverviewResponse>('backup:overview');
+    }
+    return httpJson<BackupOverviewResponse>('/api/backup/overview');
+  },
+
+  async updateBackupSettings(payload: UpdateBackupSettingsInput): Promise<BackupSettings> {
+    if (isElectronMode()) {
+      return ipcCall<BackupSettings>('backup:update-settings', payload);
+    }
+    return httpJson<BackupSettings>('/api/backup/settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async createManagedBackup(): Promise<CreateBackupResult> {
+    if (isElectronMode()) {
+      return ipcCall<CreateBackupResult>('backup:create');
+    }
+    return httpJson<CreateBackupResult>('/api/backup/create', {
+      method: 'POST',
+    });
+  },
+
+  async runAutoBackup(force = false): Promise<{
+    executed: boolean;
+    result: CreateBackupResult | null;
+    overview: BackupOverviewResponse;
+  }> {
+    if (isElectronMode()) {
+      return ipcCall('backup:run-auto', { force });
+    }
+    return httpJson('/api/backup/run-auto', {
+      method: 'POST',
+      body: JSON.stringify({ force }),
+    });
+  },
+
+  async downloadBackupRecord(recordId: number, fallbackFilename: string): Promise<void> {
+    if (isElectronMode()) {
+      const result = await ipcCall<{ base64: string; filename: string }>(
+        'backup:download-record',
+        { id: recordId }
+      );
+      const bytes = Uint8Array.from(atob(result.base64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: 'application/x-sqlite3' });
+      triggerBlobDownload(blob, result.filename || fallbackFilename);
+      return;
+    }
+
+    const res = await fetch(`/api/backup/records/${recordId}/download`);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'تعذر تنزيل ملف النسخة الاحتياطية.');
+    }
+    const blob = await res.blob();
+    triggerBlobDownload(blob, fallbackFilename);
+  },
+
+  async pickBackupDirectory(defaultPath?: string): Promise<{
+    supported: boolean;
+    canceled: boolean;
+    path: string | null;
+  }> {
+    if (!isElectronMode()) {
+      return { supported: false, canceled: true, path: null };
+    }
+    const res = await ipcCall<{ canceled: boolean; path: string | null }>(
+      'backup:pick-directory',
+      { defaultPath }
+    );
+    return { supported: true, ...res };
+  },
+
+  async exportManualBackupToUserChoice(): Promise<{
+    canceled: boolean;
+    filename: string;
+    file_path?: string;
+    method: 'electron-dialog' | 'file-picker' | 'download';
+  }> {
+    if (isElectronMode()) {
+      const res = await ipcCall<{
+        canceled: boolean;
+        file_path?: string;
+        filename?: string;
+      }>('backup:save-manual-dialog');
+      if (res.canceled) {
+        return { canceled: true, filename: '', method: 'electron-dialog' };
+      }
+      return {
+        canceled: false,
+        filename: res.filename || 'backup.db',
+        file_path: res.file_path,
+        method: 'electron-dialog',
+      };
+    }
+
+    const res = await fetch('/api/backup/export');
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'تعذر تصدير النسخة الاحتياطية.');
+    }
+
+    const stamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-');
+    let filename = `نسخة_احتياطية_نظام_الغيابات_${stamp}.db`;
+    const disp = res.headers.get('content-disposition');
+    const utf8Match = disp?.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) {
+      try {
+        filename = decodeURIComponent(utf8Match[1]);
+      } catch {
+        // keep default filename
+      }
+    }
+
+    const blob = await res.blob();
+
+    const savePicker = (
+      window as unknown as {
+        showSaveFilePicker?: (opts: {
+          suggestedName: string;
+          types?: Array<{ description: string; accept: Record<string, string[]> }>;
+        }) => Promise<{
+          createWritable(): Promise<{
+            write(data: Blob): Promise<void>;
+            close(): Promise<void>;
+          }>;
+        }>;
+      }
+    ).showSaveFilePicker;
+
+    if (typeof savePicker === 'function') {
+      try {
+        const handle = await savePicker({
+          suggestedName: filename,
+          types: [
+            {
+              description: 'SQLite Database Backup',
+              accept: { 'application/x-sqlite3': ['.db'] },
+            },
+          ],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return { canceled: false, filename, method: 'file-picker' };
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return { canceled: true, filename, method: 'file-picker' };
+        }
+        // Cross-origin iframe or SecurityError falls back cleanly to standard download
+      }
+    }
+
+    triggerBlobDownload(blob, filename);
+    return { canceled: false, filename, method: 'download' };
+  },
+
+  async restoreDatabaseBackup(file: File): Promise<RestoreBackupResult> {
+    if (isElectronMode()) {
+      const arrayBuf = await file.arrayBuffer();
+      return ipcCall<RestoreBackupResult>('backup:restore', {
+        bytes: new Uint8Array(arrayBuf),
+      });
+    }
+
+    const res = await fetch('/api/backup/restore', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+      },
+      body: file,
+    });
+
+    const text = await res.text();
+    let parsed: { error?: string } | RestoreBackupResult | null = null;
+    if (text) {
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = null;
+      }
+    }
+
+    if (!res.ok) {
+      const errMsg =
+        (parsed && typeof parsed === 'object' && 'error' in parsed && parsed.error) ||
+        'فشل استعادة النسخة الاحتياطية. لم تتأثر البيانات الحالية.';
+      throw new Error(String(errMsg));
+    }
+
+    return parsed as RestoreBackupResult;
+  },
+
+  // Audit Log (Read-Only)
+  async listAuditLogs(query: AuditLogQuery = {}): Promise<AuditLogListResponse> {
+    if (isElectronMode()) {
+      return ipcCall<AuditLogListResponse>('audit-logs:list', query);
+    }
+    const qs = new URLSearchParams();
+    if (query.operation_type && query.operation_type !== 'all') {
+      qs.set('operation_type', query.operation_type);
+    }
+    if (query.section && query.section !== 'all') {
+      qs.set('section', query.section);
+    }
+    if (query.actor_name && query.actor_name !== 'all') {
+      qs.set('actor_name', query.actor_name);
+    }
+    if (query.date_from) qs.set('date_from', query.date_from);
+    if (query.date_to) qs.set('date_to', query.date_to);
+    if (query.search) qs.set('search', query.search);
+    if (query.limit) qs.set('limit', String(query.limit));
+    if (query.offset !== undefined) qs.set('offset', String(query.offset));
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return httpJson<AuditLogListResponse>(`/api/audit-logs${suffix}`);
+  },
+
+  async exportAuditLogsExcel(query: AuditLogQuery = {}): Promise<void> {
+    if (isElectronMode()) {
+      const result = await ipcCall<{ base64: string; filename: string }>(
+        'audit-logs:export',
+        query
+      );
+      const bytes = Uint8Array.from(atob(result.base64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      triggerBlobDownload(blob, result.filename);
+      return;
+    }
+
+    const qs = new URLSearchParams();
+    if (query.operation_type && query.operation_type !== 'all') {
+      qs.set('operation_type', query.operation_type);
+    }
+    if (query.section && query.section !== 'all') {
+      qs.set('section', query.section);
+    }
+    if (query.actor_name && query.actor_name !== 'all') {
+      qs.set('actor_name', query.actor_name);
+    }
+    if (query.date_from) qs.set('date_from', query.date_from);
+    if (query.date_to) qs.set('date_to', query.date_to);
+    if (query.search) qs.set('search', query.search);
+
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    const res = await fetch(`/api/audit-logs/export${suffix}`);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'تعذر تصدير سجل العمليات إلى ملف Excel.');
+    }
+    const blob = await res.blob();
+    const stamp = new Date().toISOString().slice(0, 10);
+    triggerBlobDownload(blob, `سجل_العمليات_والتعديلات_${stamp}.xlsx`);
   },
 };
 

@@ -17,6 +17,11 @@ import {
   issueOfficialLetter,
   listIssuedLetters,
 } from '../services/absenceStagesService';
+import {
+  generateIssuedLetterDocumentHtml,
+  generateStageReportDocumentHtml,
+  renderHtmlToPdfBuffer,
+} from '../services/pdfService';
 import { getDashboardStats } from '../services/dashboardService';
 import {
   commitExcelStudents,
@@ -65,11 +70,23 @@ import {
   listAcademicYears,
   setActiveAcademicYear,
   updateSchoolSettings,
+  updateUnifiedLetterTemplate,
 } from '../services/settingsService';
 import {
-  exportDatabaseBackupBuffer,
+  createManagedBackup,
+  createVerifiedBackupBuffer,
+  getBackupOverview,
+  getBackupRecordFile,
   restoreDatabaseBackupBuffer,
+  runAutoBackupIfDue,
+  updateBackupSettings,
 } from '../services/backupService';
+import {
+  generateAuditLogsExcel,
+  listAuditLogs,
+  recordAuditLog,
+} from '../services/auditLogService';
+import type { AuditOperationType, AuditSectionType } from '../../src/types/school';
 import {
   decodeBase64DataUrl,
   getMediaAssetBlob,
@@ -121,6 +138,8 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
     const updated = updateSchoolSettings(db, {
       school_name: String(req.body?.school_name ?? ''),
       directorate_name: String(req.body?.directorate_name ?? ''),
+      principal_name:
+        req.body?.principal_name !== undefined ? req.body.principal_name : undefined,
       lessons_per_absence_day:
         req.body?.lessons_per_absence_day !== undefined
           ? Number(req.body.lessons_per_absence_day)
@@ -137,6 +156,12 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
         req.body?.lesson_permission_counts_as_absence !== undefined
           ? req.body.lesson_permission_counts_as_absence
           : undefined,
+      number_display_mode:
+        req.body?.number_display_mode !== undefined ? req.body.number_display_mode : undefined,
+      unified_letter_template:
+        req.body?.unified_letter_template !== undefined
+          ? String(req.body.unified_letter_template)
+          : undefined,
       school_logo_data:
         req.body?.school_logo_data !== undefined ? req.body.school_logo_data : undefined,
       school_logo_asset_id:
@@ -144,6 +169,15 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
           ? parseOptionalInt(req.body.school_logo_asset_id) ?? null
           : undefined,
     });
+    res.json(updated);
+  });
+
+  router.put('/settings/unified-letter-template', (req, res) => {
+    const db = dbProvider();
+    const updated = updateUnifiedLetterTemplate(
+      db,
+      String(req.body?.unified_letter_template ?? '')
+    );
     res.json(updated);
   });
 
@@ -171,7 +205,9 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
   router.get('/dashboard', (req, res) => {
     const db = dbProvider();
     const yearId = parseOptionalInt(req.query.academic_year_id);
-    res.json(getDashboardStats(db, yearId));
+    const gradeId = parseOptionalInt(req.query.grade_id);
+    const stageId = parseOptionalInt(req.query.stage_id);
+    res.json(getDashboardStats(db, yearId, { gradeId, stageId }));
   });
 
   // Grades & Sections
@@ -743,6 +779,8 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
         stage_id: Number(req.body?.stage_id),
         document_number: String(req.body?.document_number ?? ''),
         letter_date: String(req.body?.letter_date ?? ''),
+        subject: typeof req.body?.subject === 'string' ? req.body.subject : undefined,
+        custom_body: typeof req.body?.custom_body === 'string' ? req.body.custom_body : undefined,
         grade_id: parseOptionalInt(req.body?.grade_id),
         section_id: parseOptionalInt(req.body?.section_id),
         search: typeof req.body?.search === 'string' ? req.body?.search : undefined,
@@ -758,6 +796,43 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
       const db = dbProvider();
       const academicYearId = Number(req.query.academic_year_id);
       res.json(listIssuedLetters(db, academicYearId));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/absence-stages/report/pdf', async (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const { html, filename } = await generateStageReportDocumentHtml(db, {
+        academic_year_id: parseOptionalInt(req.query.academic_year_id),
+        stage_id: parseOptionalInt(req.query.stage_id),
+        grade_id: parseOptionalInt(req.query.grade_id),
+        section_id: parseOptionalInt(req.query.section_id),
+        search: typeof req.query.search === 'string' ? req.query.search : undefined,
+      });
+      const pdfBuffer = await renderHtmlToPdfBuffer(html);
+      const encodedName = encodeURIComponent(filename);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
+      res.setHeader('Content-Length', String(pdfBuffer.length));
+      res.send(pdfBuffer);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/absence-stages/issued-letters/:id/pdf', async (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const letterId = parsePositiveInt(req.params.id, 'الكتاب الرسمي');
+      const { html, filename } = await generateIssuedLetterDocumentHtml(db, letterId);
+      const pdfBuffer = await renderHtmlToPdfBuffer(html);
+      const encodedName = encodeURIComponent(filename);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
+      res.setHeader('Content-Length', String(pdfBuffer.length));
+      res.send(pdfBuffer);
     } catch (err) {
       next(err);
     }
@@ -927,12 +1002,76 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
   });
 
   // SQLite Backup & Restore (Preserves all data + media originals and optimized versions)
-  router.get('/backup/export', (_req, res, next) => {
+  router.get('/backup/overview', (_req, res) => {
+    const db = dbProvider();
+    res.json(getBackupOverview(db));
+  });
+
+  router.put('/backup/settings', (req, res) => {
+    const db = dbProvider();
+    const updated = updateBackupSettings(db, {
+      auto_enabled: req.body?.auto_enabled,
+      frequency: req.body?.frequency === 'weekly' ? 'weekly' : 'daily',
+      retention_count: Number(req.body?.retention_count ?? 7),
+      backup_dir: req.body?.backup_dir !== undefined ? req.body.backup_dir : null,
+    });
+    res.json(updated);
+  });
+
+  router.post('/backup/create', async (_req, res, next) => {
     try {
       const db = dbProvider();
-      const buffer = exportDatabaseBackupBuffer(db);
-      const stamp = new Date().toISOString().slice(0, 10);
-      const encodedName = encodeURIComponent(`نسخة_احتياطية_نظام_الغيابات_${stamp}.db`);
+      const result = await createManagedBackup(db, 'manual');
+      res.status(201).json(result);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/backup/run-auto', async (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const result = await runAutoBackupIfDue(db, { force: Boolean(req.body?.force) });
+      res.json({
+        executed: Boolean(result),
+        result,
+        overview: getBackupOverview(db),
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/backup/records/:id/download', (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const id = parsePositiveInt(req.params.id, 'النسخة الاحتياطية');
+      const { filePath, filename } = getBackupRecordFile(db, id);
+      const encodedName = encodeURIComponent(filename);
+      res.setHeader('Content-Type', 'application/x-sqlite3');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
+      res.sendFile(filePath);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/backup/export', async (_req, res, next) => {
+    try {
+      const db = dbProvider();
+      const { buffer, integrity_status, filename } = await createVerifiedBackupBuffer(db);
+      recordAuditLog(db, {
+        operation_type: 'backup',
+        section: 'backup',
+        description: `تصدير نسخة احتياطية يدوية (${filename})`,
+        target_label: filename,
+        new_value: {
+          filename,
+          size_bytes: buffer.length,
+          integrity_status,
+        },
+      });
+      const encodedName = encodeURIComponent(filename);
       res.setHeader('Content-Type', 'application/x-sqlite3');
       res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
       res.setHeader('Content-Length', String(buffer.length));
@@ -959,12 +1098,68 @@ export function createApiRouter(dbProvider: () => SqliteDb = getDb) {
           restored: true,
           media_assets_count: result.media_assets_count,
           students_count: result.students_count,
+          pre_restore_backup_filename: result.pre_restore_backup_filename,
+          integrity_status: result.integrity_status,
         });
       } catch (err) {
         next(err);
       }
     }
   );
+
+  // Append-Only Audit Log (Read & Export ONLY — no update or delete endpoints)
+  router.get('/audit-logs', (req, res) => {
+    const db = dbProvider();
+    const result = listAuditLogs(db, {
+      operation_type:
+        typeof req.query.operation_type === 'string'
+          ? (req.query.operation_type as AuditOperationType | 'all')
+          : undefined,
+      section:
+        typeof req.query.section === 'string'
+          ? (req.query.section as AuditSectionType | 'all')
+          : undefined,
+      actor_name: typeof req.query.actor_name === 'string' ? req.query.actor_name : undefined,
+      date_from: typeof req.query.date_from === 'string' ? req.query.date_from : undefined,
+      date_to: typeof req.query.date_to === 'string' ? req.query.date_to : undefined,
+      search: typeof req.query.search === 'string' ? req.query.search : undefined,
+      limit: parseOptionalInt(req.query.limit),
+      offset:
+        req.query.offset !== undefined && req.query.offset !== ''
+          ? Math.max(0, Number(req.query.offset) || 0)
+          : undefined,
+    });
+    res.json(result);
+  });
+
+  router.get('/audit-logs/export', async (req, res, next) => {
+    try {
+      const db = dbProvider();
+      const { buffer, filename } = await generateAuditLogsExcel(db, {
+        operation_type:
+          typeof req.query.operation_type === 'string'
+            ? (req.query.operation_type as AuditOperationType | 'all')
+            : undefined,
+        section:
+          typeof req.query.section === 'string'
+            ? (req.query.section as AuditSectionType | 'all')
+            : undefined,
+        actor_name: typeof req.query.actor_name === 'string' ? req.query.actor_name : undefined,
+        date_from: typeof req.query.date_from === 'string' ? req.query.date_from : undefined,
+        date_to: typeof req.query.date_to === 'string' ? req.query.date_to : undefined,
+        search: typeof req.query.search === 'string' ? req.query.search : undefined,
+      });
+      const encodedName = encodeURIComponent(filename);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
+      res.send(buffer);
+    } catch (err) {
+      next(err);
+    }
+  });
 
   // Error handler
   router.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

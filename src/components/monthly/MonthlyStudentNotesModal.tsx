@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { useEffect } from 'react';
 import type { MonthlyNoteCategory, MonthlyStudentRow } from '../../types/school';
+import { useNumberDisplay } from '../../contexts/NumberDisplayContext';
+import { BidiText, LtrSpan } from '../common/BidirectionalText';
 
 interface MonthlyStudentNotesModalProps {
   open: boolean;
@@ -116,6 +118,8 @@ export function MonthlyStudentNotesModal({
   onEditManualNote,
   onClose,
 }: MonthlyStudentNotesModalProps) {
+  const { count, dateDMY, plain } = useNumberDisplay();
+
   useEffect(() => {
     if (!open) return;
     function handleKey(e: KeyboardEvent) {
@@ -150,8 +154,9 @@ export function MonthlyStudentNotesModal({
               تفاصيل ملاحظات وسجلات الطالب
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              {student.original_order}. {student.full_name} • {gradeName} / {sectionName} • شهر{' '}
-              {monthName} {year}
+              {plain(student.original_order)}. {student.full_name} •{' '}
+              <BidiText text={`${gradeName} / ${sectionName}`} /> • شهر {monthName}{' '}
+              <LtrSpan>{plain(year)}</LtrSpan>
             </p>
           </div>
           <button
@@ -173,40 +178,44 @@ export function MonthlyStudentNotesModal({
                 الملخص العددي من السجلات الفعلية
               </span>
               <span className="text-[11px] font-semibold text-red-700 dark:text-red-300 tabular-nums">
-                مجموع الغياب المحتسب: {student.total_counted_absence_days} يوم
+                مجموع الغياب المحتسب: <LtrSpan>{count(student.total_counted_absence_days)}</LtrSpan> يوم
               </span>
             </div>
 
             <p className="text-xs font-bold text-slate-900 dark:text-slate-100 tabular-nums">
-              {student.compact_notes_summary
-                ? student.compact_notes_summary
-                : 'لا توجد حالات غياب أو رخص أو هروب مسجلة لهذا الطالب في هذا الشهر.'}
+              {student.compact_notes_summary ? (
+                <BidiText text={student.compact_notes_summary} />
+              ) : (
+                'لا توجد حالات غياب أو رخص أو هروب مسجلة لهذا الطالب في هذا الشهر.'
+              )}
             </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px] tabular-nums">
               <div className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5">
                 <span className="text-slate-500 dark:text-slate-400">هروب من درس:</span>{' '}
                 <strong className="text-orange-700 dark:text-orange-300">
-                  {student.lesson_escape_lessons}
+                  {count(student.lesson_escape_lessons)}
                 </strong>
               </div>
               <div className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5">
                 <span className="text-slate-500 dark:text-slate-400">رخص الدروس:</span>{' '}
                 <strong className="text-indigo-700 dark:text-indigo-300">
-                  {student.counted_lesson_permission_lessons +
-                    student.uncounted_lesson_permission_lessons}
+                  {count(
+                    student.counted_lesson_permission_lessons +
+                      student.uncounted_lesson_permission_lessons
+                  )}
                 </strong>
               </div>
               <div className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5">
                 <span className="text-slate-500 dark:text-slate-400">غياب الدروس:</span>{' '}
                 <strong className="text-amber-700 dark:text-amber-300">
-                  {student.lesson_absence_lessons}
+                  {count(student.lesson_absence_lessons)}
                 </strong>
               </div>
               <div className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5">
                 <span className="text-slate-500 dark:text-slate-400">غياب مباشر:</span>{' '}
                 <strong className="text-red-700 dark:text-red-300">
-                  {student.direct_full_days}
+                  {count(student.direct_full_days)}
                 </strong>
               </div>
             </div>
@@ -258,7 +267,7 @@ export function MonthlyStudentNotesModal({
                 جميع الملاحظات والسجلات مرتبة حسب التاريخ
               </h4>
               <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
-                {sortedItems.length} سجل
+                {count(sortedItems.length)} سجل
               </span>
             </div>
 
@@ -284,7 +293,7 @@ export function MonthlyStudentNotesModal({
                             {meta.label}
                           </span>
                           <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 font-mono-tabular">
-                            {item.date}
+                            <LtrSpan>{dateDMY(item.date)}</LtrSpan>
                           </span>
                         </div>
 
@@ -302,7 +311,7 @@ export function MonthlyStudentNotesModal({
                       </div>
 
                       <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
-                        {item.text}
+                        <BidiText text={item.text} />
                       </p>
                     </div>
                   );

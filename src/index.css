@@ -98,4 +98,32 @@
     page-break-inside: avoid;
     break-inside: avoid;
   }
+
+  .official-letter-print-sheet {
+    display: flex;
+    flex-direction: column;
+    min-height: 263mm;
+  }
+
+  .official-letter-print-footer {
+    margin-top: auto;
+    padding-top: 22px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
 }
+
+.font-official-letter {
+  font-family: 'OfficialNaskhArabic', 'Noto Naskh Arabic', 'Amiri', 'Traditional Arabic', serif;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  font-kerning: normal;
+  font-variant-ligatures: normal;
+  letter-spacing: 0;
+  word-spacing: normal;
+}
+
+.ltr-isolate {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+

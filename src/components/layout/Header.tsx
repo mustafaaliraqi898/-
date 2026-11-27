@@ -1,4 +1,5 @@
 import { Menu, Moon, Sun } from 'lucide-react';
+import { useNumberDisplay } from '../../contexts/NumberDisplayContext';
 import type { AcademicYear, NavSectionId } from '../../types/school';
 
 interface HeaderProps {
@@ -20,21 +21,9 @@ const SECTION_TITLES: Record<NavSectionId, string> = {
   absences: 'تسجيل الغيابات',
   monthly: 'السجل الشهري',
   reports: 'التقارير',
+  audit: 'سجل العمليات والتعديلات',
   settings: 'الإعدادات',
 };
-
-function formatArabicTodayDate(): string {
-  try {
-    return new Intl.DateTimeFormat('ar-IQ', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    }).format(new Date());
-  } catch {
-    return new Date().toLocaleDateString('ar-EG');
-  }
-}
 
 export function Header({
   activeSection,
@@ -47,7 +36,8 @@ export function Header({
   mobileMenuOpen,
   onOpenMobileMenu,
 }: HeaderProps) {
-  const todayFormatted = formatArabicTodayDate();
+  const { todayLongDate, academicYear } = useNumberDisplay();
+  const todayFormatted = todayLongDate();
 
   return (
     <header className="sticky top-0 z-30 h-14 sm:h-16 shrink-0 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm px-3 sm:px-5 lg:px-6 flex items-center justify-between gap-2 sm:gap-4">
@@ -97,7 +87,7 @@ export function Header({
             >
               {academicYears.map((yr) => (
                 <option key={yr.id} value={yr.id}>
-                  {yr.name}
+                  {academicYear(yr.name)}
                   {yr.is_active ? ' (الفعالة)' : ''}
                 </option>
               ))}

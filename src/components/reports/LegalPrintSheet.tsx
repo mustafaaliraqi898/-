@@ -1,9 +1,19 @@
 import { useEffect } from 'react';
+import { useNumberDisplay } from '../../contexts/NumberDisplayContext';
 import type {
   AbsenceReportsResponse,
   AbsenceReportTypeId,
   AbsenceThresholdsSettings,
+  NumberDisplayMode,
 } from '../../types/school';
+import {
+  formatAcademicYearDisplay,
+  formatBidiHtmlText,
+  formatDateDMY,
+  formatIsolatedLtrHtml,
+  formatPlainNumber,
+} from '../../utils/numberFormat';
+import { BidiText, LtrSpan } from '../common/BidirectionalText';
 
 export const ABSENCE_REPORT_TITLES: Record<AbsenceReportTypeId, string> = {
   warning: 'تقرير الطلاب الذين بلغوا عتبة التحذير',
@@ -55,12 +65,16 @@ const DEFAULT_CREST_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 
 export function buildSimplifiedReportStandaloneHtml(
   data: AbsenceReportsResponse,
   filterSummary?: string,
-  resolvedLogoSrc?: string | null
+  resolvedLogoSrc?: string | null,
+  modeOverride?: NumberDisplayMode
 ): string {
   const school = data.school_settings;
+  const mode: NumberDisplayMode = modeOverride ?? school.number_display_mode ?? 'english';
   const documentTitle = ABSENCE_REPORT_TITLES[data.report_type];
   const thresholdRangeLabel = formatThresholdRangeLabel(data.report_type, data.thresholds);
   const todayIso = new Date().toISOString().slice(0, 10);
+  const formattedToday = formatDateDMY(todayIso, mode);
+  const formattedYear = formatAcademicYearDisplay(data.academic_year.name, mode);
   const effectiveLogo = resolvedLogoSrc !== undefined ? resolvedLogoSrc : school.school_logo_data;
 
   const logoHtml = effectiveLogo
@@ -73,12 +87,12 @@ export function buildSimplifiedReportStandaloneHtml(
       : data.rows
           .map(
             (r, idx) => `<tr>
-              <td class="c-center">${idx + 1}</td>
+              <td class="c-center">${escapeHtml(formatPlainNumber(idx + 1, mode))}</td>
               <td class="c-bold">${escapeHtml(r.full_name)}</td>
-              <td class="c-center">${escapeHtml(r.grade_name)}</td>
-              <td class="c-center">${escapeHtml(r.section_name)}</td>
-              <td class="c-center c-days">${r.counted_absence_days} يوم</td>
-              <td class="c-center c-alert">${escapeHtml(r.alert_label)}</td>
+              <td class="c-center">${formatBidiHtmlText(r.grade_name, mode)}</td>
+              <td class="c-center">${formatBidiHtmlText(r.section_name, mode)}</td>
+              <td class="c-center c-days">${escapeHtml(formatPlainNumber(r.counted_absence_days, mode))} يوم</td>
+              <td class="c-center c-alert">${formatBidiHtmlText(r.alert_label, mode)}</td>
             </tr>`
           )
           .join('');
@@ -194,28 +208,32 @@ export function buildSimplifiedReportStandaloneHtml(
       border-top: 1px solid #e2e8f0;
       padding-top: 6px;
     }
+    .ltr-isolate {
+      direction: ltr;
+      unicode-bidi: isolate;
+    }
   </style>
 </head>
 <body>
   <header class="doc-header">
     <div class="header-col">
       <div>جمهورية العراق — وزارة التربية</div>
-      <div>${escapeHtml(school.directorate_name)}</div>
-      <div>${escapeHtml(school.school_name)}</div>
+      <div>${formatBidiHtmlText(school.directorate_name, mode)}</div>
+      <div>${formatBidiHtmlText(school.school_name, mode)}</div>
     </div>
     <div class="header-center">
       <h1>${escapeHtml(documentTitle)}</h1>
-      <div class="subtitle">إعلان رسمي للوحة إعلانات المدرسة — العام الدراسي ${escapeHtml(data.academic_year.name)}</div>
+      <div class="subtitle">إعلان رسمي للوحة إعلانات المدرسة — العام الدراسي ${formatIsolatedLtrHtml(formattedYear)}</div>
     </div>
     <div>${logoHtml}</div>
   </header>
 
   <div class="meta-bar">
-    <div><strong>النطاق المعتمد:</strong> ${escapeHtml(thresholdRangeLabel)}</div>
-    <div><strong>حد الغياب المؤثر:</strong> ${data.thresholds.effective_absence_limit} يوم</div>
-    <div><strong>عدد الطلاب المشمولين:</strong> ${data.rows.length} طالب</div>
-    <div><strong>تاريخ الإصدار:</strong> ${escapeHtml(todayIso)}</div>
-    ${filterSummary ? `<div><strong>النطاق:</strong> ${escapeHtml(filterSummary)}</div>` : ''}
+    <div><strong>النطاق المعتمد:</strong> ${formatBidiHtmlText(thresholdRangeLabel, mode)}</div>
+    <div><strong>حد الغياب المؤثر:</strong> ${escapeHtml(formatPlainNumber(data.thresholds.effective_absence_limit, mode))} يوم</div>
+    <div><strong>عدد الطلاب المشمولين:</strong> ${escapeHtml(formatPlainNumber(data.rows.length, mode))} طالب</div>
+    <div><strong>تاريخ الإصدار:</strong> ${formatIsolatedLtrHtml(formattedToday)}</div>
+    ${filterSummary ? `<div><strong>النطاق:</strong> ${formatBidiHtmlText(filterSummary, mode)}</div>` : ''}
   </div>
 
   <table class="data-table">
@@ -248,8 +266,8 @@ export function buildSimplifiedReportStandaloneHtml(
   </div>
 
   <footer class="doc-footer">
-    <span>تاريخ الطباعة: ${escapeHtml(todayIso)}</span>
-    <span>${escapeHtml(school.school_name)} — تقارير الغياب والإنذارات</span>
+    <span>تاريخ الطباعة: ${formatIsolatedLtrHtml(formattedToday)}</span>
+    <span>${formatBidiHtmlText(school.school_name, mode)} — تقارير الغياب والإنذارات</span>
   </footer>
 </body>
 </html>`;
@@ -262,6 +280,8 @@ interface LegalPrintSheetProps {
 }
 
 export function LegalPrintSheet({ data, filterSummary, mode }: LegalPrintSheetProps) {
+  const { plain, dateDMY, academicYear } = useNumberDisplay();
+
   useEffect(() => {
     if (mode !== 'print') return;
     const styleEl = document.createElement('style');
@@ -292,8 +312,8 @@ export function LegalPrintSheet({ data, filterSummary, mode }: LegalPrintSheetPr
       <header className="flex items-center justify-between border-b-2 border-teal-700 pb-3 mb-4">
         <div className="space-y-0.5 font-bold text-slate-800 text-[11px]">
           <p>جمهورية العراق — وزارة التربية</p>
-          <p>{school.directorate_name}</p>
-          <p>{school.school_name}</p>
+          <p><BidiText text={school.directorate_name} /></p>
+          <p><BidiText text={school.school_name} /></p>
         </div>
 
         <div className="text-center px-3">
@@ -301,7 +321,8 @@ export function LegalPrintSheet({ data, filterSummary, mode }: LegalPrintSheetPr
             {documentTitle}
           </h2>
           <p className="text-xs font-bold text-teal-800 mt-0.5 tabular-nums">
-            إعلان رسمي للوحة إعلانات المدرسة — العام الدراسي {data.academic_year.name}
+            إعلان رسمي للوحة إعلانات المدرسة — العام الدراسي{' '}
+            <LtrSpan>{academicYear(data.academic_year.name)}</LtrSpan>
           </p>
         </div>
 
@@ -324,20 +345,20 @@ export function LegalPrintSheet({ data, filterSummary, mode }: LegalPrintSheetPr
       {/* Report Metadata Bar */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-50 border border-slate-300 rounded mb-4 text-[11.5px] tabular-nums">
         <span>
-          <strong>النطاق المعتمد:</strong> {thresholdRangeLabel}
+          <strong>النطاق المعتمد:</strong> <BidiText text={thresholdRangeLabel} />
         </span>
         <span>
-          <strong>حد الغياب المؤثر:</strong> {data.thresholds.effective_absence_limit} يوم
+          <strong>حد الغياب المؤثر:</strong> {plain(data.thresholds.effective_absence_limit)} يوم
         </span>
         <span>
-          <strong>عدد الطلاب:</strong> {data.rows.length} طالب
+          <strong>عدد الطلاب:</strong> {plain(data.rows.length)} طالب
         </span>
         <span>
-          <strong>تاريخ الإصدار:</strong> {todayIso}
+          <strong>تاريخ الإصدار:</strong> <LtrSpan>{dateDMY(todayIso)}</LtrSpan>
         </span>
         {filterSummary && (
           <span>
-            <strong>النطاق:</strong> {filterSummary}
+            <strong>النطاق:</strong> <BidiText text={filterSummary} />
           </span>
         )}
       </div>
@@ -371,19 +392,21 @@ export function LegalPrintSheet({ data, filterSummary, mode }: LegalPrintSheetPr
           ) : (
             data.rows.map((r, idx) => (
               <tr key={r.student_id}>
-                <td className="border border-slate-700 px-2 py-2 text-center">{idx + 1}</td>
+                <td className="border border-slate-700 px-2 py-2 text-center">{plain(idx + 1)}</td>
                 <td className="border border-slate-700 px-3 py-2 font-bold text-slate-900">
                   {r.full_name}
                 </td>
-                <td className="border border-slate-700 px-2.5 py-2 text-center">{r.grade_name}</td>
                 <td className="border border-slate-700 px-2.5 py-2 text-center">
-                  {r.section_name}
+                  <BidiText text={r.grade_name} />
+                </td>
+                <td className="border border-slate-700 px-2.5 py-2 text-center">
+                  <BidiText text={r.section_name} />
                 </td>
                 <td className="border border-slate-700 px-2.5 py-2 text-center font-extrabold text-slate-900">
-                  {r.counted_absence_days} يوم
+                  {plain(r.counted_absence_days)} يوم
                 </td>
                 <td className="border border-slate-700 px-3 py-2 text-center font-bold text-red-900">
-                  {r.alert_label}
+                  <BidiText text={r.alert_label} />
                 </td>
               </tr>
             ))
@@ -408,8 +431,12 @@ export function LegalPrintSheet({ data, filterSummary, mode }: LegalPrintSheetPr
       </div>
 
       <footer className="mt-5 pt-2 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-500 tabular-nums">
-        <span>تاريخ الطباعة: {todayIso}</span>
-        <span>{school.school_name} — تقارير الغياب والإنذارات</span>
+        <span>
+          تاريخ الطباعة: <LtrSpan>{dateDMY(todayIso)}</LtrSpan>
+        </span>
+        <span>
+          <BidiText text={school.school_name} /> — تقارير الغياب والإنذارات
+        </span>
       </footer>
     </div>
   );

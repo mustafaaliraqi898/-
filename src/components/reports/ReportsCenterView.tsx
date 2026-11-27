@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   FileText,
   Printer,
@@ -11,16 +12,27 @@ import {
   Layers,
   Send,
   History,
+  Download,
+  Loader2,
 } from 'lucide-react';
+import { useNumberDisplay } from '../../contexts/NumberDisplayContext';
 import { schoolService } from '../../services/schoolService';
+import {
+  UNIFIED_OFFICIAL_LETTER_TEMPLATE,
+  resolveOfficialLetterTemplate,
+  splitLetterBodyParagraphs,
+} from '../../utils/officialDocumentHtml';
+import { BidiText, LtrSpan } from '../common/BidirectionalText';
 import type {
   AcademicYear,
   DynamicStageReportResponse,
   GradeWithSections,
   IssuedOfficialLetter,
+  SchoolSettings,
 } from '../../types/school';
 
 interface ReportsCenterViewProps {
+  settings?: SchoolSettings | null;
   activeAcademicYear?: AcademicYear | null;
   academicYears?: AcademicYear[];
   selectedYearId?: number | null;
@@ -33,11 +45,15 @@ interface ReportsCenterViewProps {
 }
 
 export function ReportsCenterView({
+  settings,
   activeAcademicYear,
   academicYears = [],
   selectedYearId,
   grades,
+  onOpenLegalSettings,
+  onNotify,
 }: ReportsCenterViewProps) {
+  const { plain, dateDMY, academicYear, convert } = useNumberDisplay();
   const yearId = selectedYearId ?? activeAcademicYear?.id ?? academicYears[0]?.id;
 
   const [reportData, setReportData] = useState<DynamicStageReportResponse | null>(null);
@@ -49,10 +65,12 @@ export function ReportsCenterView({
   const [selectedSectionId, setSelectedSectionId] = useState<number | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Issue Letter Modal
+  // Issue Letter Modal & Draft State
   const [issueModalOpen, setIssueModalOpen] = useState(false);
   const [docNumber, setDocNumber] = useState('');
   const [letterDate, setLetterDate] = useState(new Date().toISOString().slice(0, 10));
+  const [subjectDraft, setSubjectDraft] = useState('');
+  const [bodyDraft, setBodyDraft] = useState('');
   const [issuing, setIssuing] = useState(false);
   const [issuedSuccess, setIssuedSuccess] = useState<string | null>(null);
 
@@ -60,11 +78,58 @@ export function ReportsCenterView({
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [issuedLetters, setIssuedLetters] = useState<IssuedOfficialLetter[]>([]);
 
-  // Print Preview
+  // Print Preview for Issued Letter
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
   const [selectedLetter, setSelectedLetter] = useState<IssuedOfficialLetter | null>(null);
 
+  // Print Portal & PDF Export states
+  const [printTarget, setPrintTarget] = useState<'report' | 'letter' | null>(null);
+  const [exportingReportPdf, setExportingReportPdf] = useState(false);
+  const [exportingLetterPdf, setExportingLetterPdf] = useState(false);
+
   const requestSeqRef = useRef(0);
+
+  const effectiveSettings = useMemo(() => {
+    return {
+      ...(reportData?.school_settings ?? {}),
+      ...(settings ?? {}),
+    } as Partial<SchoolSettings>;
+  }, [reportData?.school_settings, settings]);
+
+  const effectiveLogoUrl = effectiveSettings.school_logo_data || null;
+  const effectivePrincipalName = (effectiveSettings.principal_name ?? '').trim();
+  const effectiveDirectorateName =
+    effectiveSettings.directorate_name || 'المديرية العامة للتربية';
+  const effectiveSchoolName = effectiveSettings.school_name || 'المدرسة النموذجية';
+  const effectiveAcademicYearName =
+    (selectedLetter
+      ? academicYears.find((y) => y.id === selectedLetter.academic_year_id)?.name
+      : undefined) ??
+    reportData?.academic_year.name ??
+    activeAcademicYear?.name ??
+    'العام الدراسي';
+
+  useEffect(() => {
+    if (!printTarget) return;
+    const styleEl = document.createElement('style');
+    styleEl.setAttribute('data-reports-print-page', 'true');
+    styleEl.textContent =
+      printTarget === 'letter'
+        ? `@page { size: A4 portrait; margin: 14mm 16mm; }`
+        : `@page { size: A4 portrait; margin: 13mm 14mm; }`;
+    document.head.appendChild(styleEl);
+
+    const handleAfterPrint = () => {
+      setPrintTarget(null);
+    };
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => {
+      window.removeEventListener('afterprint', handleAfterPrint);
+      if (styleEl.parentNode) {
+        styleEl.parentNode.removeChild(styleEl);
+      }
+    };
+  }, [printTarget]);
 
   const fetchReport = async (stageIdOverride?: number) => {
     if (!yearId) return;
@@ -81,7 +146,6 @@ export function ReportsCenterView({
         search: searchQuery.trim() || undefined,
       });
 
-      // Ignore outdated responses (race condition prevention)
       if (reqSeq !== requestSeqRef.current) return;
 
       setReportData(res);
@@ -107,6 +171,78 @@ export function ReportsCenterView({
     fetchReport();
   };
 
+  const handleOpenIssueModal = () => {
+    if (!reportData || !reportData.current_stage) return;
+    const stage = reportData.current_stage;
+    setError(null);
+    setSubjectDraft(`الإعلان عن أسماء الطلبة المشمولين بمرحلة ${stage.name}`);
+    const savedUnifiedTemplate =
+      effectiveSettings.unified_letter_template ??
+      reportData.school_settings?.unified_letter_template ??
+      UNIFIED_OFFICIAL_LETTER_TEMPLATE;
+    const rendered = resolveOfficialLetterTemplate(savedUnifiedTemplate, {
+      absence_days: stage.days_threshold,
+      stage_name: stage.name,
+      academic_year: reportData.academic_year.name,
+      school_name: effectiveSchoolName,
+      date: letterDate,
+      document_number: docNumber || '...',
+      student_count: reportData.rows.length,
+    });
+    setBodyDraft(rendered);
+    setIssueModalOpen(true);
+  };
+
+  const triggerPrintMode = (target: 'report' | 'letter') => {
+    setPrintTarget(target);
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        window.print();
+      }, 50);
+    });
+  };
+
+  const handleExportReportPdf = async () => {
+    if (!yearId || !reportData?.current_stage) return;
+    try {
+      setExportingReportPdf(true);
+      setError(null);
+      await schoolService.exportStageReportPdf({
+        academic_year_id: yearId,
+        stage_id: reportData.current_stage.id,
+        grade_id: selectedGradeId,
+        section_id: selectedSectionId,
+        search: searchQuery.trim() || undefined,
+      });
+      onNotify?.('success', 'تم إنشاء وتنزيل ملف PDF للتقرير بنجاح.');
+    } catch (err: any) {
+      const msg = err?.message || 'تعذر تصدير التقرير بصيغة PDF.';
+      setError(msg);
+      onNotify?.('error', msg);
+    } finally {
+      setExportingReportPdf(false);
+    }
+  };
+
+  const handleExportLetterPdf = async () => {
+    if (!selectedLetter) return;
+    try {
+      setExportingLetterPdf(true);
+      setError(null);
+      await schoolService.exportIssuedLetterPdf(
+        selectedLetter.id,
+        selectedLetter.document_number
+      );
+      onNotify?.('success', 'تم إنشاء وتنزيل ملف PDF للكتاب الرسمي بنجاح.');
+    } catch (err: any) {
+      const msg = err?.message || 'تعذر تصدير الكتاب الرسمي بصيغة PDF.';
+      setError(msg);
+      onNotify?.('error', msg);
+    } finally {
+      setExportingLetterPdf(false);
+    }
+  };
+
   const handleIssueLetterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!yearId || !reportData || !reportData.current_stage) {
@@ -117,6 +253,10 @@ export function ReportsCenterView({
       setError('يرجى إدخال رقم الكتاب وتاريخ الإصدار.');
       return;
     }
+    if (!bodyDraft.trim()) {
+      setError('نص الكتاب لا يمكن أن يكون فارغاً.');
+      return;
+    }
     try {
       setIssuing(true);
       setError(null);
@@ -125,14 +265,20 @@ export function ReportsCenterView({
         stage_id: reportData.current_stage.id,
         document_number: docNumber.trim(),
         letter_date: letterDate,
+        subject: subjectDraft.trim(),
+        custom_body: bodyDraft,
         grade_id: selectedGradeId,
         section_id: selectedSectionId,
         search: searchQuery.trim() || undefined,
       });
       setIssuing(false);
       setIssueModalOpen(false);
-      setIssuedSuccess(`تم إصدار وتثبيت الكتاب الرسمي برقم (${letter.document_number}) بنجاح.`);
+      setIssuedSuccess(
+        `تم إصدار وتثبيت الكتاب الرسمي برقم (${convert(letter.document_number)}) بنجاح.`
+      );
       setDocNumber('');
+      setSelectedLetter(letter);
+      setPrintPreviewOpen(true);
       setTimeout(() => setIssuedSuccess(null), 5000);
     } catch (err: any) {
       setIssuing(false);
@@ -154,6 +300,27 @@ export function ReportsCenterView({
   const currentGradeObj = grades.find((g) => g.id === selectedGradeId);
   const currentSections = currentGradeObj ? currentGradeObj.sections : [];
 
+  const activeFilterSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (selectedGradeId && currentGradeObj) parts.push(`الصف: ${currentGradeObj.name}`);
+    if (selectedSectionId) {
+      const sec = currentSections.find((s) => s.id === selectedSectionId);
+      if (sec) parts.push(`الشعبة: ${sec.name}`);
+    }
+    if (searchQuery.trim()) parts.push(`بحث: ${searchQuery.trim()}`);
+    return parts.join(' · ');
+  }, [selectedGradeId, currentGradeObj, selectedSectionId, currentSections, searchQuery]);
+
+  const letterStudents = useMemo(() => {
+    if (!selectedLetter) return [];
+    try {
+      const parsed = JSON.parse(selectedLetter.students_json || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }, [selectedLetter]);
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Header Banner */}
@@ -168,7 +335,7 @@ export function ReportsCenterView({
                 مركز تقارير الغياب ومتابعة المراحل والكتب الرسمية
               </h2>
               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-                تصنيف غير تراكمي مستقل للطلاب بناءً على عتبات الغياب المعتمدة، مع إمكانية إصدار الكتب الرسمية وتوثيقها بشكل دائم.
+                إصدار الكتب الإدارية الرسمية الموحدة للإعلان عن أسماء الطلبة على لوحة الإعلانات المدرسية بناءً على مراحل الغياب المعرفة.
               </p>
             </div>
           </div>
@@ -194,9 +361,20 @@ export function ReportsCenterView({
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-4 flex items-center gap-3 text-xs sm:text-sm text-red-900 dark:text-red-200">
-          <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
-          <span>{error}</span>
+        <div className="rounded-xl border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-4 flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm text-red-900 dark:text-red-200">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
+            <span>{error}</span>
+          </div>
+          {error.includes('قالب') && onOpenLegalSettings && (
+            <button
+              type="button"
+              onClick={onOpenLegalSettings}
+              className="px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-800 text-white text-xs font-bold"
+            >
+              الذهاب لإعدادات القوالب
+            </button>
+          )}
         </div>
       )}
 
@@ -225,9 +403,9 @@ export function ReportsCenterView({
                 }`}
               >
                 <Layers className="w-4 h-4 opacity-80" />
-                <span>{stage.name}</span>
+                <span><BidiText text={stage.name} /></span>
                 <span className={`px-2 py-0.5 rounded-full text-[11px] tabular-nums font-extrabold ${isSelected ? 'bg-white/20 text-white' : 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300'}`}>
-                  {count} طالب
+                  {plain(count)} طالب
                 </span>
               </button>
             );
@@ -291,7 +469,7 @@ export function ReportsCenterView({
             {reportData && reportData.current_stage && reportData.rows.length > 0 && (
               <button
                 type="button"
-                onClick={() => setIssueModalOpen(true)}
+                onClick={handleOpenIssueModal}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs sm:text-sm font-bold shadow-sm transition-colors"
               >
                 <Send className="w-4 h-4" />
@@ -307,18 +485,45 @@ export function ReportsCenterView({
         {loading && (
           <div className="absolute top-0 inset-x-0 h-1 bg-teal-600 animate-pulse z-10" />
         )}
-        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 bg-slate-50/50 dark:bg-slate-900">
+        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-900">
           <div>
             <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
-              {reportData?.current_stage ? reportData.current_stage.name : 'تقرير الغياب'}
+              {reportData?.current_stage ? <BidiText text={reportData.current_stage.name} /> : 'تقرير الغياب'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              عتبة الغياب: {reportData?.current_stage?.days_threshold || 0} يوم فأكثر · إجمالي الطلاب المعنيين: {reportData?.rows.length || 0}
+              عتبة الغياب: {plain(reportData?.current_stage?.days_threshold || 0)} يوم فأكثر · إجمالي الطلاب المعنيين: {plain(reportData?.rows.length || 0)}
             </p>
           </div>
-          <span className="text-xs font-bold text-teal-800 dark:text-teal-300 bg-teal-100 dark:bg-teal-950/60 px-3 py-1 rounded-lg">
-            السنة الدراسية: {reportData?.academic_year.name}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-teal-800 dark:text-teal-300 bg-teal-100 dark:bg-teal-950/60 px-3 py-1.5 rounded-lg">
+              السنة الدراسية: <LtrSpan>{academicYear(reportData?.academic_year.name)}</LtrSpan>
+            </span>
+            {reportData && reportData.current_stage && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => triggerPrintMode('report')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-sm transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5 text-teal-700 dark:text-teal-400" />
+                  <span>طباعة</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportReportPdf}
+                  disabled={exportingReportPdf}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold shadow-sm transition-colors disabled:opacity-60"
+                >
+                  {exportingReportPdf ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                  <span>{exportingReportPdf ? 'جاري إنشاء PDF...' : 'تصدير PDF'}</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {!reportData && loading ? (
@@ -345,27 +550,33 @@ export function ReportsCenterView({
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {reportData.rows.map((row, idx) => (
                   <tr key={row.student_id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/30 align-middle">
-                    <td className="py-3 px-3 text-center text-slate-500">{idx + 1}</td>
+                    <td className="py-3 px-3 text-center text-slate-500">{plain(idx + 1)}</td>
                     <td className="py-3 px-3">
                       <p className="font-bold text-slate-900 dark:text-slate-100">{row.full_name}</p>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        {row.registry_number ? `قيد: ${row.registry_number}` : row.student_uid}
+                        {row.registry_number ? (
+                          <>
+                            قيد: <BidiText text={row.registry_number} />
+                          </>
+                        ) : (
+                          <LtrSpan>{row.student_uid}</LtrSpan>
+                        )}
                       </p>
                     </td>
                     <td className="py-3 px-3 font-semibold text-slate-800 dark:text-slate-200">
-                      {row.grade_name} - {row.section_name}
+                      <BidiText text={`${row.grade_name} - ${row.section_name}`} />
                     </td>
                     <td className="py-3 px-3 text-center">
                       <span className="text-sm font-extrabold text-red-700 dark:text-red-400">
-                        {row.counted_absence_days} يوم
+                        {plain(row.counted_absence_days)} يوم
                       </span>
                       <p className="text-[10px] text-slate-500 mt-0.5">
-                        مباشر: {row.direct_full_days} · دروس: {row.converted_lesson_days}
+                        مباشر: {plain(row.direct_full_days)} · دروس: {plain(row.converted_lesson_days)}
                       </p>
                     </td>
                     <td className="py-3 px-3 text-center">
                       <span className="px-2.5 py-1 rounded-full bg-red-100 dark:bg-red-950/60 text-red-800 dark:text-red-300 text-xs font-bold">
-                        {row.stage_name || reportData.current_stage?.name}
+                        <BidiText text={row.stage_name || reportData.current_stage?.name} />
                       </span>
                     </td>
                   </tr>
@@ -376,22 +587,22 @@ export function ReportsCenterView({
         )}
       </section>
 
-      {/* Issue Official Letter Modal */}
+      {/* Issue Official Letter Modal & Draft Editor */}
       {issueModalOpen && reportData && reportData.current_stage && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-[1px] flex items-center justify-center p-3 sm:p-5" role="dialog" aria-modal="true">
-          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
+          <div className="w-full max-w-3xl max-h-[92vh] rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                إصدار كتاب رسمي لـ ({reportData.current_stage.name})
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
+                إصدار كتاب إداري رسمي موحد لـ ({reportData.current_stage.name})
               </h3>
               <button type="button" onClick={() => setIssueModalOpen(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleIssueLetterSubmit} className="p-5 space-y-4">
+            <form onSubmit={handleIssueLetterSubmit} className="flex-1 overflow-y-auto p-5 space-y-4 text-xs sm:text-sm">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
                     رقم الكتاب الرسمي <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -404,7 +615,7 @@ export function ReportsCenterView({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
                     تاريخ الكتاب <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -418,12 +629,39 @@ export function ReportsCenterView({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  معاينة قالب الكتاب والطلاب المشمولين ({reportData.rows.length} طالب)
+                <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  موضوع الكتاب (م/) <span className="text-red-500">*</span>
                 </label>
-                <div className="p-3 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-mono max-h-44 overflow-y-auto whitespace-pre-wrap leading-relaxed text-slate-700 dark:text-slate-300">
-                  {reportData.current_stage.letter_template}
+                <input
+                  type="text"
+                  required
+                  value={subjectDraft}
+                  onChange={(e) => setSubjectDraft(e.target.value)}
+                  placeholder="م/ الإعلان عن أسماء الطلبة..."
+                  className="w-full px-3 py-2 text-sm font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-bold text-slate-800 dark:text-slate-200">
+                    نص الكتاب الرسمي (مستمد من النص الموحد المعتمد لجميع المراحل) <span className="text-red-500">*</span>
+                  </label>
+                  <span className="text-[11px] text-slate-500">
+                    عدد الطلاب المشمولين: {plain(reportData.rows.length)} طالب
+                  </span>
                 </div>
+                <textarea
+                  rows={6}
+                  required
+                  value={bodyDraft}
+                  onChange={(e) => setBodyDraft(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm font-sans rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30 leading-relaxed"
+                />
+              </div>
+
+              <div className="p-3 bg-slate-50 dark:bg-slate-950/50 rounded-xl border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300">
+                <span className="font-bold text-teal-700 dark:text-teal-400">معاينة الجدول:</span> سيتم إدراج جدول أسماء الطلبة تلقائياً في الأسفل (ت، اسم الطالب، الصف والشعبة، عدد أيام الغياب).
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
@@ -437,10 +675,10 @@ export function ReportsCenterView({
                 <button
                   type="submit"
                   disabled={issuing}
-                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-sm disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-sm disabled:opacity-50"
                 >
                   <Send className="w-4 h-4" />
-                  <span>{issuing ? 'جاري الإصدار...' : 'تثبيت وإصدار الكتاب الرسمي'}</span>
+                  <span>{issuing ? 'جاري الإصدار والثبيت...' : 'اعتماد وإصدار الكتاب الرسمي'}</span>
                 </button>
               </div>
             </form>
@@ -454,7 +692,7 @@ export function ReportsCenterView({
           <div className="w-full max-w-4xl max-h-[90vh] rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                سجل الكتب الرسمية الصادرة ({issuedLetters.length})
+                سجل الكتب الرسمية الصادرة ({plain(issuedLetters.length)})
               </h3>
               <button type="button" onClick={() => setHistoryModalOpen(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
                 <X className="w-5 h-5" />
@@ -478,15 +716,17 @@ export function ReportsCenterView({
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-slate-900 dark:text-slate-100 text-sm">
-                              {letter.stage_name}
+                              <BidiText text={letter.stage_name} />
                             </span>
                             <span className="px-2 py-0.5 rounded bg-teal-100 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 text-xs font-bold">
-                              رقم الكتاب: {letter.document_number}
+                              رقم الكتاب: <BidiText text={letter.document_number} />
                             </span>
-                            <span className="text-xs text-slate-500">التاريخ: {letter.letter_date}</span>
+                            <span className="text-xs text-slate-500">
+                              التاريخ: <LtrSpan>{dateDMY(letter.letter_date)}</LtrSpan>
+                            </span>
                           </div>
                           <p className="text-xs text-slate-600 dark:text-slate-400">
-                            عدد الطلاب المشمولين: {studentsCount} طالب · عتبة الغياب: {letter.days_threshold} يوم
+                            الموضوع: <BidiText text={letter.subject} /> · عدد الطلاب: {plain(studentsCount)} طالب · عتبة الغياب: {plain(letter.days_threshold)} يوم
                           </p>
                         </div>
                         <button
@@ -515,18 +755,31 @@ export function ReportsCenterView({
       {printPreviewOpen && selectedLetter && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-[1px] flex items-center justify-center p-3 sm:p-5 no-print" role="dialog" aria-modal="true">
           <div className="w-full max-w-4xl max-h-[92vh] rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between no-print">
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                معاينة طباعة الكتاب الرسمي رقم ({selectedLetter.document_number})
+                معاينة طباعة الكتاب الرسمي رقم (<BidiText text={selectedLetter.document_number} />)
               </h3>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() => triggerPrintMode('letter')}
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>طباعة</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportLetterPdf}
+                  disabled={exportingLetterPdf}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-semibold disabled:opacity-60"
+                >
+                  {exportingLetterPdf ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                  <span>{exportingLetterPdf ? 'جاري التصدير...' : 'تصدير PDF'}</span>
                 </button>
                 <button
                   type="button"
@@ -537,73 +790,329 @@ export function ReportsCenterView({
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-white text-slate-900 font-sans print:p-0">
-              {/* 3-column official header */}
-              <div className="grid grid-cols-3 gap-4 text-center text-xs font-bold border-b border-slate-300 pb-4">
-                <div>
-                  <p>جمهورية العراق</p>
-                  <p>وزارة التربية</p>
-                  <p>{reportData?.school_settings.directorate_name || 'المديرية العامة للتربية'}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-black mt-2">كتاب رسمي / {selectedLetter.stage_name}</p>
-                  <p className="text-[11px] text-slate-600 mt-1">العام الدراسي: {reportData?.academic_year.name}</p>
-                </div>
-                <div className="text-left">
-                  <p>الرقم: {selectedLetter.document_number}</p>
-                  <p>التاريخ: {selectedLetter.letter_date}</p>
-                </div>
-              </div>
 
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs sm:text-sm font-mono whitespace-pre-wrap leading-relaxed">
-                {selectedLetter.rendered_content}
-              </div>
-
-              <div>
-                <h4 className="text-xs font-bold text-slate-800 mb-2">قائمة الطلاب المشمولين بالكتاب الرسمي:</h4>
-                <table className="w-full text-xs text-right border-collapse border border-slate-300">
-                  <thead>
-                    <tr className="bg-slate-100 text-slate-700">
-                      <th className="border border-slate-300 p-2 text-center w-10">ت</th>
-                      <th className="border border-slate-300 p-2">اسم الطالب</th>
-                      <th className="border border-slate-300 p-2">الصف والشعبة</th>
-                      <th className="border border-slate-300 p-2 text-center">أيام الغياب</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      try {
-                        const students = JSON.parse(selectedLetter.students_json || '[]');
-                        return students.map((st: any, i: number) => (
-                          <tr key={i}>
-                            <td className="border border-slate-300 p-2 text-center">{i + 1}</td>
-                            <td className="border border-slate-300 p-2 font-bold">{st.full_name}</td>
-                            <td className="border border-slate-300 p-2">{st.grade_name} - {st.section_name}</td>
-                            <td className="border border-slate-300 p-2 text-center font-bold">{st.counted_absence_days} يوم</td>
-                          </tr>
-                        ));
-                      } catch {
-                        return null;
-                      }
-                    })()}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="flex justify-between items-end pt-12 text-xs font-bold">
-                <div className="text-center">
-                  <p>مسؤول الإحصاء والغيابات</p>
-                  <p className="mt-8">التوقيع: ....................</p>
+            {/* Official A4 Preview Container */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100 dark:bg-slate-950">
+              <div
+                dir="rtl"
+                className="font-official-letter max-w-[210mm] min-h-[263mm] mx-auto bg-white text-slate-900 px-8 py-7 sm:px-10 sm:py-9 shadow-sm border border-slate-200 flex flex-col"
+              >
+                {/* 3-column official header */}
+                <div className="grid grid-cols-3 gap-4 items-center text-center text-[13px] font-bold border-b-[1.5px] border-slate-400 pb-3 mb-3.5">
+                  <div className="text-right leading-[1.7] text-slate-800">
+                    <p>جمهورية العراق</p>
+                    <p>وزارة التربية</p>
+                    <p><BidiText text={effectiveDirectorateName} /></p>
+                    <p className="mt-1 font-bold text-slate-900 text-[13.5px]">إدارة / <BidiText text={effectiveSchoolName} /></p>
+                  </div>
+                  <div className="flex flex-col items-center justify-center">
+                    {effectiveLogoUrl && (
+                      <img
+                        src={effectiveLogoUrl}
+                        alt="شعار المدرسة"
+                        className="max-h-16 max-w-[115px] w-auto h-auto object-contain mb-1.5"
+                      />
+                    )}
+                    <p className="text-[13px] font-bold text-slate-900">
+                      <LtrSpan>{academicYear(effectiveAcademicYearName)}</LtrSpan>
+                    </p>
+                  </div>
+                  <div className="text-left leading-[1.75] text-slate-800 tabular-nums">
+                    <p>الرقم: <BidiText text={selectedLetter.document_number} /></p>
+                    <p>التاريخ: <LtrSpan>{dateDMY(selectedLetter.letter_date)}</LtrSpan></p>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p>مدير المدرسة</p>
-                  <p className="mt-8">التوقيع والختم: ....................</p>
+
+                {/* Centered Bold Subject (م/) */}
+                <div className="text-center my-3">
+                  <div className="inline-block px-5 pb-1 border-b-[1.5px] border-slate-600 font-bold text-[17px] leading-[1.75] text-slate-900">
+                    <span>م/ </span>
+                    <span><BidiText text={selectedLetter.subject} /></span>
+                  </div>
+                </div>
+
+                {/* Letter Body Text */}
+                <div dir="rtl" className="text-right text-[15.5px] leading-[1.95] text-slate-900 py-1 mb-3 break-words">
+                  {splitLetterBodyParagraphs(
+                    resolveOfficialLetterTemplate(selectedLetter.rendered_content, {
+                      absence_days: selectedLetter.days_threshold,
+                      stage_name: selectedLetter.stage_name,
+                      academic_year: effectiveAcademicYearName,
+                      school_name: effectiveSchoolName,
+                      date: dateDMY(selectedLetter.letter_date),
+                      document_number: selectedLetter.document_number,
+                    })
+                  ).map((line, idx) =>
+                    line.trim().length === 0 ? (
+                      <div key={idx} className="h-2" />
+                    ) : (
+                      <p key={idx} className="mb-2 last:mb-0 text-right">
+                        <BidiText text={line} />
+                      </p>
+                    )
+                  )}
+                </div>
+
+                {/* Students Table */}
+                <div className="pt-1">
+                  <h4 className="text-[15px] font-bold text-slate-900 mb-2">
+                    أسماء الطلبة
+                  </h4>
+                  <table className="w-full text-[13.5px] leading-[1.65] text-right border-collapse border border-slate-500 table-fixed tabular-nums">
+                    <thead className="bg-slate-100 text-slate-900">
+                      <tr>
+                        <th className="border border-slate-500 px-2.5 py-1.5 text-center w-12 font-bold">ت</th>
+                        <th className="border border-slate-500 px-2.5 py-1.5 font-bold w-[44%]">اسم الطالب</th>
+                        <th className="border border-slate-500 px-2.5 py-1.5 font-bold w-[30%]">الصف والشعبة</th>
+                        <th className="border border-slate-500 px-2.5 py-1.5 text-center font-bold w-[120px]">عدد أيام الغياب</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {letterStudents.map((st: any, i: number) => (
+                        <tr key={i}>
+                          <td className="border border-slate-500 px-2.5 py-1.5 text-center font-bold">{plain(i + 1)}</td>
+                          <td className="border border-slate-500 px-2.5 py-1.5 font-bold break-words">{st.full_name}</td>
+                          <td className="border border-slate-500 px-2.5 py-1.5 break-words">
+                            <BidiText text={`${st.grade_name} - ${st.section_name}`} />
+                          </td>
+                          <td className="border border-slate-500 px-2.5 py-1.5 text-center font-bold text-slate-900 tabular-nums">
+                            {plain(st.counted_absence_days)} يوم
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Balanced Footer: Principal on Left + Copy-To on Right */}
+                <div className="mt-auto pt-6">
+                  <div className="flex justify-end pb-6">
+                    <div className="text-center min-w-[190px]">
+                      {effectivePrincipalName ? (
+                        <p className="text-[17px] font-bold text-slate-900 leading-[1.45]">
+                          {effectivePrincipalName}
+                        </p>
+                      ) : null}
+                      <p className="text-[14.5px] font-bold text-slate-800 mt-0.5">
+                        مدير المدرسة
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-right border-t border-slate-400 pt-2 text-[13px] font-bold text-slate-900 leading-[1.75]">
+                    <p>نسخة منه إلى /</p>
+                    <p className="pr-4 font-normal text-slate-800">معاون شؤون الطلبة</p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Print-Only Portal outside .no-print root so window.print() renders cleanly */}
+      {typeof document !== 'undefined' &&
+        printTarget &&
+        createPortal(
+          <div dir="rtl" className="print-only bg-white text-slate-900 font-sans text-xs">
+            {printTarget === 'letter' && selectedLetter ? (
+              <div className="font-official-letter official-letter-print-sheet text-slate-900">
+                <div className="grid grid-cols-3 gap-4 items-center text-center text-[13px] font-bold border-b-[1.5px] border-slate-400 pb-3 mb-3.5">
+                  <div className="text-right leading-[1.7] text-slate-800">
+                    <p>جمهورية العراق</p>
+                    <p>وزارة التربية</p>
+                    <p><BidiText text={effectiveDirectorateName} /></p>
+                    <p className="mt-1 font-bold text-slate-900 text-[13.5px]">إدارة / <BidiText text={effectiveSchoolName} /></p>
+                  </div>
+                  <div className="flex flex-col items-center justify-center">
+                    {effectiveLogoUrl && (
+                      <img
+                        src={effectiveLogoUrl}
+                        alt="شعار المدرسة"
+                        className="max-h-16 max-w-[115px] w-auto h-auto object-contain mb-1.5"
+                      />
+                    )}
+                    <p className="text-[13px] font-bold text-slate-900">
+                      <LtrSpan>{academicYear(effectiveAcademicYearName)}</LtrSpan>
+                    </p>
+                  </div>
+                  <div className="text-left leading-[1.75] text-slate-800 tabular-nums">
+                    <p>الرقم: <BidiText text={selectedLetter.document_number} /></p>
+                    <p>التاريخ: <LtrSpan>{dateDMY(selectedLetter.letter_date)}</LtrSpan></p>
+                  </div>
+                </div>
+
+                <div className="text-center my-3" style={{ breakAfter: 'avoid' }}>
+                  <div className="inline-block px-5 pb-1 border-b-[1.5px] border-slate-600 font-bold text-[17px] leading-[1.75] text-slate-900">
+                    <span>م/ </span>
+                    <span><BidiText text={selectedLetter.subject} /></span>
+                  </div>
+                </div>
+
+                <div dir="rtl" className="text-right text-[15.5px] leading-[1.95] text-slate-900 py-1 mb-3 break-words">
+                  {splitLetterBodyParagraphs(
+                    resolveOfficialLetterTemplate(selectedLetter.rendered_content, {
+                      absence_days: selectedLetter.days_threshold,
+                      stage_name: selectedLetter.stage_name,
+                      academic_year: effectiveAcademicYearName,
+                      school_name: effectiveSchoolName,
+                      date: dateDMY(selectedLetter.letter_date),
+                      document_number: selectedLetter.document_number,
+                    })
+                  ).map((line, idx) =>
+                    line.trim().length === 0 ? (
+                      <div key={idx} className="h-2" />
+                    ) : (
+                      <p key={idx} className="mb-2 last:mb-0 text-right">
+                        <BidiText text={line} />
+                      </p>
+                    )
+                  )}
+                </div>
+
+                <div className="pt-1">
+                  <h4 className="text-[15px] font-bold text-slate-900 mb-2" style={{ breakAfter: 'avoid' }}>
+                    أسماء الطلبة
+                  </h4>
+                  <table className="w-full text-[13.5px] leading-[1.65] text-right border-collapse border border-slate-500 table-fixed print-table tabular-nums">
+                    <thead className="bg-slate-100 text-slate-900">
+                      <tr>
+                        <th className="border border-slate-500 px-2.5 py-1.5 text-center w-12 font-bold">ت</th>
+                        <th className="border border-slate-500 px-2.5 py-1.5 font-bold w-[44%]">اسم الطالب</th>
+                        <th className="border border-slate-500 px-2.5 py-1.5 font-bold w-[30%]">الصف والشعبة</th>
+                        <th className="border border-slate-500 px-2.5 py-1.5 text-center font-bold w-[120px]">عدد أيام الغياب</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {letterStudents.map((st: any, i: number) => (
+                        <tr key={i}>
+                          <td className="border border-slate-500 px-2.5 py-1.5 text-center font-bold">{plain(i + 1)}</td>
+                          <td className="border border-slate-500 px-2.5 py-1.5 font-bold break-words">{st.full_name}</td>
+                          <td className="border border-slate-500 px-2.5 py-1.5 break-words">
+                            <BidiText text={`${st.grade_name} - ${st.section_name}`} />
+                          </td>
+                          <td className="border border-slate-500 px-2.5 py-1.5 text-center font-bold text-slate-900 tabular-nums">
+                            {plain(st.counted_absence_days)} يوم
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="official-letter-print-footer">
+                  <div className="flex justify-end pb-6">
+                    <div className="text-center min-w-[190px]">
+                      {effectivePrincipalName ? (
+                        <p className="text-[17px] font-bold text-slate-900 leading-[1.45]">
+                          {effectivePrincipalName}
+                        </p>
+                      ) : null}
+                      <p className="text-[14.5px] font-bold text-slate-800 mt-0.5">مدير المدرسة</p>
+                    </div>
+                  </div>
+
+                  <div className="text-right border-t border-slate-400 pt-2 text-[13px] font-bold text-slate-900 leading-[1.75]">
+                    <p>نسخة منه إلى /</p>
+                    <p className="pr-4 font-normal text-slate-800">معاون شؤون الطلبة</p>
+                  </div>
+                </div>
+              </div>
+            ) : printTarget === 'report' && reportData ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-4 items-center text-center text-xs font-bold border-b border-slate-300 pb-4">
+                  <div className="text-right">
+                    <p>جمهورية العراق</p>
+                    <p>وزارة التربية</p>
+                    <p><BidiText text={effectiveDirectorateName} /></p>
+                    <p className="mt-2 font-black text-slate-900">إدارة / <BidiText text={effectiveSchoolName} /></p>
+                  </div>
+                  <div className="flex flex-col items-center justify-center">
+                    {effectiveLogoUrl && (
+                      <img
+                        src={effectiveLogoUrl}
+                        alt="شعار المدرسة"
+                        className="max-h-16 max-w-[115px] w-auto h-auto object-contain mb-1.5"
+                      />
+                    )}
+                    <p className="text-xs font-extrabold">
+                      <LtrSpan>{academicYear(reportData.academic_year.name)}</LtrSpan>
+                    </p>
+                  </div>
+                  <div className="text-left tabular-nums">
+                    <p>التاريخ: <LtrSpan>{dateDMY(new Date().toISOString().slice(0, 10))}</LtrSpan></p>
+                    <p>عدد الطلاب: {plain(reportData.rows.length)}</p>
+                  </div>
+                </div>
+
+                <div className="py-2 px-3 bg-slate-50 rounded-lg font-extrabold text-sm border border-slate-200">
+                  تقرير مرحلة الغياب: <BidiText text={reportData.current_stage?.name || 'تقرير الغياب'} />
+                </div>
+
+                <div className="flex flex-wrap gap-x-5 gap-y-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded text-[11px] tabular-nums">
+                  <span><strong>عتبة الغياب:</strong> {plain(reportData.current_stage?.days_threshold || 0)} يوم فأكثر</span>
+                  <span><strong>إجمالي الطلاب:</strong> {plain(reportData.rows.length)} طالب</span>
+                  {activeFilterSummary && <span><strong>التصفية المطبقة:</strong> <BidiText text={activeFilterSummary} /></span>}
+                </div>
+
+                <table className="w-full text-xs text-right border-collapse border border-slate-300 print-table tabular-nums">
+                  <thead className="bg-slate-100 text-slate-800">
+                    <tr>
+                      <th className="border border-slate-300 p-2 text-center w-11 font-bold">ت</th>
+                      <th className="border border-slate-300 p-2 font-bold">اسم الطالب</th>
+                      <th className="border border-slate-300 p-2 font-bold">الصف والشعبة</th>
+                      <th className="border border-slate-300 p-2 text-center font-bold w-32">أيام الغياب المحتسبة</th>
+                      <th className="border border-slate-300 p-2 text-center font-bold w-32">المرحلة الحالية</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportData.rows.map((row, idx) => (
+                      <tr key={row.student_id}>
+                        <td className="border border-slate-300 p-2 text-center">{plain(idx + 1)}</td>
+                        <td className="border border-slate-300 p-2">
+                          <p className="font-bold text-slate-900">{row.full_name}</p>
+                          <p className="text-[10px] text-slate-500">
+                            {row.registry_number ? (
+                              <>
+                                قيد: <BidiText text={row.registry_number} />
+                              </>
+                            ) : (
+                              <LtrSpan>{row.student_uid}</LtrSpan>
+                            )}
+                          </p>
+                        </td>
+                        <td className="border border-slate-300 p-2 font-semibold">
+                          <BidiText text={`${row.grade_name} - ${row.section_name}`} />
+                        </td>
+                        <td className="border border-slate-300 p-2 text-center">
+                          <p className="font-bold text-red-700">{plain(row.counted_absence_days)} يوم</p>
+                          <p className="text-[10px] text-slate-500">
+                            مباشر: {plain(row.direct_full_days)} · دروس: {plain(row.converted_lesson_days)}
+                          </p>
+                        </td>
+                        <td className="border border-slate-300 p-2 text-center font-bold">
+                          <BidiText text={row.stage_name || reportData.current_stage?.name} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div className="flex justify-end pt-8 pb-12" style={{ breakInside: 'avoid' }}>
+                  <div className="text-center min-w-[190px]">
+                    {effectivePrincipalName ? (
+                      <p className="text-base font-extrabold text-slate-900 leading-snug">
+                        {effectivePrincipalName}
+                      </p>
+                    ) : null}
+                    <p className="text-xs font-bold text-slate-800 mt-1">مدير المدرسة</p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

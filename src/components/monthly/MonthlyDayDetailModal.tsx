@@ -1,6 +1,8 @@
 import { CalendarOff, CheckCircle2, Clock, FileText, Info, Layers, X } from 'lucide-react';
 import { useEffect } from 'react';
 import type { HolidayCategory, MonthlyDayCellData, MonthlyStudentRow } from '../../types/school';
+import { useNumberDisplay } from '../../contexts/NumberDisplayContext';
+import { BidiText, LtrSpan } from '../common/BidirectionalText';
 
 interface MonthlyDayDetailModalProps {
   open: boolean;
@@ -162,6 +164,8 @@ export function MonthlyDayDetailModal({
   sectionName,
   onClose,
 }: MonthlyDayDetailModalProps) {
+  const { convert, count, dateDMY } = useNumberDisplay();
+
   useEffect(() => {
     if (!open) return;
     function handleKey(e: KeyboardEvent) {
@@ -188,7 +192,7 @@ export function MonthlyDayDetailModal({
         ? 'نعم (تُجمع ضمن العداد الموحد لتراكم الدروس)'
         : cell.status_kind === 'lesson_mixed'
           ? countedLessonsToday > 0
-            ? `نعم (${countedLessonsToday} درس مضاف للعداد الموحد)`
+            ? `نعم (${count(countedLessonsToday)} درس مضاف للعداد الموحد)`
             : 'لا'
           : cell.status_kind === 'lesson_permission'
             ? cell.counted_as_absence
@@ -217,7 +221,7 @@ export function MonthlyDayDetailModal({
               تفاصيل سجل اليوم — عرض إداري
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              {student.full_name} • {gradeName} / {sectionName}
+              {student.full_name} • <BidiText text={`${gradeName} / ${sectionName}`} />
             </p>
           </div>
           <button
@@ -238,7 +242,8 @@ export function MonthlyDayDetailModal({
               <div className="flex items-center gap-2 text-xs font-semibold opacity-90">
                 <Clock className="w-3.5 h-3.5 shrink-0" />
                 <span>
-                  {cell.day_name} — <span className="font-mono-tabular">{cell.date}</span>
+                  {cell.day_name} —{' '}
+                  <LtrSpan className="font-mono-tabular">{dateDMY(cell.date)}</LtrSpan>
                 </span>
               </div>
               <p className="text-sm font-bold font-display">{statusMeta.title}</p>
@@ -251,12 +256,12 @@ export function MonthlyDayDetailModal({
                     {cell.symbol_top}
                   </span>
                   <span className="text-[11px] font-bold font-display tabular-nums leading-tight mt-0.5 whitespace-nowrap">
-                    {cell.symbol_bottom}
+                    <BidiText text={cell.symbol_bottom} />
                   </span>
                 </>
               ) : (
                 <span className="text-base font-extrabold font-display tabular-nums whitespace-nowrap">
-                  {cell.symbol || '—'}
+                  {cell.symbol ? convert(cell.symbol) : '—'}
                 </span>
               )}
             </div>
@@ -286,7 +291,8 @@ export function MonthlyDayDetailModal({
                         </span>
                       </div>
                       <p className="text-slate-500 dark:text-slate-400 tabular-nums">
-                        من {h.start_date} إلى {h.end_date}
+                        من <LtrSpan>{dateDMY(h.start_date)}</LtrSpan> إلى{' '}
+                        <LtrSpan>{dateDMY(h.end_date)}</LtrSpan>
                       </p>
                       {h.notes && (
                         <p className="text-slate-600 dark:text-slate-300">السبب/الملاحظة: {h.notes}</p>
@@ -322,7 +328,7 @@ export function MonthlyDayDetailModal({
                 <div className="p-3">
                   <p className="text-slate-500 dark:text-slate-400">التاريخ واليوم</p>
                   <p className="font-bold text-slate-900 dark:text-slate-100 mt-0.5 tabular-nums">
-                    {cell.day_name} — {cell.date}
+                    {cell.day_name} — <LtrSpan>{dateDMY(cell.date)}</LtrSpan>
                   </p>
                 </div>
               </div>
@@ -344,7 +350,7 @@ export function MonthlyDayDetailModal({
                       إجمالي الدروس المسجلة في هذا اليوم
                     </span>
                     <span className="font-bold text-slate-900 dark:text-slate-100 tabular-nums">
-                      {cell.lessons_count}
+                      {count(cell.lessons_count)}
                     </span>
                   </div>
 
@@ -362,7 +368,7 @@ export function MonthlyDayDetailModal({
                               key={d.lesson_number}
                               className={`px-2 py-1 rounded border font-semibold text-[11px] ${meta.chipClass}`}
                             >
-                              {getLessonName(d.lesson_number)} · {meta.label}
+                              {convert(getLessonName(d.lesson_number))} · {meta.label}
                               {d.lesson_status === 'lesson_permission'
                                 ? d.counted_as_absence === 1
                                   ? ' (محتسبة في العداد)'
@@ -385,7 +391,7 @@ export function MonthlyDayDetailModal({
                               key={num}
                               className="px-2 py-1 rounded border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-200 font-semibold text-[11px]"
                             >
-                              {getLessonName(num)}
+                              {convert(getLessonName(num))}
                             </span>
                           ))}
                         </div>
@@ -408,7 +414,7 @@ export function MonthlyDayDetailModal({
                     هل ساهمت في العداد الموحد لتراكم الدروس؟
                   </span>
                   <span className="font-bold text-slate-900 dark:text-slate-100">
-                    {cell.contributed_to_counter ? `نعم (+${countedLessonsToday} درس)` : 'لا'}
+                    {cell.contributed_to_counter ? `نعم (+${count(countedLessonsToday)} درس)` : 'لا'}
                   </span>
                 </div>
 
@@ -418,7 +424,7 @@ export function MonthlyDayDetailModal({
                   </span>
                   <span className="font-bold text-slate-900 dark:text-slate-100">
                     {cell.generated_converted_day
-                      ? `نعم (${cell.converted_days_count} يوم من تراكم ${cell.threshold_used ?? ''} دروس)`
+                      ? `نعم (${count(cell.converted_days_count)} يوم من تراكم ${cell.threshold_used ? count(cell.threshold_used) : ''} دروس)`
                       : cell.status_kind === 'full_day' ||
                           (cell.status_kind === 'daily_permission' && cell.counted_as_absence)
                         ? 'نعم (يوم غياب كامل مباشر)'
@@ -441,8 +447,9 @@ export function MonthlyDayDetailModal({
                           key={`${item.absence_id}-${item.lesson_number ?? idx}-${idx}`}
                           className={`px-2 py-1 rounded border text-[11px] font-semibold tabular-nums ${meta.chipClass}`}
                         >
-                          {item.absence_date} ·{' '}
-                          {item.lesson_number ? getLessonName(item.lesson_number) : 'درس'} ({meta.label})
+                          <LtrSpan>{dateDMY(item.absence_date)}</LtrSpan> ·{' '}
+                          {item.lesson_number ? convert(getLessonName(item.lesson_number)) : 'درس'} (
+                          {meta.label})
                         </span>
                       );
                     })}

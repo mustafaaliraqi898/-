@@ -5,6 +5,7 @@ import { createServer as createViteServer } from 'vite';
 import { getDb } from './server/db/connection';
 import { createApiRouter } from './server/routes/api';
 import { migrateLegacyDataUrlsToMediaAssets } from './server/services/imageService';
+import { runAutoBackupIfDue } from './server/services/backupService';
 
 async function startServer() {
   const app = express();
@@ -16,6 +17,16 @@ async function startServer() {
   void migrateLegacyDataUrlsToMediaAssets(db).catch((err) => {
     console.warn('Legacy image migration warning:', err);
   });
+
+  void runAutoBackupIfDue(getDb()).catch((err) => {
+    console.warn('Auto-backup startup warning:', err);
+  });
+  const autoBackupTimer = setInterval(() => {
+    void runAutoBackupIfDue(getDb()).catch((err) => {
+      console.warn('Auto-backup interval warning:', err);
+    });
+  }, 30 * 60 * 1000);
+  autoBackupTimer.unref?.();
 
   app.use(express.json({ limit: '20mb' }));
   app.use('/api', createApiRouter());

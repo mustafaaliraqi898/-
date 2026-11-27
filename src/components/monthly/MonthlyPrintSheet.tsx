@@ -4,6 +4,17 @@ import type {
   MonthlyCellStatusKind,
   MonthlyRegisterData,
 } from '../../types/school';
+import { useNumberDisplay } from '../../contexts/NumberDisplayContext';
+import {
+  type NumberDisplayMode,
+  convertDigits,
+  formatAcademicYearDisplay,
+  formatBidiHtmlText,
+  formatCount,
+  formatIsolatedLtrHtml,
+  formatPlainNumber,
+} from '../../utils/numberFormat';
+import { BidiText, LtrSpan } from '../common/BidirectionalText';
 
 export type PrintPaperPreset =
   | 'auto'
@@ -63,7 +74,8 @@ export function resolveEffectivePrintSpec(preset: PrintPaperPreset): {
 
 export function computeMonthlyPrintPages(
   calendarDays: MonthCalendarDay[],
-  preset: PrintPaperPreset
+  preset: PrintPaperPreset,
+  mode: NumberDisplayMode = 'english'
 ): PrintColumnPageChunk[] {
   const spec = resolveEffectivePrintSpec(preset);
 
@@ -97,7 +109,7 @@ export function computeMonthlyPrintPages(
       days: slice,
       includeTotals: false,
       includeNotes: false,
-      titleSuffix: `الأيام من ${firstDay} إلى ${lastDay}`,
+      titleSuffix: `الأيام من ${formatPlainNumber(firstDay, mode)} إلى ${formatPlainNumber(lastDay, mode)}`,
     });
   }
 
@@ -186,11 +198,16 @@ function escapeHtml(value: string | number | null | undefined): string {
 
 export function buildStandalonePrintableHtml(
   data: MonthlyRegisterData,
-  paperPreset: PrintPaperPreset
+  paperPreset: PrintPaperPreset,
+  mode: NumberDisplayMode = 'english'
 ): string {
   const spec = resolveEffectivePrintSpec(paperPreset);
-  const chunks = computeMonthlyPrintPages(data.calendar_days, paperPreset);
-  const pageTitle = `السجل الشهري للغيابات — ${data.month_name} ${data.year} — ${data.grade_name} (${data.section_name})`;
+  const chunks = computeMonthlyPrintPages(data.calendar_days, paperPreset, mode);
+  const formattedYear = formatPlainNumber(data.year, mode);
+  const pageTitle = convertDigits(
+    `السجل الشهري للغيابات — ${data.month_name} ${data.year} — ${data.grade_name} (${data.section_name})`,
+    mode
+  );
 
   const pagesHtml = chunks
     .map((chunk) => {
@@ -198,7 +215,7 @@ export function buildStandalonePrintableHtml(
         .map(
           (d) => `
           <th class="day-col ${d.is_holiday ? 'holiday-th' : ''}">
-            <div class="day-num">${escapeHtml(d.day_of_month)}</div>
+            <div class="day-num">${escapeHtml(formatPlainNumber(d.day_of_month, mode))}</div>
             <div class="day-name">${escapeHtml(d.day_name.replace('ال', ''))}</div>
           </th>`
         )
@@ -231,29 +248,29 @@ export function buildStandalonePrintableHtml(
               const cssClass = getStandaloneCellCssClass(c.status_kind);
               const hasTwoLines = Boolean(c.symbol_top && c.symbol_bottom);
               const inner = hasTwoLines
-                ? `<div class="cell-check">${escapeHtml(c.symbol_top)}</div><div class="cell-lessons">${escapeHtml(c.symbol_bottom)}</div>`
-                : escapeHtml(c.symbol);
+                ? `<div class="cell-check">${escapeHtml(c.symbol_top)}</div><div class="cell-lessons">${formatBidiHtmlText(c.symbol_bottom, mode)}</div>`
+                : formatBidiHtmlText(c.symbol, mode);
               return `<td class="day-cell ${cssClass}">${inner}</td>`;
             })
             .join('');
 
           const totalsCellsHtml = chunk.includeTotals
             ? `
-              <td class="num-cell">${escapeHtml(st.direct_full_days)}</td>
-              <td class="num-cell">${escapeHtml(st.converted_lesson_days)}</td>
-              <td class="num-cell">${escapeHtml(st.missed_lessons_count)}</td>
-              <td class="num-cell">${escapeHtml(st.sick_leave_days)}</td>
-              <td class="num-cell">${escapeHtml(st.daily_permission_days)}</td>
-              <td class="num-cell">${escapeHtml(st.lesson_permission_records)}</td>
-              <td class="num-cell tot-counted-cell">${escapeHtml(st.total_counted_absence_days)}</td>`
+              <td class="num-cell">${escapeHtml(formatCount(st.direct_full_days, mode))}</td>
+              <td class="num-cell">${escapeHtml(formatCount(st.converted_lesson_days, mode))}</td>
+              <td class="num-cell">${escapeHtml(formatCount(st.missed_lessons_count, mode))}</td>
+              <td class="num-cell">${escapeHtml(formatCount(st.sick_leave_days, mode))}</td>
+              <td class="num-cell">${escapeHtml(formatCount(st.daily_permission_days, mode))}</td>
+              <td class="num-cell">${escapeHtml(formatCount(st.lesson_permission_records, mode))}</td>
+              <td class="num-cell tot-counted-cell">${escapeHtml(formatCount(st.total_counted_absence_days, mode))}</td>`
             : '';
 
           let notesInnerHtml = '';
           if (st.compact_notes_summary) {
-            notesInnerHtml += `<div class="notes-numeric">${escapeHtml(st.compact_notes_summary)}</div>`;
+            notesInnerHtml += `<div class="notes-numeric">${formatBidiHtmlText(st.compact_notes_summary, mode)}</div>`;
           }
           if (st.manual_note) {
-            notesInnerHtml += `<div class="notes-manual"><strong>ملاحظة يدوية:</strong> ${escapeHtml(st.manual_note)}</div>`;
+            notesInnerHtml += `<div class="notes-manual"><strong>ملاحظة يدوية:</strong> ${formatBidiHtmlText(st.manual_note, mode)}</div>`;
           }
           if (!notesInnerHtml) {
             notesInnerHtml = '<span class="muted-note">لا توجد ملاحظات</span>';
@@ -265,7 +282,7 @@ export function buildStandalonePrintableHtml(
 
           return `
             <tr class="${idx % 2 === 1 ? 'alt-row' : ''}">
-              <td class="ord-cell">${escapeHtml(st.original_order)}</td>
+              <td class="ord-cell">${escapeHtml(formatPlainNumber(st.original_order, mode))}</td>
               <td class="name-cell">${escapeHtml(st.full_name)}</td>
               ${dayCellsHtml}
               ${totalsCellsHtml}
@@ -279,13 +296,13 @@ export function buildStandalonePrintableHtml(
           ? `
           <div class="manual-notes-summary-box">
             <div class="manual-notes-summary-title">
-              ملخص الملاحظات الإدارية اليدوية (${escapeHtml(studentsWithManualNotes.length)}) — منفصلة عن أعداد الغياب والرخص والهروب
+              ملخص الملاحظات الإدارية اليدوية (${escapeHtml(formatCount(studentsWithManualNotes.length, mode))}) — منفصلة عن أعداد الغياب والرخص والهروب
             </div>
             <div class="manual-notes-summary-list">
               ${studentsWithManualNotes
                 .map(
                   (st) =>
-                    `<div class="manual-notes-summary-item"><strong>${escapeHtml(st.original_order)}. ${escapeHtml(st.full_name)}:</strong> ${escapeHtml(st.manual_note)}</div>`
+                    `<div class="manual-notes-summary-item"><strong>${escapeHtml(formatPlainNumber(st.original_order, mode))}. ${escapeHtml(st.full_name)}:</strong> ${formatBidiHtmlText(st.manual_note, mode)}</div>`
                 )
                 .join('')}
             </div>
@@ -293,23 +310,25 @@ export function buildStandalonePrintableHtml(
           : '';
 
       const subtitleSuffix =
-        chunk.totalChunks > 1 ? ` (جزء ${chunk.chunkIndex} من ${chunk.totalChunks})` : '';
+        chunk.totalChunks > 1
+          ? ` (جزء ${formatPlainNumber(chunk.chunkIndex, mode)} من ${formatPlainNumber(chunk.totalChunks, mode)})`
+          : '';
 
       return `
         <section class="sheet-page">
           <header class="official-header">
             <div class="header-right">
-              <div class="directorate">${escapeHtml(data.school_settings.directorate_name)}</div>
-              <div class="school-name">${escapeHtml(data.school_settings.school_name)}</div>
+              <div class="directorate">${formatBidiHtmlText(data.school_settings.directorate_name, mode)}</div>
+              <div class="school-name">${formatBidiHtmlText(data.school_settings.school_name, mode)}</div>
             </div>
             <div class="header-center">
               <div class="title-badge">السجل الشهري للغيابات المدرسية</div>
-              <div class="subtitle">شهر ${escapeHtml(data.month_name)} ${escapeHtml(data.year)} — ${escapeHtml(chunk.titleSuffix)}${escapeHtml(subtitleSuffix)}</div>
+              <div class="subtitle">شهر ${escapeHtml(data.month_name)} <span class="ltr-isolate">${escapeHtml(formattedYear)}</span> — ${formatBidiHtmlText(chunk.titleSuffix, mode)}${escapeHtml(subtitleSuffix)}</div>
             </div>
             <div class="header-left">
-              <div><strong>السنة الدراسية:</strong> ${escapeHtml(data.academic_year.name)}</div>
-              <div><strong>الصف والشعبة:</strong> ${escapeHtml(data.grade_name)} — ${escapeHtml(data.section_name)}</div>
-              <div><strong>عدد الطلاب:</strong> ${escapeHtml(data.stats.total_students)}</div>
+              <div><strong>السنة الدراسية:</strong> ${formatIsolatedLtrHtml(formatAcademicYearDisplay(data.academic_year.name, mode))}</div>
+              <div><strong>الصف والشعبة:</strong> ${formatBidiHtmlText(data.grade_name, mode)} — ${formatBidiHtmlText(data.section_name, mode)}</div>
+              <div><strong>عدد الطلاب:</strong> ${escapeHtml(formatCount(data.stats.total_students, mode))}</div>
             </div>
           </header>
 
@@ -341,12 +360,6 @@ export function buildStandalonePrintableHtml(
           </table>
 
           ${manualSummarySectionHtml}
-
-          <footer class="signature-footer">
-            <div>مسؤول الغيابات: .................................</div>
-            <div>معاون المدير: .................................</div>
-            <div>مدير المدرسة: .................................</div>
-          </footer>
         </section>`;
     })
     .join('');
@@ -364,6 +377,10 @@ export function buildStandalonePrintableHtml(
       }
       * {
         box-sizing: border-box;
+      }
+      .ltr-isolate {
+        direction: ltr;
+        unicode-bidi: isolate;
       }
       html, body {
         margin: 0;
@@ -686,17 +703,6 @@ export function buildStandalonePrintableHtml(
       .muted-note {
         color: #94a3b8;
       }
-      .signature-footer {
-        margin-top: 14px;
-        padding-top: 8px;
-        border-top: 1px solid #cbd5e1;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        font-size: 11px;
-        font-weight: 700;
-        color: #1e293b;
-      }
       @media print {
         html, body {
           background: #ffffff !important;
@@ -742,6 +748,7 @@ export function MonthlyPrintSheet({
   paperPreset,
   mode = 'print',
 }: MonthlyPrintSheetProps) {
+  const { mode: numMode, academicYear, convert, count, plain } = useNumberDisplay();
   const spec = resolveEffectivePrintSpec(paperPreset);
 
   useEffect(() => {
@@ -768,7 +775,7 @@ export function MonthlyPrintSheet({
 
   if (!data) return null;
 
-  const chunks = computeMonthlyPrintPages(data.calendar_days, paperPreset);
+  const chunks = computeMonthlyPrintPages(data.calendar_days, paperPreset, numMode);
   const isPreview = mode === 'preview';
 
   return (
@@ -794,10 +801,10 @@ export function MonthlyPrintSheet({
           <header className="border-b-2 border-slate-800 pb-2.5 mb-2.5 flex items-center justify-between gap-4">
             <div className="space-y-0.5 text-right">
               <p className="text-[11px] font-bold text-slate-700">
-                {data.school_settings.directorate_name}
+                <BidiText text={data.school_settings.directorate_name} />
               </p>
               <h1 className="text-base font-extrabold text-slate-900 font-display">
-                {data.school_settings.school_name}
+                <BidiText text={data.school_settings.school_name} />
               </h1>
             </div>
 
@@ -808,20 +815,26 @@ export function MonthlyPrintSheet({
                 </span>
               </div>
               <p className="text-xs font-bold text-slate-700 mt-1">
-                شهر {data.month_name} {data.year} — {chunk.titleSuffix}
-                {chunk.totalChunks > 1 ? ` (جزء ${chunk.chunkIndex} من ${chunk.totalChunks})` : ''}
+                شهر {data.month_name} <LtrSpan>{plain(data.year)}</LtrSpan> —{' '}
+                <BidiText text={chunk.titleSuffix} />
+                {chunk.totalChunks > 1
+                  ? ` (جزء ${plain(chunk.chunkIndex)} من ${plain(chunk.totalChunks)})`
+                  : ''}
               </p>
             </div>
 
             <div className="text-left text-[11px] space-y-0.5 tabular-nums">
               <p>
-                <span className="font-bold">السنة الدراسية:</span> {data.academic_year.name}
+                <span className="font-bold">السنة الدراسية:</span>{' '}
+                <LtrSpan>{academicYear(data.academic_year.name)}</LtrSpan>
               </p>
               <p>
-                <span className="font-bold">الصف والشعبة:</span> {data.grade_name} — {data.section_name}
+                <span className="font-bold">الصف والشعبة:</span>{' '}
+                <BidiText text={`${data.grade_name} — ${data.section_name}`} />
               </p>
               <p>
-                <span className="font-bold">عدد الطلاب:</span> {data.stats.total_students}
+                <span className="font-bold">عدد الطلاب:</span>{' '}
+                <LtrSpan>{count(data.stats.total_students)}</LtrSpan>
               </p>
             </div>
           </header>
@@ -870,7 +883,9 @@ export function MonthlyPrintSheet({
                       d.is_holiday ? 'bg-slate-600' : ''
                     }`}
                   >
-                    <div className="text-[10.5px] font-bold leading-tight">{d.day_of_month}</div>
+                    <div className="text-[10.5px] font-bold leading-tight">
+                      {plain(d.day_of_month)}
+                    </div>
                     <div className="text-[8.5px] font-normal opacity-90 leading-tight">
                       {d.day_name.replace('ال', '')}
                     </div>
@@ -914,7 +929,7 @@ export function MonthlyPrintSheet({
               {data.students.map((st, idx) => (
                 <tr key={st.student_id} className={idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'}>
                   <td className="border border-slate-300 px-1 py-1 text-center font-medium">
-                    {st.original_order}
+                    {plain(st.original_order)}
                   </td>
                   <td className="border border-slate-300 px-2 py-1 text-right font-bold text-slate-900 whitespace-nowrap">
                     {st.full_name}
@@ -936,11 +951,11 @@ export function MonthlyPrintSheet({
                               {c.symbol_top}
                             </span>
                             <span className="text-[7.5px] font-bold leading-tight">
-                              {c.symbol_bottom}
+                              <BidiText text={c.symbol_bottom!} />
                             </span>
                           </div>
                         ) : (
-                          c.symbol
+                          convert(c.symbol)
                         )}
                       </td>
                     );
@@ -949,25 +964,25 @@ export function MonthlyPrintSheet({
                   {chunk.includeTotals && (
                     <>
                       <td className="border border-slate-300 px-1 py-1 text-center font-semibold">
-                        {st.direct_full_days}
+                        {count(st.direct_full_days)}
                       </td>
                       <td className="border border-slate-300 px-1 py-1 text-center font-semibold">
-                        {st.converted_lesson_days}
+                        {count(st.converted_lesson_days)}
                       </td>
                       <td className="border border-slate-300 px-1 py-1 text-center">
-                        {st.missed_lessons_count}
+                        {count(st.missed_lessons_count)}
                       </td>
                       <td className="border border-slate-300 px-1 py-1 text-center">
-                        {st.sick_leave_days}
+                        {count(st.sick_leave_days)}
                       </td>
                       <td className="border border-slate-300 px-1 py-1 text-center">
-                        {st.daily_permission_days}
+                        {count(st.daily_permission_days)}
                       </td>
                       <td className="border border-slate-300 px-1 py-1 text-center">
-                        {st.lesson_permission_records}
+                        {count(st.lesson_permission_records)}
                       </td>
                       <td className="border border-slate-300 px-1 py-1 text-center font-extrabold text-red-900 bg-red-50">
-                        {st.total_counted_absence_days}
+                        {count(st.total_counted_absence_days)}
                       </td>
                     </>
                   )}
@@ -977,11 +992,13 @@ export function MonthlyPrintSheet({
                       {st.compact_notes_summary || st.manual_note ? (
                         <div className="space-y-0.5">
                           {st.compact_notes_summary && (
-                            <p className="font-bold text-slate-900">{st.compact_notes_summary}</p>
+                            <p className="font-bold text-slate-900">
+                              <BidiText text={st.compact_notes_summary} />
+                            </p>
                           )}
                           {st.manual_note && (
                             <p className="text-[9.5px] text-teal-800 border-t border-dashed border-teal-200 pt-0.5">
-                              <strong>ملاحظة يدوية:</strong> {st.manual_note}
+                              <strong>ملاحظة يدوية:</strong> <BidiText text={st.manual_note} />
                             </p>
                           )}
                         </div>
@@ -1001,7 +1018,10 @@ export function MonthlyPrintSheet({
               <div className="mt-2.5 px-2.5 py-2 rounded border border-teal-200 bg-teal-50/70 text-[10px] text-teal-950">
                 <p className="font-extrabold text-teal-900 mb-1">
                   ملخص الملاحظات الإدارية اليدوية (
-                  {data.students.filter((st) => Boolean(st.manual_note && st.manual_note.trim())).length}
+                  {count(
+                    data.students.filter((st) => Boolean(st.manual_note && st.manual_note.trim()))
+                      .length
+                  )}
                   ) — منفصلة عن أعداد الغياب والرخص والهروب
                 </p>
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -1010,21 +1030,14 @@ export function MonthlyPrintSheet({
                     .map((st) => (
                       <div key={st.student_id}>
                         <strong>
-                          {st.original_order}. {st.full_name}:
+                          {plain(st.original_order)}. {st.full_name}:
                         </strong>{' '}
-                        {st.manual_note}
+                        <BidiText text={st.manual_note!} />
                       </div>
                     ))}
                 </div>
               </div>
             )}
-
-          {/* Signature Footer */}
-          <footer className="mt-4 pt-2 border-t border-slate-300 flex items-center justify-between text-[11px] font-bold text-slate-800">
-            <div>مسؤول الغيابات: .................................</div>
-            <div>معاون المدير: .................................</div>
-            <div>مدير المدرسة: .................................</div>
-          </footer>
         </section>
       ))}
     </div>

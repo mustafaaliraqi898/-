@@ -44,6 +44,8 @@ import {
   type PrintPaperPreset,
   resolveEffectivePrintSpec,
 } from './MonthlyPrintSheet';
+import { useNumberDisplay } from '../../contexts/NumberDisplayContext';
+import { BidiText, LtrSpan } from '../common/BidirectionalText';
 
 interface MonthlyRegisterViewProps {
   grades: GradeWithSections[];
@@ -127,6 +129,7 @@ export function MonthlyRegisterView({
   onSelectYear,
   onNotify,
 }: MonthlyRegisterViewProps) {
+  const { mode, academicYear, convert, count, plain } = useNumberDisplay();
   const now = useMemo(() => new Date(), []);
   const [calendarYear, setCalendarYear] = useState<number>(now.getFullYear());
   const [month, setMonth] = useState<number>(now.getMonth() + 1);
@@ -273,7 +276,7 @@ export function MonthlyRegisterView({
       return;
     }
 
-    const html = buildStandalonePrintableHtml(registerData, paperPreset);
+    const html = buildStandalonePrintableHtml(registerData, paperPreset, mode);
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const objectUrl = URL.createObjectURL(blob);
     setStandaloneHtmlUrl(objectUrl);
@@ -281,7 +284,7 @@ export function MonthlyRegisterView({
     return () => {
       URL.revokeObjectURL(objectUrl);
     };
-  }, [printPreviewOpen, printBlockedNotice, registerData, paperPreset]);
+  }, [printPreviewOpen, printBlockedNotice, registerData, paperPreset, mode]);
 
   useEffect(() => {
     return () => {
@@ -462,7 +465,7 @@ export function MonthlyRegisterView({
             >
               {academicYears.map((y) => (
                 <option key={y.id} value={y.id}>
-                  {y.name} {y.is_active ? '(الحالية)' : ''}
+                  {academicYear(y.name)} {y.is_active ? '(الحالية)' : ''}
                 </option>
               ))}
             </select>
@@ -483,7 +486,7 @@ export function MonthlyRegisterView({
             >
               {ARABIC_MONTH_OPTIONS.map((m) => (
                 <option key={m.value} value={m.value}>
-                  {m.label}
+                  {convert(m.label)}
                 </option>
               ))}
             </select>
@@ -504,7 +507,7 @@ export function MonthlyRegisterView({
             >
               {calendarYearOptions.map((y) => (
                 <option key={y} value={y}>
-                  {y}
+                  {plain(y)}
                 </option>
               ))}
             </select>
@@ -629,7 +632,7 @@ export function MonthlyRegisterView({
               <Users className="w-4 h-4 text-teal-700 dark:text-teal-400" />
             </div>
             <p className="text-xl font-extrabold text-slate-900 dark:text-slate-100 mt-1.5 font-display tabular-nums">
-              {registerData.stats.total_students}
+              {count(registerData.stats.total_students)}
             </p>
           </div>
 
@@ -639,7 +642,7 @@ export function MonthlyRegisterView({
               <UserX className="w-4 h-4 text-red-600 dark:text-red-400" />
             </div>
             <p className="text-xl font-extrabold text-red-700 dark:text-red-300 mt-1.5 font-display tabular-nums">
-              {registerData.stats.students_with_counted_absence}
+              {count(registerData.stats.students_with_counted_absence)}
             </p>
           </div>
 
@@ -649,7 +652,7 @@ export function MonthlyRegisterView({
               <ClipboardList className="w-4 h-4 text-red-600 dark:text-red-400" />
             </div>
             <p className="text-xl font-extrabold text-red-800 dark:text-red-200 mt-1.5 font-display tabular-nums">
-              {registerData.stats.total_counted_absence_days}
+              {count(registerData.stats.total_counted_absence_days)}
             </p>
           </div>
 
@@ -659,7 +662,7 @@ export function MonthlyRegisterView({
               <Calendar className="w-4 h-4 text-rose-600 dark:text-rose-400" />
             </div>
             <p className="text-xl font-extrabold text-slate-900 dark:text-slate-100 mt-1.5 font-display tabular-nums">
-              {registerData.stats.total_direct_full_days}
+              {count(registerData.stats.total_direct_full_days)}
             </p>
           </div>
 
@@ -669,7 +672,7 @@ export function MonthlyRegisterView({
               <BookOpen className="w-4 h-4 text-purple-600 dark:text-purple-400" />
             </div>
             <p className="text-xl font-extrabold text-purple-800 dark:text-purple-300 mt-1.5 font-display tabular-nums">
-              {registerData.stats.total_converted_lesson_days}
+              {count(registerData.stats.total_converted_lesson_days)}
             </p>
           </div>
 
@@ -679,7 +682,7 @@ export function MonthlyRegisterView({
               <UserCheck className="w-4 h-4 text-teal-600 dark:text-teal-400" />
             </div>
             <p className="text-xl font-extrabold text-teal-800 dark:text-teal-300 mt-1.5 font-display tabular-nums">
-              {registerData.stats.total_sick_leave_days}
+              {count(registerData.stats.total_sick_leave_days)}
             </p>
           </div>
 
@@ -689,7 +692,7 @@ export function MonthlyRegisterView({
               <FileText className="w-4 h-4 text-sky-600 dark:text-sky-400" />
             </div>
             <p className="text-xl font-extrabold text-sky-800 dark:text-sky-300 mt-1.5 font-display tabular-nums">
-              {registerData.stats.total_daily_permission_days}
+              {count(registerData.stats.total_daily_permission_days)}
             </p>
           </div>
 
@@ -699,7 +702,7 @@ export function MonthlyRegisterView({
               <CheckCircle2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
             </div>
             <p className="text-xl font-extrabold text-indigo-800 dark:text-indigo-300 mt-1.5 font-display tabular-nums">
-              {registerData.stats.total_lesson_permission_records}
+              {count(registerData.stats.total_lesson_permission_records)}
             </p>
           </div>
         </section>
@@ -733,14 +736,14 @@ export function MonthlyRegisterView({
                     item.symbol
                   )}`}
                 >
-                  {item.symbol}
+                  {convert(item.symbol)}
                 </span>
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                    {item.label}
+                    <BidiText text={item.label} />
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">
-                    {item.description}
+                    <BidiText text={item.description} />
                   </p>
                 </div>
               </div>
@@ -755,22 +758,22 @@ export function MonthlyRegisterView({
           <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/90 flex flex-wrap items-center justify-between gap-2 text-xs">
             <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
               <span>
-                سجل شهر {registerData.month_name} {registerData.year} — {registerData.grade_name} /{' '}
-                {registerData.section_name}
+                سجل شهر {registerData.month_name} <LtrSpan>{plain(registerData.year)}</LtrSpan> —{' '}
+                <BidiText text={`${registerData.grade_name} / ${registerData.section_name}`} />
               </span>
               <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400 tabular-nums">
-                ({registerData.days_in_month} يوماً)
+                (<LtrSpan>{plain(registerData.days_in_month)}</LtrSpan> يوماً)
               </span>
             </div>
 
             <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-3 tabular-nums">
               <span>
-                نصاب احتساب اليوم: <strong>{registerData.school_settings.lessons_per_absence_day}</strong>{' '}
-                دروس
+                نصاب احتساب اليوم:{' '}
+                <strong>{count(registerData.school_settings.lessons_per_absence_day)}</strong> دروس
               </span>
               <span>
-                عرض: <strong>{displayedStudents.length}</strong> من{' '}
-                <strong>{registerData.students.length}</strong> طالب
+                عرض: <strong>{count(displayedStudents.length)}</strong> من{' '}
+                <strong>{count(registerData.students.length)}</strong> طالب
               </span>
             </div>
           </div>
@@ -831,7 +834,7 @@ export function MonthlyRegisterView({
                       }`}
                     >
                       <div className="text-[11px] font-extrabold leading-tight">
-                        {calDay.day_of_month}
+                        {plain(calDay.day_of_month)}
                       </div>
                       <div className="text-[9.5px] font-normal opacity-85 leading-tight mt-0.5 whitespace-nowrap">
                         {calDay.day_name.replace('ال', '')}
@@ -889,17 +892,23 @@ export function MonthlyRegisterView({
                         <div className="min-w-0 overflow-hidden">
                           <p className="font-bold text-slate-900 dark:text-slate-100 truncate leading-tight">
                             <span className="text-teal-700 dark:text-teal-400 ml-1">
-                              {st.original_order}.
+                              {plain(st.original_order)}.
                             </span>
                             {st.full_name}
                           </p>
                           <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 whitespace-nowrap overflow-hidden leading-tight">
                             <span className="truncate">
-                              {st.registry_number ? `قيد: ${st.registry_number}` : st.student_uid}
+                              {st.registry_number ? (
+                                <>
+                                  قيد: <BidiText text={st.registry_number} />
+                                </>
+                              ) : (
+                                <LtrSpan>{st.student_uid}</LtrSpan>
+                              )}
                             </span>
                             {st.year_pending_lessons > 0 && (
                               <span className="text-amber-700 dark:text-amber-400 font-semibold shrink-0">
-                                رصيد معلق: {st.year_pending_lessons}
+                                رصيد معلق: {count(st.year_pending_lessons)}
                               </span>
                             )}
                           </div>
@@ -919,7 +928,7 @@ export function MonthlyRegisterView({
                               type="button"
                               onClick={() => setSelectedCellInfo({ student: st, cell })}
                               title={`${st.full_name} • ${calDay.day_name} ${calDay.date}${
-                                cell.symbol_bottom ? ` • ${cell.symbol_bottom}` : ''
+                                cell.symbol_bottom ? ` • ${convert(cell.symbol_bottom)}` : ''
                               }`}
                               className={`w-full h-12 min-w-[40px] flex items-center justify-center text-xs transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-600 ${getCellStyleClasses(
                                 cell.status_kind
@@ -939,11 +948,11 @@ export function MonthlyRegisterView({
                                     dir="rtl"
                                     className="text-[8.5px] font-bold leading-[1.08] text-center break-words line-clamp-2 max-w-[58px]"
                                   >
-                                    {cell.symbol_bottom}
+                                    <BidiText text={cell.symbol_bottom!} />
                                   </span>
                                 </div>
                               ) : (
-                                cell.symbol
+                                convert(cell.symbol)
                               )}
                             </button>
                           </td>
@@ -952,27 +961,27 @@ export function MonthlyRegisterView({
 
                       {/* 7 Totals Cells */}
                       <td className="h-12 border-l border-slate-200 dark:border-slate-800 px-2 py-1 text-center font-bold text-slate-800 dark:text-slate-200 align-middle">
-                        {st.direct_full_days}
+                        {count(st.direct_full_days)}
                       </td>
                       <td className="h-12 border-l border-slate-200 dark:border-slate-800 px-2 py-1 text-center font-bold text-purple-800 dark:text-purple-300 align-middle">
-                        {st.converted_lesson_days}
+                        {count(st.converted_lesson_days)}
                       </td>
                       <td className="h-12 border-l border-slate-200 dark:border-slate-800 px-2 py-1 text-center font-semibold text-amber-800 dark:text-amber-300 align-middle leading-tight">
-                        <div>{st.missed_lessons_count}</div>
+                        <div>{count(st.missed_lessons_count)}</div>
                         {st.lesson_escape_lessons > 0 && (
                           <div className="text-[9.5px] text-orange-700 dark:text-orange-400 font-bold whitespace-nowrap">
-                            هروب: {st.lesson_escape_lessons}
+                            هروب: {count(st.lesson_escape_lessons)}
                           </div>
                         )}
                       </td>
                       <td className="h-12 border-l border-slate-200 dark:border-slate-800 px-2 py-1 text-center font-semibold text-teal-800 dark:text-teal-300 align-middle">
-                        {st.sick_leave_days}
+                        {count(st.sick_leave_days)}
                       </td>
                       <td className="h-12 border-l border-slate-200 dark:border-slate-800 px-2 py-1 text-center font-semibold text-sky-800 dark:text-sky-300 align-middle">
-                        {st.daily_permission_days}
+                        {count(st.daily_permission_days)}
                       </td>
                       <td className="h-12 border-l border-slate-200 dark:border-slate-800 px-2 py-1 text-center font-semibold text-indigo-800 dark:text-indigo-300 align-middle">
-                        {st.lesson_permission_records}
+                        {count(st.lesson_permission_records)}
                       </td>
                       <td
                         className={`h-12 border-l border-slate-200 dark:border-slate-800 px-2 py-1 text-center font-extrabold align-middle ${
@@ -981,7 +990,7 @@ export function MonthlyRegisterView({
                             : 'text-slate-500 dark:text-slate-400'
                         }`}
                       >
-                        {st.total_counted_absence_days}
+                        {count(st.total_counted_absence_days)}
                       </td>
 
                       {/* Compact Fixed-Height Notes Cell + View Details Button */}
@@ -991,17 +1000,17 @@ export function MonthlyRegisterView({
                             {st.compact_notes_summary ? (
                               <>
                                 <p
-                                  title={st.compact_notes_summary}
+                                  title={convert(st.compact_notes_summary)}
                                   className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 truncate leading-tight"
                                 >
-                                  {st.compact_notes_summary}
+                                  <BidiText text={st.compact_notes_summary} />
                                 </p>
                                 {st.manual_note && (
                                   <p
                                     title={`ملاحظة يدوية: ${st.manual_note}`}
                                     className="text-[10px] font-semibold text-teal-700 dark:text-teal-300 truncate leading-tight mt-0.5"
                                   >
-                                    ملاحظة يدوية: {st.manual_note}
+                                    ملاحظة يدوية: <BidiText text={st.manual_note} />
                                   </p>
                                 )}
                               </>
@@ -1121,7 +1130,9 @@ export function MonthlyRegisterView({
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display flex items-center gap-2">
                   <Printer className="w-4 h-4 text-teal-700 dark:text-teal-400" />
-                  معاينة الطباعة — شهر {registerData.month_name} {registerData.year} ({registerData.grade_name} / {registerData.section_name})
+                  معاينة الطباعة — شهر {registerData.month_name}{' '}
+                  <LtrSpan>{plain(registerData.year)}</LtrSpan> (
+                  <BidiText text={`${registerData.grade_name} / ${registerData.section_name}`} />)
                 </h3>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   إعداد الورق المختار: <strong>{printSpec.label}</strong>

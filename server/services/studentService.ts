@@ -17,6 +17,7 @@ import {
   validateEnrollmentDate,
   validatePhotoDataUrl,
 } from '../utils/validation';
+import { recordAuditLog } from './auditLogService';
 import { resolveAssetIdFromImageRef } from './imageService';
 import { getActiveAcademicYear } from './settingsService';
 
@@ -218,7 +219,23 @@ export function createStudent(db: SqliteDb, input: CreateStudentInput): StudentR
     return newId;
   })();
 
-  return getStudentById(db, createdStudentId, yearId);
+  const created = getStudentById(db, createdStudentId, yearId);
+  recordAuditLog(db, {
+    operation_type: 'create',
+    section: 'students',
+    description: `إضافة طالب جديد: ${created.full_name} (${created.grade_name ?? ''} / ${created.section_name ?? ''})`,
+    target_id: created.id,
+    target_label: created.full_name,
+    new_value: {
+      student_uid: created.student_uid,
+      registry_number: created.registry_number,
+      full_name: created.full_name,
+      grade_name: created.grade_name,
+      section_name: created.section_name,
+      enrollment_date: created.enrollment_date,
+    },
+  });
+  return created;
 }
 
 export function updateStudent(
@@ -265,21 +282,48 @@ export function updateStudent(
     }
   }
 
-  db.prepare(
-    `UPDATE students
-     SET full_name = ?, registry_number = ?, birth_date = ?, phone = ?, photo_data = ?,
-         photo_asset_id = ?, status = ?, updated_at = datetime('now')
-     WHERE id = ?`
-  ).run(
-    fullName,
-    registryNumber,
-    birthDate,
-    phone,
-    effectivePhotoData,
-    photoAssetId,
-    status,
-    studentId
-  );
+  const beforeStudent = getStudentById(db, studentId);
+
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE students
+       SET full_name = ?, registry_number = ?, birth_date = ?, phone = ?, photo_data = ?,
+           photo_asset_id = ?, status = ?, updated_at = datetime('now')
+       WHERE id = ?`
+    ).run(
+      fullName,
+      registryNumber,
+      birthDate,
+      phone,
+      effectivePhotoData,
+      photoAssetId,
+      status,
+      studentId
+    );
+
+    const afterStudent = getStudentById(db, studentId);
+    recordAuditLog(db, {
+      operation_type: 'update',
+      section: 'students',
+      description: `تعديل بيانات الطالب: ${afterStudent.full_name}`,
+      target_id: studentId,
+      target_label: afterStudent.full_name,
+      old_value: {
+        full_name: beforeStudent.full_name,
+        registry_number: beforeStudent.registry_number,
+        birth_date: beforeStudent.birth_date,
+        phone: beforeStudent.phone,
+        status: beforeStudent.status,
+      },
+      new_value: {
+        full_name: afterStudent.full_name,
+        registry_number: afterStudent.registry_number,
+        birth_date: afterStudent.birth_date,
+        phone: afterStudent.phone,
+        status: afterStudent.status,
+      },
+    });
+  })();
 
   return getStudentById(db, studentId);
 }
@@ -318,6 +362,8 @@ export function transferStudent(
     throw new ServiceError('الطالب مسجل بالفعل في نفس الصف والشعبة المحددين.');
   }
 
+  const beforeStudent = getStudentById(db, studentId, yearId);
+
   db.transaction(() => {
     db.prepare(
       `UPDATE student_enrollments
@@ -334,6 +380,24 @@ export function transferStudent(
     db.prepare(`UPDATE students SET status = 'active', updated_at = datetime('now') WHERE id = ?`).run(
       studentId
     );
+
+    recordAuditLog(db, {
+      operation_type: 'transfer',
+      section: 'students',
+      description: `نقل الطالب ${student.full_name} إلى ${target.grade_name} / ${target.section_name}`,
+      target_id: studentId,
+      target_label: student.full_name,
+      old_value: {
+        grade_name: beforeStudent.grade_name,
+        section_name: beforeStudent.section_name,
+      },
+      new_value: {
+        grade_name: target.grade_name,
+        section_name: target.section_name,
+        enrollment_date: enrollmentDate,
+        transfer_reason: reason,
+      },
+    });
   })();
 
   return getStudentById(db, studentId, yearId);
@@ -383,8 +447,25 @@ export function deleteStudent(db: SqliteDb, studentId: number): void {
     );
   }
 
+  const beforeStudent = getStudentById(db, studentId);
+
   db.transaction(() => {
     db.prepare('DELETE FROM student_enrollments WHERE student_id = ?').run(studentId);
     db.prepare('DELETE FROM students WHERE id = ?').run(studentId);
+
+    recordAuditLog(db, {
+      operation_type: 'delete',
+      section: 'students',
+      description: `حذف سجل الطالب: ${student.full_name}`,
+      target_id: studentId,
+      target_label: student.full_name,
+      old_value: {
+        student_uid: beforeStudent.student_uid,
+        registry_number: beforeStudent.registry_number,
+        full_name: beforeStudent.full_name,
+        grade_name: beforeStudent.grade_name,
+        section_name: beforeStudent.section_name,
+      },
+    });
   })();
 }

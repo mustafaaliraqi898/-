@@ -11,10 +11,17 @@ import {
   FileText,
   Layers,
 } from 'lucide-react';
+import { useNumberDisplay } from '../../contexts/NumberDisplayContext';
 import { schoolService } from '../../services/schoolService';
-import type { AbsenceStage, AcademicYear } from '../../types/school';
+import {
+  UNIFIED_OFFICIAL_LETTER_TEMPLATE,
+  resolveOfficialLetterTemplate,
+} from '../../utils/officialDocumentHtml';
+import type { AbsenceStage, AcademicYear, SchoolSettings } from '../../types/school';
+import { BidiText, LtrSpan } from '../common/BidirectionalText';
 
 interface LegalRegulationsViewProps {
+  settings?: SchoolSettings | null;
   activeAcademicYear?: AcademicYear | null;
   academicYears?: AcademicYear[];
   selectedYearId?: number | null;
@@ -25,13 +32,24 @@ interface LegalRegulationsViewProps {
 }
 
 export function LegalRegulationsView({
+  settings,
   activeAcademicYear,
   academicYears = [],
   selectedYearId,
+  onRefresh,
+  onNotify,
   isHistoricalReadOnly = false,
 }: LegalRegulationsViewProps) {
+  const { plain, academicYear } = useNumberDisplay();
   const targetYearId = selectedYearId ?? activeAcademicYear?.id ?? academicYears[0]?.id;
   const targetYear = academicYears.find((y) => y.id === targetYearId) ?? activeAcademicYear;
+
+  const initialUnifiedTemplate =
+    settings?.unified_letter_template ?? UNIFIED_OFFICIAL_LETTER_TEMPLATE;
+  const [savedTemplate, setSavedTemplate] = useState<string>(initialUnifiedTemplate);
+  const [templateDraft, setTemplateDraft] = useState<string>(initialUnifiedTemplate);
+  const [loadingTemplate, setLoadingTemplate] = useState(true);
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   const [stages, setStages] = useState<AbsenceStage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,8 +82,63 @@ export function LegalRegulationsView({
   };
 
   useEffect(() => {
+    let cancelled = false;
+    const loadSavedTemplate = async () => {
+      try {
+        setLoadingTemplate(true);
+        const latestSettings = await schoolService.getSettings();
+        if (cancelled) return;
+        const resolvedTemplate =
+          latestSettings.unified_letter_template ?? UNIFIED_OFFICIAL_LETTER_TEMPLATE;
+        setSavedTemplate(resolvedTemplate);
+        setTemplateDraft(resolvedTemplate);
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(err?.message || 'تعذر تحميل النص الرسمي الموحد المحفوظ.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingTemplate(false);
+        }
+      }
+    };
+    void loadSavedTemplate();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     loadStages();
   }, [targetYearId]);
+
+  const handleSaveUnifiedTemplate = async () => {
+    if (templateDraft.trim().length === 0) {
+      const msg = 'يرجى إدخال النص الرسمي الموحد قبل الحفظ.';
+      setError(msg);
+      onNotify?.('error', msg);
+      return;
+    }
+    try {
+      setSavingTemplate(true);
+      setError(null);
+      const updated = await schoolService.updateUnifiedLetterTemplate(templateDraft);
+      setSavedTemplate(updated.unified_letter_template);
+      setTemplateDraft(updated.unified_letter_template);
+      await onRefresh?.();
+      await loadStages();
+      const msg = 'تم حفظ تعديلات النص الرسمي الموحد بنجاح.';
+      setSuccessMessage(msg);
+      onNotify?.('success', msg);
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err: any) {
+      const msg = err?.message || 'تعذر حفظ تعديلات النص الرسمي الموحد.';
+      setError(msg);
+      onNotify?.('error', msg);
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
 
   const handleOpenAdd = () => {
     if (!targetYearId) {
@@ -75,9 +148,7 @@ export function LegalRegulationsView({
     setEditingStage(null);
     setFormName('');
     setFormDays('3');
-    setFormTemplate(
-      `إلى ولي الأمر الكريم،\nنظراً لبلوغ الطالب/ة عتبة الغياب ({absence_days} يوم) ضمن مرحلة ({stage_name}) للعام الدراسي ({academic_year}) في مدرسة ({school_name})، نرجو مراجعة الإدارة.\nرقم الكتاب: {document_number}\nالتاريخ: {date}`
-    );
+    setFormTemplate(savedTemplate);
     setModalOpen(true);
   };
 
@@ -85,7 +156,7 @@ export function LegalRegulationsView({
     setEditingStage(stage);
     setFormName(stage.name);
     setFormDays(String(stage.days_threshold));
-    setFormTemplate(stage.letter_template);
+    setFormTemplate(savedTemplate);
     setModalOpen(true);
   };
 
@@ -107,15 +178,15 @@ export function LegalRegulationsView({
         await schoolService.updateAbsenceStage(editingStage.id, {
           name: formName.trim(),
           days_threshold: days,
-          letter_template: formTemplate,
+          letter_template: savedTemplate,
         });
-        setSuccessMessage('تم تحديث مرحلة الغياب وقالب الكتاب بنجاح.');
+        setSuccessMessage('تم تحديث مرحلة الغياب بنجاح مع اعتماد النص الموحد للكتب الرسمية.');
       } else {
         await schoolService.createAbsenceStage({
           academic_year_id: targetYearId,
           name: formName.trim(),
           days_threshold: days,
-          letter_template: formTemplate,
+          letter_template: savedTemplate,
         });
         setSuccessMessage('تم إنشاء مرحلة الغياب الجديدة بنجاح.');
       }
@@ -167,7 +238,13 @@ export function LegalRegulationsView({
                 الضوابط القانونية للغياب والإنذارات (مراحل الغياب الديناميكية)
               </h2>
               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-                إدارة مراحل الغياب وعتبات الأيام وقوالب الكتب الرسمية للسنة الدراسية المحددة ({targetYear?.name || targetYearId}).
+                إدارة مراحل الغياب وعتبات الأيام وقوالب الكتب الرسمية للسنة الدراسية المحددة (
+                {targetYear?.name ? (
+                  <LtrSpan>{academicYear(targetYear.name)}</LtrSpan>
+                ) : (
+                  plain(targetYearId)
+                )}
+                ).
               </p>
             </div>
           </div>
@@ -198,13 +275,55 @@ export function LegalRegulationsView({
         </div>
       )}
 
+      {/* Unified Official Letter Template Editor */}
+      <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-teal-700 dark:text-teal-400" />
+            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+              النص الرسمي الموحد المعتمد لجميع مراحل الغياب
+            </h3>
+          </div>
+          <span className="text-[11px] font-semibold text-teal-800 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/50 px-2.5 py-1 rounded-lg border border-teal-200/70 dark:border-teal-800/50">
+            المتغيرات المتاحة: {'{absence_days}'} و{'{stage_name}'} و{'{academic_year}'} (تُعوض تلقائياً عند وجودها)
+          </span>
+        </div>
+        <textarea
+          dir="rtl"
+          rows={6}
+          value={templateDraft}
+          onChange={(e) => setTemplateDraft(e.target.value)}
+          disabled={isHistoricalReadOnly || loadingTemplate || savingTemplate}
+          placeholder="أدخل صيغة النص الرسمي الموحد للكتب الرسمية..."
+          className="w-full p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-slate-100 leading-relaxed focus:outline-none focus:ring-2 focus:ring-teal-600/30 disabled:opacity-60"
+        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            {templateDraft !== savedTemplate
+              ? 'توجد تعديلات غير محفوظة على النص الرسمي الموحد.'
+              : 'يُعتمد هذا النص المحفوظ تلقائياً عند إصدار الكتب الرسمية لجميع مراحل الغياب.'}
+          </p>
+          {!isHistoricalReadOnly && (
+            <button
+              type="button"
+              onClick={handleSaveUnifiedTemplate}
+              disabled={savingTemplate || loadingTemplate}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs sm:text-sm font-bold shadow-sm transition-colors disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              <span>{savingTemplate ? 'جاري الحفظ...' : 'حفظ التعديلات'}</span>
+            </button>
+          )}
+        </div>
+      </section>
+
       {/* Stages List */}
       <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Layers className="w-5 h-5 text-teal-700 dark:text-teal-400" />
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-              مراحل الغياب المعرفة ({stages.length})
+              مراحل الغياب المعرفة ({plain(stages.length)})
             </h3>
           </div>
           <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -231,18 +350,17 @@ export function LegalRegulationsView({
                 <div className="space-y-1.5">
                   <div className="flex flex-wrap items-center gap-2.5">
                     <span className="w-7 h-7 rounded-lg bg-teal-100 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 text-xs font-extrabold flex items-center justify-center">
-                      {idx + 1}
+                      {plain(idx + 1)}
                     </span>
                     <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
-                      {stage.name}
+                      <BidiText text={stage.name} />
                     </h4>
                     <span className="px-2.5 py-0.5 rounded-full bg-red-100 dark:bg-red-950/60 text-red-800 dark:text-red-300 text-xs font-extrabold tabular-nums">
-                      عند بلوغ {stage.days_threshold} يوم غياب
+                      عند بلوغ {plain(stage.days_threshold)} يوم غياب
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 max-w-2xl bg-slate-50 dark:bg-slate-950/50 p-2.5 rounded-lg border border-slate-200/70 dark:border-slate-800/70">
-                    <span className="font-bold text-slate-700 dark:text-slate-300 ml-1">قالب الكتاب:</span>
-                    {stage.letter_template}
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    يعتمد تلقائياً النص الموحد للكتاب الرسمي مع توجيه (<BidiText text={stage.name} />) عند ({plain(stage.days_threshold)}) يوم.
                   </p>
                 </div>
                 {!isHistoricalReadOnly && (
@@ -321,18 +439,21 @@ export function LegalRegulationsView({
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-                    قالب الكتاب الرسمي المرفق
+                    معاينة النص الرسمي الموحد لهذه المرحلة
                   </label>
                   <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                    يمكنك استخدام المتغيرات: {'{full_name}, {absence_days}, {academic_year}, {school_name}, {date}, {document_number}, {stage_name}'}
+                    يُطبّق النص الموحد تلقائياً على جميع المراحل
                   </span>
                 </div>
-                <textarea
-                  rows={6}
-                  value={formTemplate}
-                  onChange={(e) => setFormTemplate(e.target.value)}
-                  className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600/30 leading-relaxed"
-                />
+                <div className="w-full px-3.5 py-3 text-xs sm:text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/60 text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
+                  <BidiText
+                    text={resolveOfficialLetterTemplate(formTemplate || savedTemplate, {
+                      absence_days: formDays || '...',
+                      stage_name: formName.trim() || 'اسم المرحلة',
+                      academic_year: targetYear?.name || 'السنة الدراسية',
+                    })}
+                  />
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">

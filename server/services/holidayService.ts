@@ -14,6 +14,7 @@ import type {
 } from '../../src/types/school';
 import type { SqliteDb } from '../db/connection';
 import { ServiceError, normalizeNullableString, normalizeWhitespace } from '../utils/validation';
+import { recordAuditLog } from './auditLogService';
 
 const ARABIC_DAY_NAMES = [
   'الأحد',
@@ -221,6 +222,23 @@ export function updateWeeklyHolidays(
     db.prepare(
       "UPDATE school_settings SET weekly_holiday_reason = ?, updated_at = datetime('now') WHERE id = 1"
     ).run(reason);
+
+    const updatedWeekly = getWeeklyHolidaySettings(db);
+    recordAuditLog(db, {
+      operation_type: 'update',
+      section: 'holidays',
+      description: 'تحديث إعدادات العطل الأسبوعية',
+      target_id: 'weekly_holidays',
+      target_label: 'العطل الأسبوعية',
+      old_value: {
+        reason: currentWeekly.reason,
+        days: currentWeekly.days.filter((d) => d.is_holiday === 1).map((d) => d.day_name),
+      },
+      new_value: {
+        reason: updatedWeekly.reason,
+        days: updatedWeekly.days.filter((d) => d.is_holiday === 1).map((d) => d.day_name),
+      },
+    });
   })();
 
   return {
@@ -354,22 +372,34 @@ export function createHoliday(db: SqliteDb, input: CreateHolidayInput): SaveHoli
   const clean = validateAndCheckOverlap(db, input);
   const warning = buildRangeExistingRecordsWarning(db, clean.start_date, clean.end_date);
 
-  const info = db
-    .prepare(
-      `INSERT INTO holidays
-         (academic_year_id, name, start_date, end_date, holiday_type, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-    )
-    .run(
-      clean.academic_year_id,
-      clean.name,
-      clean.start_date,
-      clean.end_date,
-      clean.holiday_type,
-      clean.notes
-    );
+  const holidayId = db.transaction(() => {
+    const info = db
+      .prepare(
+        `INSERT INTO holidays
+           (academic_year_id, name, start_date, end_date, holiday_type, notes, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+      )
+      .run(
+        clean.academic_year_id,
+        clean.name,
+        clean.start_date,
+        clean.end_date,
+        clean.holiday_type,
+        clean.notes
+      );
+    const id = Number(info.lastInsertRowid);
+    recordAuditLog(db, {
+      operation_type: 'create',
+      section: 'holidays',
+      description: `إضافة عطلة: ${clean.name} (${clean.start_date} إلى ${clean.end_date})`,
+      target_id: id,
+      target_label: clean.name,
+      new_value: clean,
+    });
+    return id;
+  })();
 
-  const holiday = getHolidayById(db, Number(info.lastInsertRowid));
+  const holiday = getHolidayById(db, holidayId);
   return {
     holiday,
     existing_records_warning: warning,
@@ -381,29 +411,46 @@ export function updateHoliday(
   holidayId: number,
   input: CreateHolidayInput
 ): SaveHolidayResult {
-  getHolidayById(db, holidayId); // verify existence
+  const before = getHolidayById(db, holidayId); // verify existence
   const clean = validateAndCheckOverlap(db, input, holidayId);
   const warning = buildRangeExistingRecordsWarning(db, clean.start_date, clean.end_date);
 
-  db.prepare(
-    `UPDATE holidays
-     SET academic_year_id = ?,
-         name = ?,
-         start_date = ?,
-         end_date = ?,
-         holiday_type = ?,
-         notes = ?,
-         updated_at = datetime('now')
-     WHERE id = ?`
-  ).run(
-    clean.academic_year_id,
-    clean.name,
-    clean.start_date,
-    clean.end_date,
-    clean.holiday_type,
-    clean.notes,
-    holidayId
-  );
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE holidays
+       SET academic_year_id = ?,
+           name = ?,
+           start_date = ?,
+           end_date = ?,
+           holiday_type = ?,
+           notes = ?,
+           updated_at = datetime('now')
+       WHERE id = ?`
+    ).run(
+      clean.academic_year_id,
+      clean.name,
+      clean.start_date,
+      clean.end_date,
+      clean.holiday_type,
+      clean.notes,
+      holidayId
+    );
+    recordAuditLog(db, {
+      operation_type: 'update',
+      section: 'holidays',
+      description: `تعديل العطلة: ${clean.name} (${clean.start_date} إلى ${clean.end_date})`,
+      target_id: holidayId,
+      target_label: clean.name,
+      old_value: {
+        name: before.name,
+        start_date: before.start_date,
+        end_date: before.end_date,
+        holiday_type: before.holiday_type,
+        notes: before.notes,
+      },
+      new_value: clean,
+    });
+  })();
 
   const holiday = getHolidayById(db, holidayId);
   return {
@@ -413,13 +460,25 @@ export function updateHoliday(
 }
 
 export function deleteHoliday(db: SqliteDb, holidayId: number): void {
-  const existing = db.prepare('SELECT id FROM holidays WHERE id = ?').get(holidayId) as
-    | { id: number }
+  const existing = db
+    .prepare('SELECT id, name, start_date, end_date, holiday_type FROM holidays WHERE id = ?')
+    .get(holidayId) as
+    | { id: number; name: string; start_date: string; end_date: string; holiday_type: string }
     | undefined;
   if (!existing) {
     throw new ServiceError('العطلة المطلوبة غير موجودة.', 404, 'HOLIDAY_NOT_FOUND');
   }
-  db.prepare('DELETE FROM holidays WHERE id = ?').run(holidayId);
+  db.transaction(() => {
+    db.prepare('DELETE FROM holidays WHERE id = ?').run(holidayId);
+    recordAuditLog(db, {
+      operation_type: 'delete',
+      section: 'holidays',
+      description: `حذف العطلة: ${existing.name} (${existing.start_date} إلى ${existing.end_date})`,
+      target_id: holidayId,
+      target_label: existing.name,
+      old_value: existing,
+    });
+  })();
 }
 
 export function resolveDateHolidayStatus(db: SqliteDb, rawDate: string): HolidayCheckResult {

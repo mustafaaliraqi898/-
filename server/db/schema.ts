@@ -32,12 +32,15 @@ CREATE TABLE IF NOT EXISTS school_settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   school_name TEXT NOT NULL DEFAULT 'المدرسة النموذجية',
   directorate_name TEXT NOT NULL DEFAULT 'المديرية العامة للتربية',
+  principal_name TEXT,
   academic_year_id INTEGER REFERENCES academic_years(id) ON DELETE SET NULL,
   lessons_per_absence_day INTEGER NOT NULL DEFAULT 5 CHECK (lessons_per_absence_day >= 1 AND lessons_per_absence_day <= 20),
   daily_lessons_count INTEGER NOT NULL DEFAULT 7 CHECK (daily_lessons_count >= 1 AND daily_lessons_count <= 12),
   daily_permission_counts_as_absence INTEGER NOT NULL DEFAULT 0 CHECK (daily_permission_counts_as_absence IN (0, 1)),
   lesson_permission_counts_as_absence INTEGER NOT NULL DEFAULT 0 CHECK (lesson_permission_counts_as_absence IN (0, 1)),
+  number_display_mode TEXT NOT NULL DEFAULT 'english' CHECK (number_display_mode IN ('arabic', 'english')),
   weekly_holiday_reason TEXT NOT NULL DEFAULT 'عطلة أسبوعية رسمية',
+  unified_letter_template TEXT,
   school_logo_data TEXT,
   school_logo_asset_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -302,6 +305,7 @@ CREATE TABLE IF NOT EXISTS absence_stages (
   name TEXT NOT NULL,
   days_threshold INTEGER NOT NULL CHECK (days_threshold >= 1),
   letter_template TEXT NOT NULL DEFAULT '',
+  legacy_letter_template TEXT,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -317,6 +321,7 @@ CREATE TABLE IF NOT EXISTS issued_official_letters (
   days_threshold INTEGER NOT NULL,
   document_number TEXT NOT NULL,
   letter_date TEXT NOT NULL,
+  subject TEXT NOT NULL DEFAULT '',
   rendered_content TEXT NOT NULL,
   students_json TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -324,4 +329,45 @@ CREATE TABLE IF NOT EXISTS issued_official_letters (
 
 CREATE INDEX IF NOT EXISTS idx_absence_stages_year ON absence_stages(academic_year_id, days_threshold);
 CREATE INDEX IF NOT EXISTS idx_issued_letters_year ON issued_official_letters(academic_year_id);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  operation_type TEXT NOT NULL,
+  section TEXT NOT NULL,
+  actor_name TEXT NOT NULL DEFAULT 'إدارة المدرسة',
+  description TEXT NOT NULL,
+  target_id TEXT,
+  target_label TEXT,
+  old_value_json TEXT,
+  new_value_json TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_op_type ON audit_logs(operation_type);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_section ON audit_logs(section);
+
+CREATE TABLE IF NOT EXISTS backup_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  auto_enabled INTEGER NOT NULL DEFAULT 0 CHECK (auto_enabled IN (0, 1)),
+  frequency TEXT NOT NULL DEFAULT 'daily' CHECK (frequency IN ('daily', 'weekly')),
+  retention_count INTEGER NOT NULL DEFAULT 7 CHECK (retention_count >= 1 AND retention_count <= 90),
+  backup_dir TEXT,
+  last_backup_at TEXT,
+  last_backup_status TEXT,
+  last_backup_message TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS backup_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  filename TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  backup_type TEXT NOT NULL CHECK (backup_type IN ('manual', 'auto', 'pre_restore')),
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  integrity_ok INTEGER NOT NULL DEFAULT 1 CHECK (integrity_ok IN (0, 1)),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_backup_records_created_at ON backup_records(created_at DESC, id DESC);
 `;

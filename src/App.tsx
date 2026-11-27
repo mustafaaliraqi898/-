@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { AbsencesView } from './components/absences/AbsencesView';
+import { AuditLogView } from './components/audit/AuditLogView';
 import { ToastContainer, type ToastItem, type ToastType } from './components/common/Toast';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { GradesView } from './components/grades/GradesView';
@@ -14,6 +15,7 @@ import { MonthlyRegisterView } from './components/monthly/MonthlyRegisterView';
 import { ReportsCenterView } from './components/reports/ReportsCenterView';
 import { SettingsView, type SettingsTabId } from './components/settings/SettingsView';
 import { StudentsView } from './components/students/StudentsView';
+import { NumberDisplayProvider } from './contexts/NumberDisplayContext';
 import { schoolService } from './services/schoolService';
 import type {
   AcademicYear,
@@ -69,6 +71,10 @@ export default function App() {
   >('full_name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
+  // Dashboard filters
+  const [dashboardGradeId, setDashboardGradeId] = useState<number | null>(null);
+  const [dashboardStageId, setDashboardStageId] = useState<number | null>(null);
+
   // Toasts
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
@@ -102,12 +108,19 @@ export default function App() {
   }, [notify]);
 
   const loadYearScopedData = useCallback(
-    async (yearId: number | null) => {
+    async (
+      yearId: number | null,
+      gradeId: number | null = dashboardGradeId,
+      stageId: number | null = dashboardStageId
+    ) => {
       if (!yearId) return;
       setLoadingCore(true);
       try {
         const [statsData, gradesData] = await Promise.all([
-          schoolService.getDashboardStats(yearId),
+          schoolService.getDashboardStats(yearId, {
+            grade_id: gradeId ?? undefined,
+            stage_id: stageId ?? undefined,
+          }),
           schoolService.listGrades(yearId),
         ]);
         setDashboardStats(statsData);
@@ -118,7 +131,7 @@ export default function App() {
         setLoadingCore(false);
       }
     },
-    [notify]
+    [dashboardGradeId, dashboardStageId, notify]
   );
 
   const loadStudents = useCallback(async () => {
@@ -177,7 +190,8 @@ export default function App() {
   }
 
   return (
-    <div className="no-print min-h-dvh flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <NumberDisplayProvider mode={settings?.number_display_mode ?? 'english'}>
+      <div className="no-print min-h-dvh flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <Sidebar
         activeSection={activeSection}
         onSelectSection={setActiveSection}
@@ -196,6 +210,8 @@ export default function App() {
             setSelectedYearId(yearId);
             setFilterGradeId(null);
             setFilterSectionId(null);
+            setDashboardGradeId(null);
+            setDashboardStageId(null);
           }}
           isDark={isDark}
           onToggleTheme={() => setIsDark((d) => !d)}
@@ -205,7 +221,18 @@ export default function App() {
 
         <main className="flex-1 min-w-0 p-3.5 sm:p-5 lg:p-6 max-w-[1440px] w-full mx-auto">
           {activeSection === 'dashboard' && (
-            <DashboardView stats={dashboardStats} loading={loadingCore} />
+            <DashboardView
+              stats={dashboardStats}
+              grades={grades}
+              loading={loadingCore}
+              selectedGradeId={dashboardGradeId}
+              selectedStageId={dashboardStageId}
+              onFilterChange={({ gradeId, stageId }) => {
+                setDashboardGradeId(gradeId);
+                setDashboardStageId(stageId);
+              }}
+              onNavigateSection={setActiveSection}
+            />
           )}
 
           {activeSection === 'grades' && (
@@ -275,6 +302,7 @@ export default function App() {
 
           {activeSection === 'reports' && (
             <ReportsCenterView
+              settings={settings}
               grades={grades}
               academicYears={academicYears}
               selectedYearId={selectedYearId}
@@ -292,6 +320,8 @@ export default function App() {
             />
           )}
 
+          {activeSection === 'audit' && <AuditLogView onNotify={notify} />}
+
           {activeSection === 'settings' && (
             <SettingsView
               settings={settings}
@@ -307,6 +337,7 @@ export default function App() {
       </div>
 
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-    </div>
+      </div>
+    </NumberDisplayProvider>
   );
 }

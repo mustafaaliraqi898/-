@@ -20,6 +20,7 @@ import type { SqliteDb } from '../db/connection';
 import { ServiceError, normalizeNullableString } from '../utils/validation';
 import { resolveDateHolidayStatus } from './holidayService';
 import { getActiveAcademicYear, getSchoolSettings } from './settingsService';
+import { recordAuditLog } from './auditLogService';
 
 const VALID_STATUSES: ReadonlySet<string> = new Set([
   'present',
@@ -1006,7 +1007,7 @@ export function saveSectionAttendance(
   input: SaveSectionAttendanceInput
 ): SaveSectionAttendanceResult {
   const attendanceDate = validateDateIso(input.attendance_date);
-  const { year, grade_id, section_id } = verifyYearGradeSection(
+  const { year, grade_id, grade_name, section_id, section_name } = verifyYearGradeSection(
     db,
     input.academic_year_id,
     input.grade_id,
@@ -1053,7 +1054,20 @@ export function saveSectionAttendance(
   let lessonEscapeCount = 0;
   let totalNewlyConvertedDays = 0;
 
+  interface AuditAttendanceDiff {
+    student_id: number;
+    action: 'created' | 'updated';
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown>;
+  }
+  const auditChanges: AuditAttendanceDiff[] = [];
+
   db.transaction(() => {
+    const existingSession = db
+      .prepare(
+        'SELECT id, recorded_count FROM attendance_sessions WHERE academic_year_id = ? AND section_id = ? AND attendance_date = ?'
+      )
+      .get(year.id, section_id, attendanceDate) as { id: number; recorded_count: number } | undefined;
     const findExistingDayRecord = db.prepare(
       `SELECT id, enrollment_id, academic_year_id, grade_id, section_id, status,
               lessons_count, leave_type, permission_type, lesson_numbers_json,
@@ -1182,6 +1196,12 @@ export function saveSectionAttendance(
           // Preserve historical rule snapshots untouched when student's attendance state didn't change
           if ((existing.notes ?? null) !== item.notes) {
             updateNotesOnly.run(item.notes, existing.id);
+            auditChanges.push({
+              student_id: item.student_id,
+              action: 'updated',
+              before: { status: existing.status, notes: existing.notes },
+              after: { status: item.status, notes: item.notes },
+            });
           }
           continue;
         }
@@ -1261,6 +1281,25 @@ export function saveSectionAttendance(
           const deltaConverted = reconcileStudentLessonCounter(db, item.student_id, year.id);
           totalNewlyConvertedDays += deltaConverted;
         }
+
+        auditChanges.push({
+          student_id: item.student_id,
+          action: 'updated',
+          before: {
+            status: existing.status,
+            lessons_count: existing.lessons_count,
+            leave_type: existing.leave_type,
+            lesson_numbers: parseLessonNumbersFallback(existing.lesson_numbers_json),
+            notes: existing.notes,
+          },
+          after: {
+            status: item.status,
+            lessons_count: item.lessons_count,
+            leave_type: item.leave_type,
+            lesson_numbers: item.lesson_numbers,
+            notes: item.notes,
+          },
+        });
       } else {
         const enrollment = findCurrentEnrollment.get(
           item.student_id,
@@ -1304,6 +1343,21 @@ export function saveSectionAttendance(
           const deltaConverted = reconcileStudentLessonCounter(db, item.student_id, year.id);
           totalNewlyConvertedDays += deltaConverted;
         }
+
+        if (item.status !== 'present' || item.lesson_details.length > 0 || item.notes) {
+          auditChanges.push({
+            student_id: item.student_id,
+            action: 'created',
+            before: null,
+            after: {
+              status: item.status,
+              lessons_count: item.lessons_count,
+              leave_type: item.leave_type,
+              lesson_numbers: item.lesson_numbers,
+              notes: item.notes,
+            },
+          });
+        }
       }
     }
 
@@ -1316,6 +1370,42 @@ export function saveSectionAttendance(
                      recorded_count = excluded.recorded_count,
                      updated_at = datetime('now')`
     ).run(year.id, grade_id, section_id, attendanceDate, normalizedEntries.length);
+
+    if (!existingSession || auditChanges.length > 0) {
+      recordAuditLog(db, {
+        operation_type: existingSession ? 'update' : 'create',
+        section: 'absences',
+        description: `${existingSession ? 'تعديل' : 'تسجيل'} سجل الغياب والحضور لـ ${grade_name} / ${section_name} بتاريخ ${attendanceDate}`,
+        target_id: `${section_id}:${attendanceDate}`,
+        target_label: `${grade_name} - ${section_name} (${attendanceDate})`,
+        old_value: existingSession
+          ? {
+              recorded_count: existingSession.recorded_count,
+              changed_records: auditChanges.map((c) => ({
+                student_id: c.student_id,
+                before: c.before,
+              })),
+            }
+          : null,
+        new_value: {
+          attendance_date: attendanceDate,
+          grade_id,
+          section_id,
+          saved_count: normalizedEntries.length,
+          present_count: presentCount,
+          full_day_count: fullDayCount,
+          lesson_absence_count: lessonAbsenceCount,
+          full_day_leave_count: fullDayLeaveCount,
+          lesson_permission_count: lessonPermissionCount,
+          lesson_escape_count: lessonEscapeCount,
+          newly_converted_days: totalNewlyConvertedDays,
+          changed_records: auditChanges.map((c) => ({
+            student_id: c.student_id,
+            after: c.after,
+          })),
+        },
+      });
+    }
   })();
 
   const updatedSheet = getSectionAttendanceSheet(db, {
@@ -1459,6 +1549,23 @@ export function createSingleAbsenceRecord(
     if (hasLessonStateNow && normalized.counted_as_absence === 1) {
       reconcileStudentLessonCounter(db, normalized.student_id, year.id);
     }
+
+    recordAuditLog(db, {
+      operation_type: 'create',
+      section: 'absences',
+      description: `إضافة سجل غياب للطالب رقم (${normalized.student_id}) بتاريخ ${absenceDate}`,
+      target_id: createdId,
+      target_label: absenceDate,
+      new_value: {
+        student_id: normalized.student_id,
+        absence_date: absenceDate,
+        status: normalized.status,
+        lessons_count: normalized.lessons_count,
+        leave_type: normalized.leave_type,
+        lesson_numbers: normalized.lesson_numbers,
+        notes: normalized.notes,
+      },
+    });
     return createdId;
   })();
 
@@ -1632,6 +1739,26 @@ export function addStudentLessonRecords(
     );
 
     reconcileStudentLessonCounter(db, input.student_id, year.id);
+
+    recordAuditLog(db, {
+      operation_type: 'update',
+      section: 'absences',
+      description: `إضافة حالات دروس للطالب رقم (${input.student_id}) بتاريخ ${absenceDate}`,
+      target_id: existing.id,
+      target_label: absenceDate,
+      old_value: {
+        status: existing.status,
+        lessons_count: existing.lessons_count,
+        lesson_details: existingDetails,
+        notes: existing.notes,
+      },
+      new_value: {
+        status: primaryStatus,
+        lessons_count: mergedDetails.length,
+        lesson_details: mergedDetails,
+        notes: mergedNotes,
+      },
+    });
   })();
 
   const updated = db.prepare('SELECT * FROM absences WHERE id = ?').get(existing.id) as Record<
@@ -1699,6 +1826,15 @@ export function deleteAbsenceRecord(db: SqliteDb, recordId: number): void {
         existing.absence_date
       );
     }
+
+    recordAuditLog(db, {
+      operation_type: 'delete',
+      section: 'absences',
+      description: `حذف سجل غياب للطالب رقم (${existing.student_id}) بتاريخ ${existing.absence_date}`,
+      target_id: existing.id,
+      target_label: existing.absence_date,
+      old_value: existing,
+    });
   })();
 }
 
