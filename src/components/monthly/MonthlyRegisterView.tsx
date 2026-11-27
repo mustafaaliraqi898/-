@@ -306,6 +306,9 @@ export function MonthlyRegisterView({
       return;
     }
 
+    // Browser/PWA print is handled by the shared print-preview tab in src/main.tsx.
+    window.print();
+    return;
 
     if (printTimerRef.current !== null) {
       window.clearTimeout(printTimerRef.current);
