@@ -10,6 +10,7 @@ import {
   History,
   LogOut,
   RotateCcw,
+  Search,
   Save,
   Trash2,
   UserX,
@@ -148,6 +149,7 @@ export function AbsencesView({
   const [gradeId, setGradeId] = useState<number | ''>('');
   const [sectionId, setSectionId] = useState<number | ''>('');
   const [attendanceDate, setAttendanceDate] = useState<string>(getTodayIso);
+  const [studentSearch, setStudentSearch] = useState('');
 
   const [sheet, setSheet] = useState<SectionAttendanceSheet | null>(null);
   const [loadingSheet, setLoadingSheet] = useState(false);
@@ -187,6 +189,16 @@ export function AbsencesView({
     if (!gradeId) return [];
     return grades.find((g) => g.id === Number(gradeId))?.sections ?? [];
   }, [grades, gradeId]);
+
+  const filteredStudents = useMemo(() => {
+    if (!sheet) return [];
+    const term = studentSearch.trim().toLocaleLowerCase();
+    if (!term) return sheet.students;
+    return sheet.students.filter((student) =>
+      [student.full_name, student.registry_number ?? '', student.student_uid]
+        .some((value) => value.toLocaleLowerCase().includes(term))
+    );
+  }, [sheet, studentSearch]);
 
   const initializeDraftFromSheet = useCallback((loaded: SectionAttendanceSheet) => {
     const nextDraft: Record<number, DraftEntry> = {};
@@ -864,6 +876,39 @@ export function AbsencesView({
         </div>
       )}
 
+      {/* Student Search */}
+      {sheet && sheet.students.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs p-3.5 sm:p-4">
+          <label htmlFor="absence-student-search" className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">
+            البحث عن طالب
+          </label>
+          <div className="relative max-w-xl">
+            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              id="absence-student-search"
+              type="search"
+              value={studentSearch}
+              onChange={(event) => setStudentSearch(event.target.value)}
+              placeholder="اكتب اسم الطالب أو رقم القيد..."
+              className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pr-9 pl-10 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
+            />
+            {studentSearch && (
+              <button
+                type="button"
+                onClick={() => setStudentSearch('')}
+                aria-label="مسح البحث"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              >
+                ×
+              </button>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">
+            عرض {count(filteredStudents.length)} من {count(sheet.students.length)} طالب
+          </p>
+        </div>
+      )}
+
       {/* Quick Control Bar */}
       {sheet && sheet.students.length > 0 && !isHolidayBlocked && (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs px-4 sm:px-5 py-3.5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
@@ -1055,7 +1100,7 @@ export function AbsencesView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {sheet.students.map((st, idx) => {
+                {filteredStudents.map((st, idx) => {
                   const initialHasLessons =
                     isLessonStatus(st.status) || (st.lesson_details?.length ?? 0) > 0;
                   const entry = draft[st.student_id] ?? {
@@ -1519,6 +1564,13 @@ export function AbsencesView({
                     </tr>
                   );
                 })}
+                {filteredStudents.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-10 px-4 text-center text-sm text-slate-500 dark:text-slate-400">
+                      لا توجد نتائج مطابقة لعبارة البحث «{studentSearch}».
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
