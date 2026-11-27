@@ -10,6 +10,7 @@ import {
   History,
   LogOut,
   RotateCcw,
+  Search,
   Save,
   Trash2,
   UserX,
@@ -31,6 +32,7 @@ import { schoolService } from '../../services/schoolService';
 import { useNumberDisplay } from '../../contexts/NumberDisplayContext';
 import { BidiText, LtrSpan } from '../common/BidirectionalText';
 import { ConfirmDialog } from '../common/ConfirmDialog';
+import { ArabicDatePicker } from '../common/ArabicDatePicker';
 
 interface AbsencesViewProps {
   grades: GradeWithSections[];
@@ -148,6 +150,7 @@ export function AbsencesView({
   const [gradeId, setGradeId] = useState<number | ''>('');
   const [sectionId, setSectionId] = useState<number | ''>('');
   const [attendanceDate, setAttendanceDate] = useState<string>(getTodayIso);
+  const [studentSearch, setStudentSearch] = useState('');
 
   const [sheet, setSheet] = useState<SectionAttendanceSheet | null>(null);
   const [loadingSheet, setLoadingSheet] = useState(false);
@@ -420,6 +423,17 @@ export function AbsencesView({
   }
 
   const isHolidayBlocked = Boolean(sheet?.holiday_info?.is_holiday);
+
+  const visibleStudents = useMemo(() => {
+    const students = sheet?.students ?? [];
+    const term = studentSearch.trim().toLocaleLowerCase('ar-IQ');
+    if (!term) return students;
+    return students.filter((student) =>
+      student.full_name.toLocaleLowerCase('ar-IQ').includes(term) ||
+      (student.registry_number ?? '').toLocaleLowerCase('ar-IQ').includes(term) ||
+      student.student_uid.toLocaleLowerCase('ar-IQ').includes(term)
+    );
+  }, [sheet, studentSearch]);
 
   function handleMarkAllPresent() {
     if (!sheet || sheet.students.length === 0 || isHolidayBlocked) return;
@@ -783,12 +797,11 @@ export function AbsencesView({
           >
             تاريخ الغياب
           </label>
-          <input
+          <ArabicDatePicker
             id="abs-date-input"
-            type="date"
             value={attendanceDate}
-            onChange={(e) => setAttendanceDate(e.target.value)}
-            className="w-full px-3 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30 tabular-nums"
+            onChange={setAttendanceDate}
+            className="w-full px-3 py-2 min-h-[40px] text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
           />
           {sheet?.holiday_info && (
             <p
@@ -972,6 +985,19 @@ export function AbsencesView({
         </div>
       )}
 
+      {/* Student search */}
+      <div className="relative max-w-md">
+        <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+        <input
+          type="search"
+          value={studentSearch}
+          onChange={(e) => setStudentSearch(e.target.value)}
+          placeholder="ابحث عن طالب بالاسم أو رقم القيد..."
+          aria-label="البحث عن طالب في تسجيل الغيابات"
+          className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 pr-9 pl-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-600/30"
+        />
+      </div>
+
       {/* Attendance Table */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
         {loadingSheet ? (
@@ -1055,7 +1081,13 @@ export function AbsencesView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {sheet.students.map((st, idx) => {
+                                {visibleStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-10 text-center text-sm text-slate-500 dark:text-slate-400">
+                      {studentSearch.trim() ? 'لا توجد نتائج مطابقة للبحث.' : 'لا يوجد طلاب في هذه الشعبة.'}
+                    </td>
+                  </tr>
+                ) : visibleStudents.map((st, idx) => {
                   const initialHasLessons =
                     isLessonStatus(st.status) || (st.lesson_details?.length ?? 0) > 0;
                   const entry = draft[st.student_id] ?? {

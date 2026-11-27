@@ -8,6 +8,7 @@ import {
   processAndUploadImageFile,
 } from '../../utils/imageUpload';
 import { BidiText, LtrSpan } from '../common/BidirectionalText';
+import { ArabicDatePicker } from '../common/ArabicDatePicker';
 
 interface StudentFormModalProps {
   open: boolean;
@@ -371,11 +372,11 @@ export function StudentFormModal({
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                   تاريخ الميلاد (اختياري)
                 </label>
-                <input
-                  type="date"
+                <ArabicDatePicker
+                  id="student-birth-date"
                   value={birthDate}
-                  onChange={(e) => setBirthDate(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 tabular-nums min-h-[42px]"
+                  onChange={setBirthDate}
+                  className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[42px]"
                 />
               </div>
             </div>

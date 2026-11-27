@@ -743,7 +743,7 @@ export function createDatabaseConnection(dbPath?: string): SqliteDb {
   const resolvedPath =
     dbPath ||
     process.env.SQLITE_DB_PATH ||
-    path.resolve(process.cwd(), 'data', 'school_attendance.db');
+    path.join(process.env.APPDATA || process.env.LOCALAPPDATA || process.env.HOME || process.cwd(), 'SchoolAbsenceManager', 'school_attendance.db');
 
   if (resolvedPath !== ':memory:') {
     const dir = path.dirname(resolvedPath);

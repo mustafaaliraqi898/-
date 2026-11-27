@@ -764,9 +764,10 @@ function createMainWindow() {
     minWidth: 1100,
     minHeight: 720,
     title: 'نظام إدارة الغيابات المدرسية الإلكتروني',
+    icon: path.join(app.getAppPath(), 'build', 'icon.png'),
     backgroundColor: '#f8fafc',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -788,6 +789,9 @@ function createMainWindow() {
     void mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 }
+
+app.setName('SchoolAbsenceManager');
+app.setPath('userData', path.join(app.getPath('appData'), 'SchoolAbsenceManager'));
 
 app.whenReady().then(() => {
   const userDataPath = app.getPath('userData');

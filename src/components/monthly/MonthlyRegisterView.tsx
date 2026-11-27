@@ -236,16 +236,22 @@ export function MonthlyRegisterView({
     void loadRegister();
   }, [loadRegister]);
 
-  // Fast client-side search on already-loaded section register
+  // Fast client-side search on already-loaded section register.
+  // Normalize Arabic/Persian numerals so either keyboard layout can find a student.
   const displayedStudents = useMemo(() => {
     if (!registerData) return [];
-    const term = search.trim().toLowerCase();
+    const normalize = (value: string) =>
+      value
+        .toLocaleLowerCase('ar-IQ')
+        .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
+        .replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)))
+        .trim();
+    const term = normalize(search);
     if (!term) return registerData.students;
-    return registerData.students.filter(
-      (st) =>
-        st.full_name.toLowerCase().includes(term) ||
-        (st.registry_number ?? '').toLowerCase().includes(term) ||
-        st.student_uid.toLowerCase().includes(term)
+    return registerData.students.filter((st) =>
+      normalize(st.full_name).includes(term) ||
+      normalize(st.registry_number ?? '').includes(term) ||
+      normalize(st.student_uid).includes(term)
     );
   }, [registerData, search]);
 
@@ -589,12 +595,18 @@ export function MonthlyRegisterView({
           <div className="relative flex-1 max-w-md">
             <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
-              type="text"
+              type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="بحث سريع عن طالب بالاسم أو رقم القيد..."
-              className="w-full min-h-[40px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pr-9 pl-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
+              aria-label="البحث عن طالب في السجل الشهري"
+              className="w-full min-h-[40px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pr-9 pl-9 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-600/30 dark:focus:ring-emerald-500/30"
             />
+            {search && (
+              <button type="button" onClick={() => setSearch('')} aria-label="مسح البحث" className="absolute left-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs">
